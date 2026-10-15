@@ -1,6 +1,6 @@
 # Native host PROTOTYPE — disposable evidence
 
-Question: can stable public VS Code APIs deliver the approved source-anchored reading and autosaved writing? This extension tests that boundary and a **candidate** separate bottom-panel writer. The owner has not accepted that deviation. This is not production extension code or an architecture selection.
+Question: can stable public VS Code APIs deliver the approved source-anchored reading and autosaved writing? This extension tests that boundary and a separate bottom-panel writer. The owner accepted moving the writer to the bottom, requiring its styling/internal layout to follow Figma and everything else to stay as approved. These plain prototype controls are not the accepted visual design. This is not production extension code or an architecture selection.
 
 Run from the repository root:
 

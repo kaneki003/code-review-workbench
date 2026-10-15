@@ -2,7 +2,7 @@
 
 15 October 2026 · evidence for [Validate anchored reading and autosaved writing in native VS Code](https://github.com/kaneki003/code-review-workbench/issues/5).
 
-**Decision pending owner reaction.** This report is a bounded native experiment, not approval of a UI deviation or an implementation-ready design. The prototype is in `src/prototypes/native-host-prototype/` on its throwaway branch.
+**Placement accepted by the owner.** This report is a bounded native experiment, not an implementation-ready design or approval of the prototype's plain styling. The prototype is in `src/prototypes/native-host-prototype/` on its throwaway branch.
 
 ## Environment and method
 
@@ -39,7 +39,7 @@ Interactions used the native app accessibility tree and keyboard/pointer APIs. N
 
 The stable comment API delivers `CommentReply.text` when a contributed action runs; it has no thread-owned input-change event or value property. Generic text-document events were observed in this host, but their internal `comment` URIs are not a documented ownership/identity contract. No internal URI parsing, proposed API, arbitrary inline HTML zone or custom code editor was used. The approved owned input under the source card remains unsupported by the researched public contract. [Stable comment API](https://code.visualstudio.com/api/references/vscode-api#CommentReply), [webview surfaces and lifecycle](https://code.visualstudio.com/api/extension-guides/webview), [host research at its exact commit](https://github.com/kaneki003/code-review-workbench/blob/0e321b3bcfa8e15284bde7f65a18db33ec80f195/docs/research/wayfinder-host-capabilities.md).
 
-The candidate compromise keeps native inline reading and ordinary source/diff tabs, and moves **only feedback writing** to a compact, movable bottom-panel webview. Its header carries the original file, range, revision and thread. Context / Chat remains in the separate companion. This is a change to the approved composer placement and requires the owner's explicit decision.
+The accepted compromise keeps native inline reading and ordinary source/diff tabs, and moves **only feedback writing** to a compact, movable bottom-panel webview. Its header carries the original file, range, revision and thread. Context / Chat remains in the separate companion. The owner requires the Figma composer's styling and internal layout to carry into the bottom placement; the prototype's plain controls do not satisfy that visual requirement.
 
 ## Errors corrected during setup
 
@@ -55,6 +55,6 @@ The UI tool can return accessibility data before asynchronous palette/reload/web
 
 Source parsing and manifest JSON parsing pass. After correcting the initial manifest, subsequent renderer logs have no new contribution errors attributed to this prototype. No proposed APIs are declared. These checks and native observations do not replace a packaged extension test matrix.
 
-**Owner reaction is pending.** The question presented is whether to accept native inline reading with a separate bottom-panel autosaving writer, preserving Context / Chat, with native thread styling and return to the source range rather than the exact thread header. An accepted treatment belongs in the decision resolution; this report does not silently amend the approved design.
+**Owner response:** “Okay use the bottom box then but the style and layout should follow the layout as figma just placed in bottom rest remain same”. The accepted change moves feedback writing to a bottom panel while preserving the Figma composer's styling/internal layout and all other approved behavior. The plain prototype controls are not the accepted visual design. Context / Chat retains its role and location by default; drafts retain their original source/thread targets. No further visual or focus deviation is approved by this answer. The source-range return demonstrated here does not settle the exact-header-focus requirement; architecture must account for that validation gap rather than treating this prototype as complete compliance.
 
 Further validation must cover Windows/Linux and the chosen stable-version floor; pixel layout/contrast/zoom; full keyboard/screen-reader flow; split-diff side/gutter interactions; native raw-input navigation/reload behavior beyond the observed discard warning; crash/kill/power-loss and unacknowledged-write races; real storage failures; workspace restoration; GitHub/AI integration and packaging. Source tabs did not automatically restore during a fixture reload before the content provider activated; this experiment proves reopening and draft survival, not complete review-session restoration. Native source focus was observed, but exact header focus was not implemented. No production storage or framework is selected.
