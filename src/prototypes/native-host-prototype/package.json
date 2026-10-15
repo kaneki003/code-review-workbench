@@ -1,0 +1,44 @@
+{
+  "name": "crw-native-host-prototype",
+  "displayName": "CRW native host PROTOTYPE",
+  "description": "Disposable decision experiment; no production code or network actions.",
+  "publisher": "crw-prototype",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.106.0" },
+  "main": "./extension.cjs",
+  "activationEvents": ["onStartupFinished"],
+  "extensionKind": ["ui"],
+  "contributes": {
+    "commands": [
+      { "command": "crwSpike.open", "title": "CRW Prototype: Open native review fixture" },
+      { "command": "crwSpike.writer", "title": "CRW Prototype: Open anchored local draft" },
+      { "command": "crwSpike.evidence", "title": "CRW Prototype: Open evidence source" },
+      { "command": "crwSpike.return", "title": "CRW Prototype: Return to worker source" },
+      { "command": "crwSpike.invalid", "title": "CRW Prototype: Inspect invalid anchor" },
+      { "command": "crwSpike.original", "title": "CRW Prototype: Open original source" },
+      { "command": "crwSpike.theme", "title": "CRW Prototype: Cycle fixture theme" },
+      { "command": "crwSpike.capture", "title": "Capture input explicitly (local fixture only)" },
+      { "command": "crwSpike.recreate", "title": "CRW Prototype: Recreate writer DOM" },
+      { "command": "crwSpike.failSave", "title": "CRW Prototype: Toggle failing draft saves" },
+      { "command": "crwSpike.audit", "title": "CRW Prototype: Open audit log" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "crwSpike-navigation", "title": "Review fixture", "icon": "icon.svg" }],
+      "secondarySidebar": [{ "id": "crwSpike-companionContainer", "title": "Review companion", "icon": "icon.svg" }],
+      "panel": [{ "id": "crwSpike-writerContainer", "title": "Local draft prototype", "icon": "icon.svg" }]
+    },
+    "views": {
+      "crwSpike-navigation": [{ "id": "crwSpike.files", "name": "PROTOTYPE · PR 248" }],
+      "crwSpike-companionContainer": [{ "id": "crwSpike.companion", "name": "Context / Chat", "type": "webview" }],
+      "crwSpike-writerContainer": [{ "id": "crwSpike.draft", "name": "Local draft · saved on this device", "type": "webview" }]
+    },
+    "menus": {
+      "comments/commentThread/context": [
+        { "command": "crwSpike.capture", "when": "commentController == crw-prototype.collaborators", "group": "inline" }
+      ],
+      "comments/commentThread/title": [
+        { "command": "crwSpike.writer", "when": "commentController == crw-prototype.companion", "group": "navigation" }
+      ]
+    }
+  }
+}

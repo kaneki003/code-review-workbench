@@ -1,0 +1,10 @@
+{
+  "workbench.startupEditor": "none",
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.secondarySideBar.defaultVisibility": "visible",
+  "editor.minimap.enabled": false,
+  "diffEditor.renderSideBySide": false,
+  "window.title": "CRW DISPOSABLE HOST PROTOTYPE${separator}${activeEditorShort}",
+  "git.enabled": false,
+  "telemetry.telemetryLevel": "off"
+}

@@ -1,0 +1,196 @@
+{"at": "2026-10-15T10:20:54.278Z", "event": "activation", "vscode": "1.141.2", "platform": "darwin", "arch": "arm64", "versions": {"node": "24.21.0", "acorn": "8.18.0", "ada": "4.0.0", "amaro": "1.1.11", "ares": "1.34.8", "brotli": "1.2.0", "cldr": "48.0", "icu": "78.2", "llhttp": "9.4.3", "merve": "1.2.2", "modules": "148", "napi": "10", "nbytes": "0.1.4", "ncrypto": "0.0.1", "nghttp2": "1.70.0", "nghttp3": "", "ngtcp2": "", "openssl": "0.0.0", "simdjson": "4.6.7", "simdutf": "7.7.0", "sqlite": "3.53.4", "tz": "2025c", "undici": "7.29.1", "unicode": "17.0", "uv": "1.52.1", "uvwasi": "0.0.23", "v8": "15.0.245.31-electron.0", "zlib": "1.3.2.1-motley", "zstd": "1.6.0", "electron": "43.7.7", "chrome": "150.0.7871.250", "microsoft-build": "15553055"}}
+{"at": "2026-10-15T10:20:54.279Z", "event": "restored", "revision": 0, "characters": 0, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:20:54.291Z", "event": "threadsCreated", "sameLine": 2, "originalUri": "crw-prototype:/6dcb810/src/workers/worker.ts", "fileRange": null, "invalid": "not attached; navigation explains original target"}
+{"at": "2026-10-15T10:20:54.293Z", "event": "ready", "draftFile": "<extension-global-storage>/PROTOTYPE-draft.json", "auditFile": "<extension-global-storage>/PROTOTYPE-audit.jsonl", "publicOnly": true}
+{"at": "2026-10-15T10:21:01.590Z", "event": "diffOpened"}
+{"at": "2026-10-15T10:21:01.696Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:21:51.333Z", "event": "activation", "vscode": "1.141.2", "platform": "darwin", "arch": "arm64", "versions": {"node": "24.21.0", "acorn": "8.18.0", "ada": "4.0.0", "amaro": "1.1.11", "ares": "1.34.8", "brotli": "1.2.0", "cldr": "48.0", "icu": "78.2", "llhttp": "9.4.3", "merve": "1.2.2", "modules": "148", "napi": "10", "nbytes": "0.1.4", "ncrypto": "0.0.1", "nghttp2": "1.70.0", "nghttp3": "", "ngtcp2": "", "openssl": "0.0.0", "simdjson": "4.6.7", "simdutf": "7.7.0", "sqlite": "3.53.4", "tz": "2025c", "undici": "7.29.1", "unicode": "17.0", "uv": "1.52.1", "uvwasi": "0.0.23", "v8": "15.0.245.31-electron.0", "zlib": "1.3.2.1-motley", "zstd": "1.6.0", "electron": "43.7.7", "chrome": "150.0.7871.250", "microsoft-build": "15553055"}}
+{"at": "2026-10-15T10:21:51.334Z", "event": "restored", "revision": 0, "characters": 0, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:21:51.346Z", "event": "threadsCreated", "sameLine": 2, "originalUri": "crw-prototype:/6dcb810/src/workers/worker.ts", "fileRange": null, "invalid": "not attached; navigation explains original target"}
+{"at": "2026-10-15T10:21:51.361Z", "event": "ready", "draftFile": "<extension-global-storage>/PROTOTYPE-draft.json", "auditFile": "<extension-global-storage>/PROTOTYPE-audit.jsonl", "publicOnly": true}
+{"at": "2026-10-15T10:21:51.878Z", "event": "documentChange", "scheme": "chatSessionInput", "changes": 1}
+{"at": "2026-10-15T10:21:51.878Z", "event": "documentChange", "scheme": "chatSessionInput", "changes": 1}
+{"at": "2026-10-15T10:21:54.374Z", "event": "diffOpened"}
+{"at": "2026-10-15T10:21:54.419Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:03.294Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.405Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.468Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.469Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.470Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.471Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.471Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.472Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.472Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.473Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.474Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.474Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.475Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.475Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.476Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.476Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.476Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.477Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.477Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.477Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.478Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.479Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.480Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.482Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.482Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.483Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.483Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.486Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.486Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.489Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.489Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.489Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.490Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.490Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.490Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.490Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.497Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.498Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.499Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.499Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.500Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.500Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.501Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.514Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.515Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.515Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.516Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.517Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.517Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.516Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.531Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.532Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.532Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.533Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.534Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.534Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.547Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.548Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.548Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.549Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.549Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.564Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.566Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.567Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.567Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.567Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.568Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.580Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:07.582Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:22:14.311Z", "event": "writerReady", "revision": 0, "characters": 0, "closed": false}
+{"at": "2026-10-15T10:23:31.781Z", "event": "writerReady", "revision": 0, "characters": 0, "closed": false}
+{"at": "2026-10-15T10:24:36.520Z", "event": "saved", "revision": 1, "characters": 61, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:24:41.375Z", "event": "saved", "revision": 2, "characters": 61, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:24:41.406Z", "event": "sourceFocus", "uri": "crw-prototype:/7e93a1/src/workers/worker.ts", "line": 76}
+{"at": "2026-10-15T10:24:41.406Z", "event": "writerClosed", "revision": 2}
+{"at": "2026-10-15T10:24:41.428Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:25:00.595Z", "event": "sourceFocus", "uri": "crw-prototype:/7e93a1/src/storage/export_store.ts", "line": 2}
+{"at": "2026-10-15T10:25:39.343Z", "event": "sourceFocus", "uri": "crw-prototype:/7e93a1/src/workers/worker.ts", "line": 76}
+{"at": "2026-10-15T10:25:39.348Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:25:52.047Z", "event": "writerDomRecreated"}
+{"at": "2026-10-15T10:26:13.073Z", "event": "activation", "vscode": "1.141.2", "platform": "darwin", "arch": "arm64", "versions": {"node": "24.21.0", "acorn": "8.18.0", "ada": "4.0.0", "amaro": "1.1.11", "ares": "1.34.8", "brotli": "1.2.0", "cldr": "48.0", "icu": "78.2", "llhttp": "9.4.3", "merve": "1.2.2", "modules": "148", "napi": "10", "nbytes": "0.1.4", "ncrypto": "0.0.1", "nghttp2": "1.70.0", "nghttp3": "", "ngtcp2": "", "openssl": "0.0.0", "simdjson": "4.6.7", "simdutf": "7.7.0", "sqlite": "3.53.4", "tz": "2025c", "undici": "7.29.1", "unicode": "17.0", "uv": "1.52.1", "uvwasi": "0.0.23", "v8": "15.0.245.31-electron.0", "zlib": "1.3.2.1-motley", "zstd": "1.6.0", "electron": "43.7.7", "chrome": "150.0.7871.250", "microsoft-build": "15553055"}}
+{"at": "2026-10-15T10:26:13.073Z", "event": "restored", "revision": 2, "characters": 61, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:26:13.085Z", "event": "threadsCreated", "sameLine": 2, "originalUri": "crw-prototype:/6dcb810/src/workers/worker.ts", "fileRange": null, "invalid": "not attached; navigation explains original target"}
+{"at": "2026-10-15T10:26:13.086Z", "event": "ready", "draftFile": "<extension-global-storage>/PROTOTYPE-draft.json", "auditFile": "<extension-global-storage>/PROTOTYPE-audit.jsonl", "publicOnly": true}
+{"at": "2026-10-15T10:26:13.130Z", "event": "writerReady", "revision": 2, "characters": 61, "closed": false}
+{"at": "2026-10-15T10:26:32.942Z", "event": "saved", "revision": 3, "characters": 62, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:26:32.943Z", "event": "saved", "revision": 4, "characters": 63, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:26:32.943Z", "event": "saved", "revision": 5, "characters": 64, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:26:32.944Z", "event": "saved", "revision": 6, "characters": 65, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:26:32.949Z", "event": "writerReady", "revision": 6, "characters": 65, "closed": false}
+{"at": "2026-10-15T10:27:14.088Z", "event": "saved", "revision": 7, "characters": 126, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:27:29.952Z", "event": "saved", "revision": 8, "characters": 126, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:27:30.024Z", "event": "sourceFocus", "uri": "crw-prototype:/7e93a1/src/workers/worker.ts", "line": 76}
+{"at": "2026-10-15T10:27:30.025Z", "event": "writerClosed", "revision": 8}
+{"at": "2026-10-15T10:27:30.312Z", "event": "writerVisibility", "visible": false}
+{"at": "2026-10-15T10:27:30.327Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:28:19.965Z", "event": "activation", "vscode": "1.141.2", "platform": "darwin", "arch": "arm64", "versions": {"node": "24.21.0", "acorn": "8.18.0", "ada": "4.0.0", "amaro": "1.1.11", "ares": "1.34.8", "brotli": "1.2.0", "cldr": "48.0", "icu": "78.2", "llhttp": "9.4.3", "merve": "1.2.2", "modules": "148", "napi": "10", "nbytes": "0.1.4", "ncrypto": "0.0.1", "nghttp2": "1.70.0", "nghttp3": "", "ngtcp2": "", "openssl": "0.0.0", "simdjson": "4.6.7", "simdutf": "7.7.0", "sqlite": "3.53.4", "tz": "2025c", "undici": "7.29.1", "unicode": "17.0", "uv": "1.52.1", "uvwasi": "0.0.23", "v8": "15.0.245.31-electron.0", "zlib": "1.3.2.1-motley", "zstd": "1.6.0", "electron": "43.7.7", "chrome": "150.0.7871.250", "microsoft-build": "15553055"}}
+{"at": "2026-10-15T10:28:19.974Z", "event": "restored", "revision": 8, "characters": 126, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:28:19.986Z", "event": "threadsCreated", "sameLine": 2, "originalUri": "crw-prototype:/6dcb810/src/workers/worker.ts", "fileRange": null, "invalid": "not attached; navigation explains original target"}
+{"at": "2026-10-15T10:28:19.988Z", "event": "ready", "draftFile": "<extension-global-storage>/PROTOTYPE-draft.json", "auditFile": "<extension-global-storage>/PROTOTYPE-audit.jsonl", "publicOnly": true}
+{"at": "2026-10-15T10:29:53.917Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-dark vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:29:53.918Z", "event": "writerReady", "revision": 8, "characters": 126, "closed": false}
+{"at": "2026-10-15T10:30:12.228Z", "event": "saved", "revision": 9, "characters": 126, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:31:06.452Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-dark vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:31:08.310Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-dark vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:31:13.482Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-light vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:32:11.860Z", "event": "activation", "vscode": "1.141.2", "platform": "darwin", "arch": "arm64", "versions": {"node": "24.21.0", "acorn": "8.18.0", "ada": "4.0.0", "amaro": "1.1.11", "ares": "1.34.8", "brotli": "1.2.0", "cldr": "48.0", "icu": "78.2", "llhttp": "9.4.3", "merve": "1.2.2", "modules": "148", "napi": "10", "nbytes": "0.1.4", "ncrypto": "0.0.1", "nghttp2": "1.70.0", "nghttp3": "", "ngtcp2": "", "openssl": "0.0.0", "simdjson": "4.6.7", "simdutf": "7.7.0", "sqlite": "3.53.4", "tz": "2025c", "undici": "7.29.1", "unicode": "17.0", "uv": "1.52.1", "uvwasi": "0.0.23", "v8": "15.0.245.31-electron.0", "zlib": "1.3.2.1-motley", "zstd": "1.6.0", "electron": "43.7.7", "chrome": "150.0.7871.250", "microsoft-build": "15553055"}}
+{"at": "2026-10-15T10:32:11.862Z", "event": "restored", "revision": 9, "characters": 126, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:32:11.873Z", "event": "threadsCreated", "sameLine": 2, "originalUri": "crw-prototype:/6dcb810/src/workers/worker.ts", "fileRange": null, "invalid": "not attached; navigation explains original target"}
+{"at": "2026-10-15T10:32:11.875Z", "event": "ready", "draftFile": "<extension-global-storage>/PROTOTYPE-draft.json", "auditFile": "<extension-global-storage>/PROTOTYPE-audit.jsonl", "publicOnly": true}
+{"at": "2026-10-15T10:32:11.913Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-dark vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:32:11.976Z", "event": "writerReady", "revision": 9, "characters": 126, "closed": false}
+{"at": "2026-10-15T10:32:33.477Z", "event": "documentChange", "scheme": "untitled", "changes": 0}
+{"at": "2026-10-15T10:32:33.523Z", "event": "invalidAnchorShown", "revision": "01dead0", "path": "removed.ts", "line": 400, "reanchored": false}
+{"at": "2026-10-15T10:32:46.729Z", "event": "sourceFocus", "uri": "crw-prototype:/6dcb810/src/workers/worker.ts", "line": 76}
+{"at": "2026-10-15T10:32:46.768Z", "event": "writerVisibility", "visible": false}
+{"at": "2026-10-15T10:32:51.509Z", "event": "writerVisibility", "visible": true}
+{"at": "2026-10-15T10:32:51.529Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-dark vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:32:51.530Z", "event": "writerReady", "revision": 9, "characters": 126, "closed": false}
+{"at": "2026-10-15T10:32:56.795Z", "event": "documentChange", "scheme": "file", "changes": 1}
+{"at": "2026-10-15T10:32:56.795Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:32:56.826Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:32:56.826Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:32:56.832Z", "event": "themeRequested", "theme": "Default Light Modern"}
+{"at": "2026-10-15T10:32:56.890Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-light vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:33:07.273Z", "event": "documentChange", "scheme": "file", "changes": 1}
+{"at": "2026-10-15T10:33:07.274Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:33:07.280Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:33:07.280Z", "event": "documentChange", "scheme": "file", "changes": 0}
+{"at": "2026-10-15T10:33:07.290Z", "event": "themeRequested", "theme": "Default High Contrast"}
+{"at": "2026-10-15T10:33:07.302Z", "event": "writerSurface", "type": "surface", "width": 786, "height": 235, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:33:19.911Z", "event": "companionVisibility", "visible": false}
+{"at": "2026-10-15T10:33:19.968Z", "event": "writerVisibility", "visible": false}
+{"at": "2026-10-15T10:33:19.982Z", "event": "documentChange", "scheme": "chatSessionInput", "changes": 1}
+{"at": "2026-10-15T10:33:31.507Z", "event": "companionVisibility", "visible": false}
+{"at": "2026-10-15T10:33:37.271Z", "event": "companionVisibility", "visible": false}
+{"at": "2026-10-15T10:33:38.026Z", "event": "writerVisibility", "visible": true}
+{"at": "2026-10-15T10:33:38.104Z", "event": "writerSurface", "type": "surface", "width": 1082, "height": 235, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:33:38.104Z", "event": "writerReady", "revision": 9, "characters": 126, "closed": false}
+{"at": "2026-10-15T10:33:44.476Z", "event": "saved", "revision": 10, "characters": 61, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:33:54.525Z", "event": "saveFailureToggle", "failSaves": true}
+{"at": "2026-10-15T10:33:58.685Z", "event": "saveFailed", "message": "Simulated disk failure; last acknowledged text remains on disk"}
+{"at": "2026-10-15T10:34:08.994Z", "event": "saveFailureToggle", "failSaves": false}
+{"at": "2026-10-15T10:34:09.427Z", "event": "saved", "revision": 11, "characters": 82, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:34:14.167Z", "event": "writerDomRecreated"}
+{"at": "2026-10-15T10:34:14.176Z", "event": "writerSurface", "type": "surface", "width": 1082, "height": 235, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:34:14.177Z", "event": "writerReady", "revision": 11, "characters": 82, "closed": false}
+{"at": "2026-10-15T10:34:29.074Z", "event": "writerVisibility", "visible": false}
+{"at": "2026-10-15T10:34:29.081Z", "event": "writerDisposed"}
+{"at": "2026-10-15T10:34:29.114Z", "event": "writerSurface", "type": "surface", "width": 297, "height": 727, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:34:29.114Z", "event": "writerReady", "revision": 11, "characters": 82, "closed": false}
+{"at": "2026-10-15T10:34:46.865Z", "event": "saved", "revision": 12, "characters": 82, "anchor": {"revision": "7e93a1", "path": "src/workers/worker.ts", "start": 76, "end": 81, "thread": "companion-concurrency"}}
+{"at": "2026-10-15T10:34:46.908Z", "event": "sourceFocus", "uri": "crw-prototype:/7e93a1/src/workers/worker.ts", "line": 76}
+{"at": "2026-10-15T10:34:46.908Z", "event": "writerClosed", "revision": 12}
+{"at": "2026-10-15T10:34:46.920Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:34:55.141Z", "event": "writerVisibility", "visible": false}
+{"at": "2026-10-15T10:34:55.159Z", "event": "writerDisposed"}
+{"at": "2026-10-15T10:34:55.189Z", "event": "writerSurface", "type": "surface", "width": 1082, "height": 235, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:34:55.189Z", "event": "writerReady", "revision": 12, "characters": 82, "closed": true}
+{"at": "2026-10-15T10:36:06.970Z", "event": "writerSurface", "type": "surface", "width": 1382, "height": 235, "theme": "vscode-high-contrast vscode-using-screen-reader", "overflow": false}
+{"at": "2026-10-15T10:36:25.552Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.006Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.161Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.363Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.469Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.580Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:29.758Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:30.177Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:30.302Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:30.668Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:30.892Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:31.130Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:31.247Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:31.375Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:31.480Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:31.596Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:32.009Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:32.156Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:32.229Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:32.364Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:33.153Z", "event": "documentChange", "scheme": "comment", "changes": 1}
+{"at": "2026-10-15T10:36:33.252Z", "event": "documentChange", "scheme": "comment", "changes": 1}

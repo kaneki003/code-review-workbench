@@ -1,0 +1,11 @@
+{
+  "anchor": {
+    "revision": "7e93a1",
+    "path": "src/workers/worker.ts",
+    "start": 76,
+    "end": 81,
+    "thread": "companion-concurrency"
+  },
+  "text": "Panel draft — Ω\n\n```suggestionUnsaved failure probe\n  await boundedUpload(chunk);\n",
+  "revision": 12
+}
