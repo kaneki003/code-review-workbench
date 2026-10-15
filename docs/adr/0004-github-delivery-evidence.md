@@ -1,0 +1,3 @@
+# Keep uncertain GitHub delivery unresolved until evidence establishes the outcome
+
+GitHub does not provide a general idempotency key for comments and review submission, so retrying a request after a lost response can publish twice. Persist the exact deliberate action before dispatch, reconcile server identities and actual records, and retain Delivery unconfirmed when evidence cannot establish receipt or a definitely unsent attempt. This accepts that an affected send may remain blocked rather than treating absence or repeated text as proof; see the [GitHub collaboration contract](../design/github-collaboration.md) for endpoint-specific guards, concurrent-client limits and required validation.
