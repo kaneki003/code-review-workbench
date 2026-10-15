@@ -1,6 +1,6 @@
 # Code Review Workbench
 
-Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source, technical design documents, and engineering tickets in this directory.
+Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
 This repository contains the approved product baseline, the selected UI design handoff, and the engineering skills configuration. Production extension code and framework choices are still to be developed.
 
@@ -14,7 +14,6 @@ This repository contains the approved product baseline, the selected UI design h
 - `AGENTS.md`: instructions for agents working in this project.
 - `.agents/skills/`: the installed Matt Pocock skills and their supporting files.
 - `skills-lock.json`: installed skill source and integrity metadata.
-- `.scratch/<effort>/`: local specs, decision maps, and tickets, created when needed.
 
 ## Product and design inputs
 
@@ -31,6 +30,6 @@ The imported baseline is local to this repository. The enclosing workspace retai
 
 ## Engineering workflow
 
-Work from this directory when using the project skills. Local tracking, the default triage labels, and single-context domain documentation are configured in the [documentation index](docs/README.md).
+Work from this directory when using the project skills. GitHub Issues tracking, the default triage labels, and single-context domain documentation are configured in the [documentation index](docs/README.md).
 
 Create the technical design under `docs/design/` as architectural decisions are resolved. Keep terminology in a root `GLOSSARY.md` and significant architectural decisions in `docs/adr/`, creating them when there is agreed content to record.

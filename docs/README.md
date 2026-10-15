@@ -11,7 +11,7 @@ Store the implementation project's documentation here. The imported baseline is 
 
 ## Engineering configuration
 
-- [Issue tracker](agents/issue-tracker.md): local specs, implementation tickets, and wayfinding operations.
+- [Issue tracker](agents/issue-tracker.md): GitHub specs, implementation tickets, and wayfinding operations.
 - [Triage labels](agents/triage-labels.md): the five default triage statuses.
 - [Domain documentation](agents/domain.md): glossary and architectural decision conventions.
 
@@ -21,4 +21,4 @@ Store the implementation project's documentation here. The imported baseline is 
 - `adr/`: significant architectural decisions involving real tradeoffs.
 - `../GLOSSARY.md`: agreed project terminology.
 
-Specs and tickets belong under the project-local `.scratch/<effort>/` directory described in the issue-tracker configuration.
+Specs, tickets, and wayfinding maps live in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues), as described in the issue-tracker configuration. Keep technical design documents and supporting artifacts in this repository and link them from the relevant issues.

@@ -1,33 +1,46 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub
 
-Issues, specs, and wayfinding decisions live as Markdown files under `.scratch/`.
+Specs, implementation tickets, and wayfinding decisions live in [kaneki003/code-review-workbench Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-Resolve these paths from the implementation project root containing `AGENTS.md`.
+Use GitHub CLI with `--repo kaneki003/code-review-workbench` for issue and label commands. The `origin` remote identifies this repository. Keep technical design documents, the glossary, ADRs, and research artifacts in the repository; link them from the relevant issues.
 
-## Conventions
+## Issue operations
 
-- One feature or effort per directory: `.scratch/<feature-slug>/`.
-- Spec: `.scratch/<feature-slug>/spec.md`.
-- Implementation tickets: one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order.
-- Record an implementation ticket's triage state in a `Status:` line near the top. Use the role strings in `triage-labels.md`.
-- Record implementation dependencies in `Blocked by:`, using ticket numbers and titles, or `None`.
-- Append comments and conversation history under `## Comments`.
+- Publish a spec or ticket: `gh issue create --repo kaneki003/code-review-workbench --title "TITLE" --body-file /path/to/body.md`.
+- Fetch an issue: `gh issue view ISSUE --repo kaneki003/code-review-workbench --json number,title,body,labels,comments,assignees,state,parent,subIssues,blockedBy,blocking,url`.
+- List issues: `gh issue list --repo kaneki003/code-review-workbench --state open --limit 100 --json number,title,labels,assignees,state,parent,blockedBy,url`. Apply label/state filters as needed; increase the limit if the result reaches the cap.
+- Update the body: `gh issue edit ISSUE --repo kaneki003/code-review-workbench --body-file /path/to/body.md`.
+- Append a comment: `gh issue comment ISSUE --repo kaneki003/code-review-workbench --body-file /path/to/comment.md`.
+- Apply/remove labels: `gh issue edit ISSUE --repo kaneki003/code-review-workbench --add-label LABEL` or `--remove-label LABEL`.
+- Close a resolved issue: post its resolution first, then `gh issue close ISSUE --repo kaneki003/code-review-workbench`.
 
-## Tracker operations
+Use body files for multiline Markdown. Refer to issues by linked titles in human-facing output.
 
-- Publish a spec or ticket: create its file at the path above, creating directories as needed.
-- Fetch a ticket: read the referenced file. Resolve bare numbers within the named feature or effort; ask for the effort when ambiguous.
-- List tickets: scan the effort's `issues/` directory and read their status and blockers.
+## Triage conventions
+
+Use the label mapping in [triage-labels.md](triage-labels.md). GitHub issue state records open/closed status; triage role is a label. Specs and tickets produced by `to-spec` and `to-tickets` receive `ready-for-agent` and need no additional triage.
+
+## Pull requests as a triage surface
+
+**PRs as a request surface: no.**
 
 ## Wayfinding operations
 
-Decision tickets use the following lifecycle, separate from implementation triage statuses.
+The map is one GitHub issue; each decision ticket is a sub-issue of that map.
 
-- Map: `.scratch/<effort>/map.md`, holding Destination, Notes, Decisions so far, Not yet specified, and Out of scope.
-- Child ticket: `.scratch/<effort>/issues/<NN>-<slug>.md`, numbered from `01`, with its question in the body.
-- Type: a `Type:` line containing `research`, `prototype`, `grilling`, or `task`.
-- Status: `open` initially, `claimed` during work, and `resolved` after its decision is recorded.
-- Blocking: a `Blocked by:` line containing blocker numbers, or `None`. A ticket is unblocked when every blocker is `resolved`.
-- Frontier: scan for `open`, unblocked tickets in the effort's `issues/`; take the lowest number first.
-- Claim: save `Status: claimed` before working on the ticket.
-- Resolve: append the resolution under `## Answer`, set `Status: resolved`, then append a gist and relative link to the map's Decisions so far.
+- Map: create an issue labelled `wayfinder:map`, with Destination, Notes, Decisions so far, Not yet specified, and Out of scope.
+- Child ticket: create with `gh issue create --repo kaneki003/code-review-workbench --parent MAP --title "TITLE" --body-file /path/to/body.md --label wayfinder:TYPE`, where TYPE is `research`, `prototype`, `grilling`, or `task`.
+- Existing child: attach with `gh issue edit MAP --repo kaneki003/code-review-workbench --add-sub-issue CHILD`.
+- Blocking: use native dependencies, e.g. `gh issue edit CHILD --repo kaneki003/code-review-workbench --add-blocked-by BLOCKER`. Create the issues first, then wire the dependencies using actual issue numbers.
+- Inspect the map's children: `gh issue view MAP --repo kaneki003/code-review-workbench --json subIssues`. Fetch each candidate's state, assignees, labels, and blockers as needed.
+- Frontier: consider only that map's open, unassigned children whose blockers are all closed; take the first eligible child in map order.
+- Claim: `gh issue edit ISSUE --repo kaneki003/code-review-workbench --add-assignee @me`, before work.
+- Resolve: append a resolution comment, close the decision ticket, then append a brief gist and linked title to the map's Decisions so far. Preserve the rest of the map when editing its body.
+
+Wayfinding labels are `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, and `wayfinder:task`. Decision tickets carry wayfinder labels rather than implementation triage labels.
+
+If native sub-issues or dependencies are unavailable, record the observed limitation and use a map task list plus `Part of #MAP` and `Blocked by: #ISSUE` body references. Use native relationships whenever supported.
+
+## Tracking ownership
+
+GitHub Issues is the source of truth for work tracking. Local scratch files may hold temporary working material; link repository documents and assets from issues instead of maintaining a second local ticket tracker.

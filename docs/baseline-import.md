@@ -27,10 +27,10 @@ The PRD, PDF, decision history, research records, SVG assets, and exported JSON 
 
 The pre-commit check covers repository root, local navigation and containment, JSON parsing, imported-file integrity, skill/lockfile agreement, common credential patterns, ignored local files, and consistency with the latest selected UI decisions. These checks establish the documentation package's integrity and portability.
 
-Current workflow tracking remains local Markdown under `.scratch/`. A GitHub remote and any switch to GitHub Issues are separate configuration steps. No architecture, framework, or production implementation is claimed by this baseline.
+At baseline-import time, workflow tracking used local Markdown under `.scratch/`. Tracking has since switched to GitHub Issues; see the [current tracker configuration](agents/issue-tracker.md). No architecture, framework, or production implementation is claimed by this baseline.
 
 ## Pre-commit check result
 
 Passed on 15 October 2026: the Git root is the implementation directory on `main`; 62 imported files match their recorded hashes; 37 JSON files parse; all 27 installed skills agree with the lockfile; and 147 local links across 74 Markdown files resolve within the repository. Active navigation has no parent-workspace or machine-local dependency.
 
-The common credential-pattern scan and whitespace checks found no matches or issues. Ignore-rule checks preserve the installed skills and local tracker files while excluding local environment configuration, OS metadata, dependencies, logs, and build output. Current UI text agrees with the latest inline-writing, dismissal, publication, and activity-removal decisions. The Git index remains unstaged.
+The common credential-pattern scan and whitespace checks found no matches or issues. Ignore-rule checks preserve the installed skills and local tracker files while excluding local environment configuration, OS metadata, dependencies, logs, and build output. Current UI text agrees with the latest inline-writing, dismissal, publication, and activity-removal decisions. At that check, the Git index was unstaged.

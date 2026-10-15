@@ -8,11 +8,11 @@ Before product or architecture planning, read `README.md`, `docs/product/PRD.md`
 
 ### Issue tracker
 
-Specs, implementation tickets, and wayfinding decisions use local Markdown under `.scratch/`. Before tracker operations, read `docs/agents/issue-tracker.md`.
+Specs, implementation tickets, and wayfinding decisions use GitHub Issues in `kaneki003/code-review-workbench`. Before tracker operations, read `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the default five triage labels. Before assigning a triage status, read `docs/agents/triage-labels.md`.
+Use the default five triage labels. Before applying a triage label, read `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
