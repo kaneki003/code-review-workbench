@@ -1,5 +1,7 @@
 # Interface decisions and questions for later architecture
 
+Architecture is now selected in the [accepted extension contract](extension-architecture.md). It fixes native/owned surfaces, state ownership, local desktop support, pnpm/build/test/version constraints and the overview destination for PR-wide/unanchored discussion. The checks below remain implementation acceptance obligations; this planning decision does not claim they have passed.
+
 Repository baseline: read [the current interaction contract](figma-interaction-contract.md). Host research is dated 11–12 October 2026; native implementation and compatibility remain to be established.
 
 Prepared before direction selection, 11 October 2026. These are observable interface obligations and bounded host checks, not an architecture, framework selection or implementation schedule.
@@ -34,7 +36,7 @@ Documentation already establishes the basic surfaces. Run a spike for a disputed
 | Draft/pending/published boundary | Which state is local and which is GitHub's pending review? Submission includes pending GitHub records; excluding one requires an actual permitted pending-comment action, not a local checkbox illusion. |
 | Automatically retained writing | How will the owned inline composer report saving/saved/failure and retain the exact source or reply-thread anchor without turning typing, blur or navigation into a GitHub action? |
 | Hierarchical context and route filtering | How will PR/checkpoint/file explanations retain their inspected source and scope, optional checkpoints restore last visited files, and changed-file membership stay separate from related unchanged evidence? |
-| Inline findings and discussion | How will private read-only suggestions stay distinct from collaborator records in native widgets, same-line collisions and native Comments view, and what destination will expose PR-level or unanchored records after removal of the Review activity page? |
+| Inline findings and discussion | How will private read-only suggestions stay distinct from collaborator records in native widgets, same-line collisions and native Comments view? Validate the accepted overview PR discussion destination for PR-level comments, submitted review summaries and unavailable-source threads, with Reply opening the existing bottom composer. |
 | Exact feedback and source anchors | How will accepted PR/file/range destinations, older anchors and suggested-change blocks be validated and displayed before submission? |
 | Uncertain delivery | How can receipt be established before a resend, including duplicate-prevention limits and access/rate-limit failure? What exact input remains recoverable? |
 | Independent discussion refresh | How are partial/paginated access, collaborator changes, resolved/outdated flags and source Sync kept distinct in the UI? |

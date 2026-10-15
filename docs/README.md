@@ -6,6 +6,7 @@ Store the implementation project's documentation here. The imported baseline is 
 
 - [Product requirements](product/README.md): approved PRD and decision history.
 - [UI design handoff](design/README.md): current contract, refinement precedence, Figma references, and saved evidence.
+- [Accepted extension architecture](design/extension-architecture.md): TypeScript/React/Tailwind, pnpm, local review ownership, native surfaces and required validation.
 - [Host-feasibility research](research/README.md): dated research to carry into technical planning.
 - [Baseline import notes](baseline-import.md): source provenance, reconciled inconsistencies, and validation boundaries.
 

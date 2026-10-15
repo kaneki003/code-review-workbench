@@ -2,6 +2,8 @@
 
 Repository handoff baseline: 15 October 2026. The selected direction uses the school-account Figma file and the latest centre, PR entry, Chat, and lifecycle refinements.
 
+The [accepted extension architecture](extension-architecture.md), confirmed on 15 October 2026 through [Choose extension architecture and framework](https://github.com/kaneki003/code-review-workbench/issues/6), selects one local desktop TypeScript extension with React/Tailwind views, pnpm, host-owned review state and explicit build/test/version constraints. It preserves ordinary code/diff tabs and the accepted Figma-styled bottom feedback composer. It also adds PR-wide and unanchored discussion to the existing Markdown PR overview, with Reply opening that composer. The separate Review activity page remains removed. Other design requirements and the documented native validation limits remain binding; the overall technical design still awaits the remaining map decisions.
+
 ## Visual source
 
 - [Editable Figma design](https://www.figma.com/design/iUydEGUJkOMhggD3wMTFKU).
@@ -25,6 +27,7 @@ The following notes explain the decisions reflected in the current contract. A l
 | --- | --- | --- |
 | Drafts, dismissal, publication, discussion navigation | [Lifecycle refinement](lifecycle-refinement.md) | Tagged inline drafts; Close retains text; Dismiss immediately hides; publication confirms inside the workspace; separate Review activity page removed |
 | PR entry and overview | [PR/Markdown refinement](pr-entry-overview-refinement.md) | URL entry for an added PR; existing PRs use sidebar selectors; overview is an ordinary Markdown editor tab; redundant central File role blocks removed |
+| PR-wide and unanchored discussion | [Accepted architecture](extension-architecture.md) | Existing overview gains PR discussion for PR-level comments, submitted review summaries and unavailable-source threads; Reply opens the existing bottom composer |
 | Chat generation and recovery | [Chat refinement](chat-state-refinement.md) | Stop retains produced text; retry preserves question/history; Figma simulates streaming with timed snapshots |
 | Inline reading and writing | [Centre refinement](centre-refinement.md) | Source-anchored cards and inline composer; right companion remains Context / Chat |
 | Companion context and conversation | [Companion refinement](companion-refinement.md) | Shared Context / Chat layout and context hierarchy |
