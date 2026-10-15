@@ -1,0 +1,3 @@
+# Keep review ownership in one local desktop extension
+
+Use one installable VS Code extension whose local extension host coordinates review state and operations, with disposable React/Tailwind webviews and separate connections for Git, GitHub, storage and AI. This keeps private state on the current device and gives a sole junior developer fewer installation/process responsibilities than an independent background service; the cost is that work cannot rely on surviving the extension host without explicit storage and recovery. Remote workspaces are deferred because moving repository tools and saved state to another host changes that ownership boundary; see the [accepted architecture contract](../design/extension-architecture.md) before revisiting it.
