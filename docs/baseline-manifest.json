@@ -1,0 +1,486 @@
+{
+  "baseline_date": "2026-10-15",
+  "imported_at": "2026-10-15T09:02:53.212875+00:00",
+  "source_scope": "Enclosing research workspace; source paths are provenance, not runtime dependencies.",
+  "figma_file_key": "iUydEGUJkOMhggD3wMTFKU",
+  "files": [
+    {
+      "source": "output/design/centre-refinement.md",
+      "destination": "docs/design/centre-refinement.md",
+      "source_sha256": "c191793c12b9abcf4008ed04236226ae0a1a0a808ae1fb0817ef9baea67edf52",
+      "destination_sha256": "4fa20a7a6bff0ce214515043099f55350f8c1daed2045333f996a6681e0d7a8b",
+      "adjustments": [
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/chat-state-refinement.md",
+      "destination": "docs/design/chat-state-refinement.md",
+      "source_sha256": "764d5e8bd14d4c63793245d9c06eabf9d406d31d0e8968bd7589a41692411836",
+      "destination_sha256": "764d5e8bd14d4c63793245d9c06eabf9d406d31d0e8968bd7589a41692411836",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/companion-refinement.md",
+      "destination": "docs/design/companion-refinement.md",
+      "source_sha256": "8f2a2841e0689eb27f0b575109106784f6e950aa1763f5edad58e02b48a102ac",
+      "destination_sha256": "c45e371e712280e43d8dbdb6fd9d03d31219da7e6b190b81dc609f13a1b35063",
+      "adjustments": [
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/figma-centre-checks.json",
+      "destination": "docs/design/figma-centre-checks.json",
+      "source_sha256": "d10dd37c64dde9e8f9e75ef38307c50c2ac36a97c8f0a2fee0dc976ce4677131",
+      "destination_sha256": "d10dd37c64dde9e8f9e75ef38307c50c2ac36a97c8f0a2fee0dc976ce4677131",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-centre-feedback-correction.json",
+      "destination": "docs/design/figma-centre-feedback-correction.json",
+      "source_sha256": "4144cdfc03b1ed4d7bcbd4f19bdb59d338836aba3dc3ea8afdc10f86ef7d0979",
+      "destination_sha256": "4144cdfc03b1ed4d7bcbd4f19bdb59d338836aba3dc3ea8afdc10f86ef7d0979",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-centre-state.json",
+      "destination": "docs/design/figma-centre-state.json",
+      "source_sha256": "5b5f1dc922d1a0c299601e3baf9499c69270c12c2e71e1656cdb8e5fc8cb564f",
+      "destination_sha256": "5b5f1dc922d1a0c299601e3baf9499c69270c12c2e71e1656cdb8e5fc8cb564f",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-retention-check.json",
+      "destination": "docs/design/figma-chat-retention-check.json",
+      "source_sha256": "419d8402ffa4fb0dcef1bc32e82f0bc194dd1312c6c81d05297cc04388ab3d97",
+      "destination_sha256": "419d8402ffa4fb0dcef1bc32e82f0bc194dd1312c6c81d05297cc04388ab3d97",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-state-applied.json",
+      "destination": "docs/design/figma-chat-state-applied.json",
+      "source_sha256": "94d16354bb4d3499b599c0ba70a04d1be7fb7cb1781995ec868c16b421076791",
+      "destination_sha256": "94d16354bb4d3499b599c0ba70a04d1be7fb7cb1781995ec868c16b421076791",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-state-checks.json",
+      "destination": "docs/design/figma-chat-state-checks.json",
+      "source_sha256": "ccea9c762ee44ffcfdcb6be3499398425ab2e37f82ec91ac3c60c0577c41412a",
+      "destination_sha256": "ccea9c762ee44ffcfdcb6be3499398425ab2e37f82ec91ac3c60c0577c41412a",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-state-refinement.json",
+      "destination": "docs/design/figma-chat-state-refinement.json",
+      "source_sha256": "fbacd7fbe34374f99bb97ddcee45775a083d38be8b237ea93a7399b52129c9a1",
+      "destination_sha256": "fbacd7fbe34374f99bb97ddcee45775a083d38be8b237ea93a7399b52129c9a1",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-state-wiring.json",
+      "destination": "docs/design/figma-chat-state-wiring.json",
+      "source_sha256": "d4464d1aab67a8cf71bc5d78e634b2d4a4e89b28c2045630ccc19a897f387d7b",
+      "destination_sha256": "d4464d1aab67a8cf71bc5d78e634b2d4a4e89b28c2045630ccc19a897f387d7b",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-chat-stream-frame.json",
+      "destination": "docs/design/figma-chat-stream-frame.json",
+      "source_sha256": "7ef71f48f5f57cf7cf973ec8c70248841b70ccf641a5e2b94a9d1573054864b0",
+      "destination_sha256": "7ef71f48f5f57cf7cf973ec8c70248841b70ccf641a5e2b94a9d1573054864b0",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-1.json",
+      "destination": "docs/design/figma-companion-applied-1.json",
+      "source_sha256": "d2e748838f489a5997684cecf8daa925205b9778f07a31deb8176b8d09474be1",
+      "destination_sha256": "d2e748838f489a5997684cecf8daa925205b9778f07a31deb8176b8d09474be1",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-2.json",
+      "destination": "docs/design/figma-companion-applied-2.json",
+      "source_sha256": "fb03d5facd67dc94d2784b912d27b3208fc2982332006922ddcb7a06e94d36a5",
+      "destination_sha256": "fb03d5facd67dc94d2784b912d27b3208fc2982332006922ddcb7a06e94d36a5",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-3.json",
+      "destination": "docs/design/figma-companion-applied-3.json",
+      "source_sha256": "edd90edfd75a3cb58df7b9be19681853dd977739828b9b6c5c092e9c30133a1f",
+      "destination_sha256": "edd90edfd75a3cb58df7b9be19681853dd977739828b9b6c5c092e9c30133a1f",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-4.json",
+      "destination": "docs/design/figma-companion-applied-4.json",
+      "source_sha256": "4dfa71cb48891af725548094f0094652b9e7dc261c6146da4e41884fd50ca089",
+      "destination_sha256": "4dfa71cb48891af725548094f0094652b9e7dc261c6146da4e41884fd50ca089",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-5.json",
+      "destination": "docs/design/figma-companion-applied-5.json",
+      "source_sha256": "72bc9eae57f338b649af9fee8100c5c2cf3900227ffe2f4b9a6ea53408f41631",
+      "destination_sha256": "72bc9eae57f338b649af9fee8100c5c2cf3900227ffe2f4b9a6ea53408f41631",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-6.json",
+      "destination": "docs/design/figma-companion-applied-6.json",
+      "source_sha256": "12b7af594e32eb4abd22236b64db3aa1844146aa8fd49a75c01b77ab6db8dabd",
+      "destination_sha256": "12b7af594e32eb4abd22236b64db3aa1844146aa8fd49a75c01b77ab6db8dabd",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-applied-7.json",
+      "destination": "docs/design/figma-companion-applied-7.json",
+      "source_sha256": "023af94ac17561dc646f2f1e3ae8a71ab2062251dc58d8a32f93ac2bfc1deea7",
+      "destination_sha256": "023af94ac17561dc646f2f1e3ae8a71ab2062251dc58d8a32f93ac2bfc1deea7",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-chat-representative.json",
+      "destination": "docs/design/figma-companion-chat-representative.json",
+      "source_sha256": "9a974a13fdfa23053e6bf4a0c26a756c628aba8cd37924e8628da8f03ccfe75a",
+      "destination_sha256": "9a974a13fdfa23053e6bf4a0c26a756c628aba8cd37924e8628da8f03ccfe75a",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-checks.json",
+      "destination": "docs/design/figma-companion-checks.json",
+      "source_sha256": "0db122d013d86348957abdbc9f140d91721b44c2baea2eef6a92ac131b5773d7",
+      "destination_sha256": "0db122d013d86348957abdbc9f140d91721b44c2baea2eef6a92ac131b5773d7",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-fixes.json",
+      "destination": "docs/design/figma-companion-fixes.json",
+      "source_sha256": "45e092d2ed9d2fdae02bcd70cba97a18585d5cc7ba5d73d192e76f309da92bd1",
+      "destination_sha256": "45e092d2ed9d2fdae02bcd70cba97a18585d5cc7ba5d73d192e76f309da92bd1",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-representative-checks.json",
+      "destination": "docs/design/figma-companion-representative-checks.json",
+      "source_sha256": "61f267df3e9a87e974cb2ea22d25ca5a0c5954e62b60757a0d5057e47a8aa346",
+      "destination_sha256": "61f267df3e9a87e974cb2ea22d25ca5a0c5954e62b60757a0d5057e47a8aa346",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-representative.json",
+      "destination": "docs/design/figma-companion-representative.json",
+      "source_sha256": "2c225757a302a9379af6ab1828fddecc4d666ce23e87d8ee5d18f026dbc6c716",
+      "destination_sha256": "2c225757a302a9379af6ab1828fddecc4d666ce23e87d8ee5d18f026dbc6c716",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-companion-state.json",
+      "destination": "docs/design/figma-companion-state.json",
+      "source_sha256": "e17d3406829209ba5badbad21249e0f5f39932345fc3000e14b0dde90d4a7db8",
+      "destination_sha256": "e17d3406829209ba5badbad21249e0f5f39932345fc3000e14b0dde90d4a7db8",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-interaction-contract.md",
+      "destination": "docs/design/figma-interaction-contract.md",
+      "source_sha256": "0fbae1f4eb371e725dce3bbcc5b37456b1eeea79803cb01d64ec6a269955d2e8",
+      "destination_sha256": "a74c39cfc2fe8f42c9cdf42813bbf492291760851f1e8a5b68ff83754a69929c",
+      "adjustments": [
+        "Updated handoff baseline date.",
+        "Applied selected inline writing placement.",
+        "Removed superseded activity destination.",
+        "Preserved unanchored-record discoverability as an open architecture question.",
+        "Applied immediate persistent dismissal.",
+        "Applied inline adoption flow.",
+        "Applied anchored draft rediscovery.",
+        "Applied in-workspace publication confirmation.",
+        "Updated overview family after activity removal.",
+        "Updated feedback state family.",
+        "Updated draft return journey.",
+        "Removed separate publication outcome page.",
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/figma-lifecycle-checks.json",
+      "destination": "docs/design/figma-lifecycle-checks.json",
+      "source_sha256": "d68bbc19a5e10dbd7775aea3bc53cab6c6a73175f6e4226c5842bc4c4ec3b486",
+      "destination_sha256": "d68bbc19a5e10dbd7775aea3bc53cab6c6a73175f6e4226c5842bc4c4ec3b486",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-lifecycle-rewired.json",
+      "destination": "docs/design/figma-lifecycle-rewired.json",
+      "source_sha256": "a0377e69a227adfa2d64fd7c3ca44963e3723d7a45ebdbf01bbc19345abe4425",
+      "destination_sha256": "a0377e69a227adfa2d64fd7c3ca44963e3723d7a45ebdbf01bbc19345abe4425",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-lifecycle-state.json",
+      "destination": "docs/design/figma-lifecycle-state.json",
+      "source_sha256": "c3d9e693337a643d0cb3682066b980b2d46f53230130b7fedd74fdb509431648",
+      "destination_sha256": "c3d9e693337a643d0cb3682066b980b2d46f53230130b7fedd74fdb509431648",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-pr-refinement-applied.json",
+      "destination": "docs/design/figma-pr-refinement-applied.json",
+      "source_sha256": "08a32921039ea93cd52acd39e78b6cb5a43723d1369fe466e651984470888339",
+      "destination_sha256": "08a32921039ea93cd52acd39e78b6cb5a43723d1369fe466e651984470888339",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-pr-refinement-checks.json",
+      "destination": "docs/design/figma-pr-refinement-checks.json",
+      "source_sha256": "0e843c5011b189e00335db7c36537bc6c5ab54970ec954f4c7f302d9eac38b8e",
+      "destination_sha256": "0e843c5011b189e00335db7c36537bc6c5ab54970ec954f4c7f302d9eac38b8e",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-pr-refinement-fixes.json",
+      "destination": "docs/design/figma-pr-refinement-fixes.json",
+      "source_sha256": "11198fc1ff97ab1858efa1e97fad18565be11657367c539bb7f8b14dd37e02db",
+      "destination_sha256": "11198fc1ff97ab1858efa1e97fad18565be11657367c539bb7f8b14dd37e02db",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-pr-refinement-state.json",
+      "destination": "docs/design/figma-pr-refinement-state.json",
+      "source_sha256": "c08a9bdd3f3c5b7db9dd44bdae98e8422c518d312b9bfbd5a8694dea1adc8643",
+      "destination_sha256": "c08a9bdd3f3c5b7db9dd44bdae98e8422c518d312b9bfbd5a8694dea1adc8643",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-prototype-guide.md",
+      "destination": "docs/design/figma-prototype-guide.md",
+      "source_sha256": "a668ab644ddef84f436d220bcc74858e34fdec1b17d5ea331930282ede78a05e",
+      "destination_sha256": "3e69f617d92238a0fc592784f126c0a567cf1fa232456f7d35b8bb0d486e8b4d",
+      "adjustments": [
+        "Updated handoff baseline date.",
+        "Applied current entry behavior.",
+        "Applied inline writing and anchored drafts.",
+        "Applied in-workspace confirmation.",
+        "Updated current counts and verification scope.",
+        "Labelled older component counts as historical.",
+        "Removed retired activity family.",
+        "Reconciled All-files notes with sidebar refinement.",
+        "Labelled earlier wiring as historical.",
+        "Converted three Windows-local links to repository-relative targets.",
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/figma-school-route-repair.json",
+      "destination": "docs/design/figma-school-route-repair.json",
+      "source_sha256": "24b66b1fd79b991cbded9931b07b80156b99a1c6b2bf1578e0f85b4483daf554",
+      "destination_sha256": "24b66b1fd79b991cbded9931b07b80156b99a1c6b2bf1578e0f85b4483daf554",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-school-wiring.json",
+      "destination": "docs/design/figma-school-wiring.json",
+      "source_sha256": "076ef496c16b18382871185e5c677f0fa51ffdab09514d61862af703e016d9db",
+      "destination_sha256": "076ef496c16b18382871185e5c677f0fa51ffdab09514d61862af703e016d9db",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-sidebar-checks.json",
+      "destination": "docs/design/figma-sidebar-checks.json",
+      "source_sha256": "82e2e9a498db42de5630220664a9a48852c769ece5a838a0c99cd5287febb347",
+      "destination_sha256": "82e2e9a498db42de5630220664a9a48852c769ece5a838a0c99cd5287febb347",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-sidebar-components.json",
+      "destination": "docs/design/figma-sidebar-components.json",
+      "source_sha256": "07577f526ff26e87f58df6aec978708de36bca69671a647ce141f452da744b56",
+      "destination_sha256": "07577f526ff26e87f58df6aec978708de36bca69671a647ce141f452da744b56",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-sidebar-inline-panels.json",
+      "destination": "docs/design/figma-sidebar-inline-panels.json",
+      "source_sha256": "dd9e72fbe66998bf7d844e8317e12d4a004e7e6e148989c206244de718e624ba",
+      "destination_sha256": "dd9e72fbe66998bf7d844e8317e12d4a004e7e6e148989c206244de718e624ba",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/figma-sidebar-state.json",
+      "destination": "docs/design/figma-sidebar-state.json",
+      "source_sha256": "eb05b28519cce9411e7c8a24f7d0025218bf00b93c3a94478545778127432bf7",
+      "destination_sha256": "eb05b28519cce9411e7c8a24f7d0025218bf00b93c3a94478545778127432bf7",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/interface-feasibility-questions.md",
+      "destination": "docs/design/interface-feasibility-questions.md",
+      "source_sha256": "ef63ab80f7ecf7d67b4cdaf15da1f3092cf5e82284f44a70b8a7bdddc740da20",
+      "destination_sha256": "04299a084f217257367f5c487f8234056ff1c6e6d6d07f0e2f5919a29a5674ff",
+      "adjustments": [
+        "Made research link project-local.",
+        "Updated selected writing placement without choosing an implementation.",
+        "Updated autosave architecture question.",
+        "Preserved record discoverability as an open architecture question.",
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/lifecycle-refinement.md",
+      "destination": "docs/design/lifecycle-refinement.md",
+      "source_sha256": "d28879c428f9bb1a38ad84c9bcf7bafdfc7bb6b8684d83f14a890bd2d2f6092b",
+      "destination_sha256": "d28879c428f9bb1a38ad84c9bcf7bafdfc7bb6b8684d83f14a890bd2d2f6092b",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/pr-248-author-description.md",
+      "destination": "docs/design/pr-248-author-description.md",
+      "source_sha256": "54ecec1abf0fde5409273d316078f551bfcb75ba91e9e442f0493ae520080a7d",
+      "destination_sha256": "942deee3b5abf94383854a47f939382901acb499cfa4f82125b15d39d5977e49",
+      "adjustments": [
+        "Wrapped exact fictional author Markdown so fixture-relative links are not local source dependencies."
+      ]
+    },
+    {
+      "source": "output/design/pr-entry-overview-refinement.md",
+      "destination": "docs/design/pr-entry-overview-refinement.md",
+      "source_sha256": "890264573da68884545b9ecaeac6f047cea08d1375bd6086b1c6f3f5dd330b2f",
+      "destination_sha256": "9cf1890d87db704c3fdb2647017332854cd26de549584bbd312b4020dc0446b2",
+      "adjustments": [
+        "Replaced retired dedicated-resume frame.",
+        "Applied later activity removal.",
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/design/sidebar-assets/LICENSE",
+      "destination": "docs/design/sidebar-assets/LICENSE",
+      "source_sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "destination_sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/book-open.svg",
+      "destination": "docs/design/sidebar-assets/book-open.svg",
+      "source_sha256": "9b9bed0ff057283d5c5c5a1c71f8d3e927db26a56639603a92fdf7b25961510e",
+      "destination_sha256": "9b9bed0ff057283d5c5c5a1c71f8d3e927db26a56639603a92fdf7b25961510e",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/check.svg",
+      "destination": "docs/design/sidebar-assets/check.svg",
+      "source_sha256": "7f33acc9a77a61659531044525fc008edebe215bf4dcf1c789c8674ad3277db0",
+      "destination_sha256": "7f33acc9a77a61659531044525fc008edebe215bf4dcf1c789c8674ad3277db0",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/chevron-down.svg",
+      "destination": "docs/design/sidebar-assets/chevron-down.svg",
+      "source_sha256": "66ea878e72ed3488bb3b464c39dfdccee8d1f78e560dccea40e5e12da0e87e87",
+      "destination_sha256": "66ea878e72ed3488bb3b464c39dfdccee8d1f78e560dccea40e5e12da0e87e87",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/chevrons-up-down.svg",
+      "destination": "docs/design/sidebar-assets/chevrons-up-down.svg",
+      "source_sha256": "edc561e007cfab9b6b45301a8cb02711fd7c901e53e30ee29c5491b74dbe6bcc",
+      "destination_sha256": "edc561e007cfab9b6b45301a8cb02711fd7c901e53e30ee29c5491b74dbe6bcc",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/circle-dot.svg",
+      "destination": "docs/design/sidebar-assets/circle-dot.svg",
+      "source_sha256": "c263f6a08a089c06ad40f408ad5da9100359ab52d379e6c571cd7c5bd74eaa87",
+      "destination_sha256": "c263f6a08a089c06ad40f408ad5da9100359ab52d379e6c571cd7c5bd74eaa87",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/ellipsis.svg",
+      "destination": "docs/design/sidebar-assets/ellipsis.svg",
+      "source_sha256": "4f495cc72013ffdfec677f03b33a150f7b4dd741979283fd6853a09024bca112",
+      "destination_sha256": "4f495cc72013ffdfec677f03b33a150f7b4dd741979283fd6853a09024bca112",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/file-question-mark.svg",
+      "destination": "docs/design/sidebar-assets/file-question-mark.svg",
+      "source_sha256": "7b8238d7480f064936ebe1e46f64aa68180c13e497afaec1f4b42330682ffbf9",
+      "destination_sha256": "7b8238d7480f064936ebe1e46f64aa68180c13e497afaec1f4b42330682ffbf9",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/file-text.svg",
+      "destination": "docs/design/sidebar-assets/file-text.svg",
+      "source_sha256": "52ca55846c202335fb870c8aa23e9345630ec10489303756d62e750f7109605c",
+      "destination_sha256": "52ca55846c202335fb870c8aa23e9345630ec10489303756d62e750f7109605c",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/files.svg",
+      "destination": "docs/design/sidebar-assets/files.svg",
+      "source_sha256": "97adf06fc0511e7a40be93ecda04466ed196718ab4a5e3a62b1148cc49697775",
+      "destination_sha256": "97adf06fc0511e7a40be93ecda04466ed196718ab4a5e3a62b1148cc49697775",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/folder-git-2.svg",
+      "destination": "docs/design/sidebar-assets/folder-git-2.svg",
+      "source_sha256": "d9ead9da18dde91b687fc92732fe32afbefc53be0fe0932a47dcd2dd2bc28ed3",
+      "destination_sha256": "d9ead9da18dde91b687fc92732fe32afbefc53be0fe0932a47dcd2dd2bc28ed3",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-assets/git-pull-request.svg",
+      "destination": "docs/design/sidebar-assets/git-pull-request.svg",
+      "source_sha256": "6dbc18c42d08f225e3fc0a34fe5bf62d8b2abae83ada8163f3bbb649f2b8d25f",
+      "destination_sha256": "6dbc18c42d08f225e3fc0a34fe5bf62d8b2abae83ada8163f3bbb649f2b8d25f",
+      "adjustments": []
+    },
+    {
+      "source": "output/design/sidebar-refinement.md",
+      "destination": "docs/design/sidebar-refinement.md",
+      "source_sha256": "ea83efbbf1750d90be2f4c8eff1bfbe8d103bd9b8618fa06400593a6729f33f4",
+      "destination_sha256": "709d2dec0e259713f81996ef15385f018c1965a7b5ea790763fb37097dc49b95",
+      "adjustments": [
+        "Added baseline source-precedence note."
+      ]
+    },
+    {
+      "source": "output/pdf/code_review_workbench_prd_v0_3.md",
+      "destination": "docs/product/PRD.md",
+      "source_sha256": "189f194723deae13463e3f08de665f0cfe1e7238445cb31d1ef4069d97d6a021",
+      "destination_sha256": "189f194723deae13463e3f08de665f0cfe1e7238445cb31d1ef4069d97d6a021",
+      "adjustments": []
+    },
+    {
+      "source": "output/pdf/code_review_workbench_prd_v0_3.pdf",
+      "destination": "docs/product/PRD.pdf",
+      "source_sha256": "bdcfbf55d48475016000ed8e45e8ea4b60d4b6f9003959e116c5f702a139a23c",
+      "destination_sha256": "bdcfbf55d48475016000ed8e45e8ea4b60d4b6f9003959e116c5f702a139a23c",
+      "adjustments": []
+    },
+    {
+      "source": "product_alignment_decision_log.md",
+      "destination": "docs/product/product-alignment-decision-log.md",
+      "source_sha256": "27a0c223ec7b7427078e39c42aceac455a631dcf22f25e1cfed24c252030b1a5",
+      "destination_sha256": "27a0c223ec7b7427078e39c42aceac455a631dcf22f25e1cfed24c252030b1a5",
+      "adjustments": []
+    },
+    {
+      "source": "research/inline-comments-feasibility.md",
+      "destination": "docs/research/inline-comments-feasibility.md",
+      "source_sha256": "05cce70c372a2bbfd8d2881f742c1124bf87705721c9b6e991c7e29a77250ef5",
+      "destination_sha256": "05cce70c372a2bbfd8d2881f742c1124bf87705721c9b6e991c7e29a77250ef5",
+      "adjustments": []
+    },
+    {
+      "source": "research/vscode-host-patterns.md",
+      "destination": "docs/research/vscode-host-patterns.md",
+      "source_sha256": "40c9935247e83e421c5e9214772fa9cf69d9899810662cad2a6f3d1aa4c28fd1",
+      "destination_sha256": "40c9935247e83e421c5e9214772fa9cf69d9899810662cad2a6f3d1aa4c28fd1",
+      "adjustments": []
+    }
+  ]
+}

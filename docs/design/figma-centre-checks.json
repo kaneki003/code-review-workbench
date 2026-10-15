@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "centres": 36,
+  "cards": 71,
+  "composers": 4,
+  "reviewed": 36,
+  "standardDiffRows": 512,
+  "diffMismatch": [],
+  "overflow": [],
+  "badDialogColors": [],
+  "fonts": [
+    "Inter",
+    "JetBrains Mono"
+  ],
+  "completeUiRasters": 0,
+  "missingDestinations": [],
+  "livePlayer": "Not exercised; saved graph and visual checks only",
+  "visual": [
+    "representative expanded suggestion",
+    "continuous feedback composer",
+    "GitHub discussion and composer",
+    "narrow workspace",
+    "light-theme controls"
+  ],
+  "standardDiffColors": "Existing green/red code-row fills and text retained",
+  "paletteScope": "Dialogues, boxes, tags and buttons only",
+  "unrelatedColumnsPreserved": 33,
+  "writingPanelMigrations": 3
+}

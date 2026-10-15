@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-15",
+  "scope": "AI suggestion format and visible Use as feedback state",
+  "formatChange": {
+    "createdNodeIds": [
+      "80:10759",
+      "80:10760",
+      "80:10761",
+      "80:10762",
+      "80:10763",
+      "80:10764",
+      "80:10765"
+    ],
+    "mutatedNodeIds": [
+      "72:9850",
+      "72:9854",
+      "72:9861",
+      "72:9865",
+      "72:9871",
+      "72:9872",
+      "72:9873",
+      "72:9874",
+      "75:9820",
+      "72:9875",
+      "72:9876",
+      "I72:9876;4:7",
+      "72:9878",
+      "72:9879",
+      "72:9891",
+      "72:9895",
+      "72:9901",
+      "72:9902",
+      "72:9903",
+      "72:9904",
+      "75:9823",
+      "72:9905",
+      "72:9906",
+      "I72:9906;4:7",
+      "72:9908",
+      "72:9909",
+      "I72:9920;72:9810"
+    ],
+    "components": [
+      {
+        "id": "72:9849",
+        "name": "Kind=Companion, State=Collapsed",
+        "w": 694,
+        "h": 46
+      },
+      {
+        "id": "72:9860",
+        "name": "Kind=Companion, State=Expanded",
+        "w": 694,
+        "h": 270
+      },
+      {
+        "id": "72:9890",
+        "name": "Kind=Companion, State=Writing",
+        "w": 694,
+        "h": 476
+      }
+    ],
+    "format": [
+      "Title",
+      "Observation: value",
+      "Hypothesis: value",
+      "Source: code chip",
+      "Limit: value"
+    ],
+    "visibleRelatedSourceRows": 0
+  },
+  "checks": {
+    "passed": true,
+    "format": [
+      "Title",
+      "Observation",
+      "Hypothesis",
+      "Source / labelled code chip",
+      "Limit"
+    ],
+    "feedbackScreen": {
+      "id": "6:16",
+      "name": "15 • Use as feedback / expanded inline composer",
+      "composer": "I73:9165;72:9920",
+      "top": 355,
+      "bottom": 561,
+      "viewport": 760,
+      "fullyVisible": true
+    },
+    "feedbackRoutes": [
+      {
+        "destination": "6:16",
+        "resetScrollPosition": true
+      }
+    ],
+    "missingActions": [],
+    "sourceRouteCount": 1,
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ],
+    "completeUiRasters": 0
+  },
+  "responsive": {
+    "passed": true,
+    "narrowSource": {
+      "rowWidth": 284,
+      "chipRight": 284
+    },
+    "feedbackScreen": "6:16",
+    "fullyVisibleComposer": true
+  },
+  "feedbackScreen": "6:16",
+  "feedbackScreenName": "15 • Use as feedback / expanded inline composer",
+  "variables": {
+    "showEarlier": "VariableID:80:10920",
+    "rangeControl": "VariableID:80:10921"
+  },
+  "retainedEarlierCode": "80:10922",
+  "showEarlierControl": "80:10923",
+  "limitations": "Saved interactions and visual checks; live-player click-through not exercised."
+}

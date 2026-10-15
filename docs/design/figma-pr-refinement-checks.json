@@ -1,0 +1,119 @@
+{
+  "overview": {
+    "id": "89:11402",
+    "width": 824,
+    "height": 1833,
+    "sections": [
+      "PR identity and metadata",
+      "AI-generated intent and summary",
+      "Original PR description",
+      "Changed files",
+      "Suggested review route"
+    ],
+    "files": [
+      {
+        "file": "src/api/export_policy.ts",
+        "additions": 84,
+        "deletions": 12,
+        "destination": "6:6"
+      },
+      {
+        "file": "src/api/export_policy.test.ts",
+        "additions": 142,
+        "deletions": 0,
+        "destination": "12:1853"
+      },
+      {
+        "file": "src/api/export_requests.ts",
+        "additions": 84,
+        "deletions": 12,
+        "destination": "50:7750"
+      },
+      {
+        "file": "src/workers/worker.ts",
+        "additions": 84,
+        "deletions": 12,
+        "destination": "6:5"
+      },
+      {
+        "file": "src/workers/worker.test.ts",
+        "additions": 142,
+        "deletions": 0,
+        "destination": "12:1856"
+      },
+      {
+        "file": "src/queue/export_queue.ts",
+        "additions": 84,
+        "deletions": 12,
+        "destination": "48:2397"
+      }
+    ],
+    "additions": 620,
+    "deletions": 48,
+    "checkpoints": [
+      {
+        "name": "checkpoint-link/1",
+        "files": "• src/api/export_policy.ts\n• src/api/export_policy.test.ts",
+        "headingLink": 1
+      },
+      {
+        "name": "checkpoint-link/2",
+        "files": "• src/api/export_requests.ts",
+        "headingLink": 1
+      },
+      {
+        "name": "checkpoint-link/3",
+        "files": "• src/workers/worker.ts\n• src/workers/worker.test.ts\n• src/queue/export_queue.ts",
+        "headingLink": 1
+      }
+    ],
+    "authorDescription": [
+      "PR description",
+      "Written by @m-chen · original PR Markdown",
+      "What changed",
+      "Move large CSV exports off the request path and process them as background jobs.",
+      "•",
+      "Check workspace permissions before accepting an export.",
+      "•",
+      "Keep request and queue identity stable across retries.",
+      "•",
+      "Stream CSV output and complete or abort multipart uploads.",
+      "Review focus",
+      "Please review workspace isolation and interrupted uploads.",
+      "See the worker regression tests."
+    ]
+  },
+  "checks": {
+    "sixFiles": true,
+    "totals": true,
+    "threeWorkerFiles": true,
+    "linkTargetsExist": true,
+    "missingTargets": [],
+    "checkpointsLinked": true,
+    "editableImageNodes": [],
+    "productFonts": [
+      "Inter"
+    ],
+    "fontCheck": true,
+    "sidebarInstances": 39,
+    "sharedSidebarPreserved": true,
+    "remainingFileRole": 0,
+    "resumeRecentReview": false,
+    "entryHasOnlyURLForm": true
+  },
+  "navigation": {
+    "entrySelection": [
+      "6:17"
+    ],
+    "openSetup": [
+      {
+        "type": "NODE",
+        "target": "6:30"
+      }
+    ]
+  },
+  "validation": {
+    "visual": "Passing screenshots: entry, ordinary editor overview, entire Markdown document, permission file and worker regression test.",
+    "livePlayer": "Not exercised"
+  }
+}

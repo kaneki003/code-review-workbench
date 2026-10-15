@@ -1,0 +1,458 @@
+{
+  "runId": "workbench-sidebar-2026-10-14",
+  "fileKey": "iUydEGUJkOMhggD3wMTFKU",
+  "fileUrl": "https://www.figma.com/design/iUydEGUJkOMhggD3wMTFKU",
+  "scope": "Left sidebar reconciliation against Stitch, using supplied palette and reusable components",
+  "step": "complete",
+  "master": "41:2593",
+  "reviewExamples": "41:2818",
+  "components": {
+    "Badge": "41:2484",
+    "Selector": "41:2486",
+    "Navigation row/Default": "41:2497",
+    "Navigation row/Active": "41:2506",
+    "Checkpoint/Reviewed": "41:2515",
+    "Checkpoint/Default": "41:2525",
+    "Checkpoint/Active": "41:2537",
+    "File row/Default": "41:2550",
+    "File row/Active": "41:2563",
+    "Header": "41:2577",
+    "AllFiles": "41:2587",
+    "Sidebar": "41:2593",
+    "Menu": "41:2807"
+  },
+  "sets": {
+    "Navigation row": "41:2514",
+    "Checkpoint": "41:2549",
+    "File row": "41:2576"
+  },
+  "properties": {
+    "Badge": {
+      "Label": "Label#41:0"
+    },
+    "Selector": {
+      "Label": "Label#41:1",
+      "Icon": "Icon#41:2"
+    },
+    "Navigation": {
+      "Label": "Label#41:8",
+      "Meta": "Meta#41:9",
+      "Badge": "Show count#41:10",
+      "MetaVisible": "Show meta#41:11",
+      "Icon": "Icon#41:12"
+    },
+    "Checkpoint": {
+      "Label": "Label#41:16",
+      "Detail": "Detail#41:17",
+      "Badge": "Show active badge#41:18"
+    },
+    "File": {
+      "Filename": "Filename#41:22",
+      "Additions": "Additions#41:23",
+      "Deletions": "Deletions#41:24"
+    },
+    "AllFiles": {
+      "Label": "Label#41:25"
+    },
+    "Sidebar": {
+      "Scope": "Files heading#41:26",
+      "Show worker.ts": "Show worker.ts#41:27",
+      "Show worker.test.ts": "Show worker.test.ts#41:28",
+      "Show export_queue.ts": "Show export_queue.ts#41:29",
+      "Show export_policy.ts": "Show export_policy.ts#41:30",
+      "Show export_policy.test.ts": "Show export_policy.test.ts#41:31",
+      "Show export_requests.ts": "Show export_requests.ts#41:32",
+      "ShowCheckpoints": "Show checkpoints#41:33",
+      "ShowFiles": "Show files#41:34"
+    }
+  },
+  "inline": {
+    "createdNodeIds": [
+      "46:3029",
+      "46:3041",
+      "46:3042",
+      "46:3043",
+      "46:3054",
+      "46:3055",
+      "46:3056",
+      "46:3057",
+      "46:3068",
+      "46:3069",
+      "46:3070",
+      "46:3071",
+      "46:3072"
+    ],
+    "mutatedNodeIds": [
+      "I46:3029;41:2808",
+      "I46:3029;41:2810",
+      "I46:3029;41:2812",
+      "I46:3029;41:2814",
+      "I46:3029;41:2816",
+      "41:2593"
+    ],
+    "createdVariableIds": [
+      "VariableID:46:3024",
+      "VariableID:46:3025",
+      "VariableID:46:3026",
+      "VariableID:46:3027",
+      "VariableID:46:3028"
+    ],
+    "flags": {
+      "menu": "VariableID:46:3024",
+      "repository": "VariableID:46:3025",
+      "pr": "VariableID:46:3026",
+      "repoTip": "VariableID:46:3027",
+      "prTip": "VariableID:46:3028"
+    },
+    "panels": {
+      "repository": "46:3041",
+      "pr": "46:3055"
+    },
+    "tips": {
+      "repoTip": "46:3069",
+      "prTip": "46:3071"
+    },
+    "menu": "46:3029",
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ]
+  },
+  "fonts": [
+    "Inter",
+    "JetBrains Mono"
+  ],
+  "screens": [
+    {
+      "root": "6:2",
+      "sidebar": "48:2525",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:3",
+      "sidebar": "48:2992",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:4",
+      "sidebar": "48:3263",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:5",
+      "sidebar": "48:3515",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:6",
+      "sidebar": "48:3767",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:7",
+      "sidebar": "48:4077",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:8",
+      "sidebar": "48:4351",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:9",
+      "sidebar": "48:4603",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:10",
+      "sidebar": "48:4855",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:11",
+      "sidebar": "48:5107",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:12",
+      "sidebar": "48:5358",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:13",
+      "sidebar": "48:5610",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:14",
+      "sidebar": "48:5862",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:15",
+      "sidebar": "48:6114",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:16",
+      "sidebar": "48:6366",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:18",
+      "sidebar": "48:6892",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:19",
+      "sidebar": "48:7144",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:20",
+      "sidebar": "48:7396",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:21",
+      "sidebar": "48:7648",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:23",
+      "sidebar": "48:8152",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:24",
+      "sidebar": "48:8404",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:27",
+      "sidebar": "48:9159",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 714
+    },
+    {
+      "root": "6:28",
+      "sidebar": "48:9411",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "6:29",
+      "sidebar": "48:9663",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1852",
+      "sidebar": "48:9915",
+      "scope": "FILES IN CHECKPOINT 1 (2)",
+      "files": 2,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1853",
+      "sidebar": "48:10221",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1854",
+      "sidebar": "48:10525",
+      "scope": "FILES IN CHECKPOINT 2 (1)",
+      "files": 1,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1855",
+      "sidebar": "48:10821",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1856",
+      "sidebar": "48:11097",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1857",
+      "sidebar": "48:11371",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "12:1858",
+      "sidebar": "48:11623",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "18:2265",
+      "sidebar": "48:11875",
+      "scope": "FILES IN CHECKPOINT 1 (2)",
+      "files": 2,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "48:2397",
+      "sidebar": "48:12179",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "50:7750",
+      "sidebar": "50:7761",
+      "scope": "ALL CHANGED FILES (6)",
+      "files": 6,
+      "width": 334,
+      "height": 846
+    },
+    {
+      "root": "101:11081",
+      "sidebar": "101:11092",
+      "scope": "FILES IN CHECKPOINT 3 (3)",
+      "files": 3,
+      "width": 334,
+      "height": 846
+    }
+  ],
+  "totalFiles": 6,
+  "checkpointMembership": {
+    "1": [
+      "export_policy.ts",
+      "export_policy.test.ts"
+    ],
+    "2": [
+      "export_requests.ts"
+    ],
+    "3": [
+      "worker.ts",
+      "worker.test.ts",
+      "export_queue.ts"
+    ]
+  },
+  "additionalAllFilesStates": {
+    "queue": "48:2397",
+    "request": "50:7750"
+  },
+  "validation": {
+    "passed": true,
+    "mainScreens": 39,
+    "popupBindings": 195,
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ],
+    "completeUiRasters": 0,
+    "footerStrips": 0,
+    "missingDestinations": 0,
+    "visual": [
+      "shared filtered/all/light examples",
+      "wide workspace",
+      "narrow workspace",
+      "light workspace",
+      "anchored open workbench menu"
+    ],
+    "livePlayerClickThrough": "not exercised"
+  },
+  "pendingValidations": [],
+  "completedSteps": [
+    "context/discovery",
+    "shared-components",
+    "palette-applied",
+    "39-screen-reuse",
+    "structure-and-reactions",
+    "visual-inspection"
+  ],
+  "latestChatRefinement": "figma-chat-state-refinement.json",
+  "latestLifecycleRefinement": "figma-lifecycle-state.json",
+  "currentDraftShortcutDestination": "6:4"
+}

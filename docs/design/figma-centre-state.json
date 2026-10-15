@@ -1,0 +1,2289 @@
+{
+  "runId": "workbench-centre-2026-10-15",
+  "fileKey": "iUydEGUJkOMhggD3wMTFKU",
+  "fileUrl": "https://www.figma.com/design/iUydEGUJkOMhggD3wMTFKU?node-id=6-10",
+  "scope": "Centre cards, continuous inline writing and Mark File Reviewed header. Preserve standard green/red code-change colors.",
+  "step": "complete",
+  "components": {
+    "Composer/Write": "72:9798",
+    "Composer/Preview": "72:9823",
+    "Companion/Collapsed": "72:9849",
+    "Companion/Expanded": "72:9860",
+    "Companion/Writing": "72:9890",
+    "GitHub/Collapsed": "72:9945",
+    "GitHub/Expanded": "72:9953",
+    "GitHub/Writing": "72:10006",
+    "Reviewed/Unchecked": "72:10060",
+    "Reviewed/Checked": "72:10063",
+    "Centre/Anchored review thread": "112:11387",
+    "Workbench/Publication status": "112:11427"
+  },
+  "sets": {
+    "Composer": "72:9848",
+    "Card": "72:10059",
+    "Reviewed": "72:10069"
+  },
+  "properties": {
+    "Composer/Write": {
+      "BodyText": "72:9810",
+      "Body": "Body#72:9"
+    },
+    "Composer/Preview": {
+      "BodyText": "72:9835",
+      "Body": "Body#72:9"
+    }
+  },
+  "variables": {
+    "surface": "VariableID:58:8337",
+    "card": "VariableID:58:8338",
+    "raised": "VariableID:58:8339",
+    "border": "VariableID:58:8340",
+    "primary": "VariableID:58:8341",
+    "muted": "VariableID:58:8342",
+    "link": "VariableID:58:8343",
+    "accent": "VariableID:58:8344",
+    "focus": "VariableID:58:8345",
+    "editor": "VariableID:3:9",
+    "white": "VariableID:3:8",
+    "purple": "VariableID:72:9797",
+    "space/0": "VariableID:3:71",
+    "space/2": "VariableID:41:2415",
+    "space/4": "VariableID:3:72",
+    "space/6": "VariableID:3:73",
+    "space/8": "VariableID:3:74",
+    "space/10": "VariableID:41:2417",
+    "space/12": "VariableID:3:75",
+    "space/14": "VariableID:41:2418",
+    "space/16": "VariableID:3:76",
+    "space/20": "VariableID:41:2420",
+    "space/24": "VariableID:3:77",
+    "radius": "VariableID:3:79",
+    "codeText": "VariableID:41:2400",
+    "feedbackShowEarlier": "VariableID:80:10920",
+    "feedbackRangeControl": "VariableID:80:10921"
+  },
+  "styles": {
+    "Body": "S:075da826278bc953201b159a445d75e48db2de68,",
+    "Strong": "S:ae0007507691cef08ee29895ccb4df4018194ac6,",
+    "Section": "S:ffab0ac91f946110ba81088898c44fa0e955bdc2,",
+    "Mono": "S:1661c528606fd690cf244d2318226a470d55cf01,",
+    "Caption": "S:75003d63fd33950f0f01da071f97ddae8fa52702,"
+  },
+  "representative": {
+    "screen": "6:10",
+    "writer": "6:16",
+    "writerName": "15 \u2022 Use as feedback / expanded inline composer",
+    "writerUrl": "https://www.figma.com/design/iUydEGUJkOMhggD3wMTFKU?node-id=6-16"
+  },
+  "screens": [
+    {
+      "root": "6:10",
+      "center": "7:1117",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 119,
+      "typeCounts": {
+        "FRAME": 25,
+        "INSTANCE": 32,
+        "TEXT": 60,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:1070",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4855",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:1203",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:1070",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4855",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:1203",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:16",
+      "center": "8:1406",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 141,
+      "typeCounts": {
+        "FRAME": 35,
+        "INSTANCE": 37,
+        "TEXT": 67,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": {
+        "removedWriter": "8:1492",
+        "context": "73:9262"
+      },
+      "beforeOutside": [
+        {
+          "id": "8:1358",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6366",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1492",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1358",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6366",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "73:9262",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:4",
+      "center": "7:206",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:159",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3263",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:279",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:159",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3263",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:279",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:5",
+      "center": "7:379",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:320",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3515",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:452",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:320",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3515",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:452",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:6",
+      "center": "7:552",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 40,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 12,
+        "TEXT": 23
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:493",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3767",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:592",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:493",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:3767",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:592",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:7",
+      "center": "7:680",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 34,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 10,
+        "TEXT": 19
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:633",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4077",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:714",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:633",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4077",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:714",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:8",
+      "center": "7:802",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:755",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4351",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:875",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:755",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4351",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:875",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:9",
+      "center": "7:960",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "7:913",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4603",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:1033",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "7:913",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:4603",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "7:1033",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:11",
+      "center": "8:570",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 41,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 13,
+        "TEXT": 23
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:523",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5107",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:611",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:523",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5107",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:611",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:12",
+      "center": "8:699",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:652",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5358",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:785",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:652",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5358",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:785",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:13",
+      "center": "8:873",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:826",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5610",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:959",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:826",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5610",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:959",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:14",
+      "center": "8:1053",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:1006",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5862",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1139",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1006",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:5862",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1139",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:15",
+      "center": "8:1231",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:1184",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6114",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1317",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1184",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6114",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1317",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:18",
+      "center": "8:1681",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:1634",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6892",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1767",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1634",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:6892",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1767",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:19",
+      "center": "8:1855",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 127,
+      "typeCounts": {
+        "FRAME": 27,
+        "INSTANCE": 34,
+        "TEXT": 64,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:1808",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7144",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1946",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1808",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7144",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:1946",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:20",
+      "center": "8:2034",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 128,
+      "typeCounts": {
+        "FRAME": 27,
+        "INSTANCE": 34,
+        "TEXT": 65,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:1987",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7396",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:2125",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:1987",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7396",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:2125",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:21",
+      "center": "8:2213",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 125,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 34,
+        "TEXT": 63,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "8:2166",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7648",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:2299",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "8:2166",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:7648",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "8:2299",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:23",
+      "center": "11:1403",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 145,
+      "typeCounts": {
+        "FRAME": 36,
+        "INSTANCE": 36,
+        "TEXT": 68,
+        "VECTOR": 6
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "11:1356",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:8152",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "11:1484",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "11:1356",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:8152",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "11:1484",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:24",
+      "center": "11:1573",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 145,
+      "typeCounts": {
+        "FRAME": 36,
+        "INSTANCE": 36,
+        "TEXT": 68,
+        "VECTOR": 6
+      },
+      "images": [],
+      "rightMigration": {
+        "removedWriter": "11:1654",
+        "context": "75:10738"
+      },
+      "beforeOutside": [
+        {
+          "id": "11:1525",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:8404",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "11:1654",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "11:1525",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:8404",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "75:10738",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:27",
+      "center": "11:1973",
+      "width": 350,
+      "height": 714,
+      "cards": 3,
+      "descendantCount": 142,
+      "typeCounts": {
+        "FRAME": 36,
+        "INSTANCE": 37,
+        "TEXT": 67,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": {
+        "removedWriter": "11:2059",
+        "context": "75:10926"
+      },
+      "beforeOutside": [
+        {
+          "id": "11:1925",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 714
+        },
+        {
+          "id": "48:9159",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 714
+        },
+        {
+          "id": "11:2059",
+          "name": "Review Companion / owned view",
+          "x": 724,
+          "y": 0,
+          "w": 300,
+          "h": 714
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "11:1925",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 714
+        },
+        {
+          "id": "48:9159",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 714
+        },
+        {
+          "id": "75:10926",
+          "name": "Review Companion / owned view",
+          "x": 724,
+          "y": 0,
+          "w": 300,
+          "h": 714
+        }
+      ]
+    },
+    {
+      "root": "6:28",
+      "center": "11:2138",
+      "width": 1066,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "11:2091",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9411",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "11:2091",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9411",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "6:29",
+      "center": "11:2267",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 100,
+      "typeCounts": {
+        "FRAME": 18,
+        "INSTANCE": 28,
+        "TEXT": 52,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "11:2220",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9663",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "11:2340",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "11:2220",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9663",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "11:2340",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1852",
+      "center": "13:1904",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 40,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 12,
+        "TEXT": 23
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:1857",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9915",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:1944",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:1857",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:9915",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:1944",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1853",
+      "center": "13:2044",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 31,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 9,
+        "TEXT": 17
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:1985",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10221",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2075",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:1985",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10221",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2075",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1854",
+      "center": "13:2163",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 34,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 10,
+        "TEXT": 19
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:2116",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10525",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2197",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:2116",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10525",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2197",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1855",
+      "center": "13:2285",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 37,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 11,
+        "TEXT": 21
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:2238",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10821",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2322",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:2238",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:10821",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2322",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1856",
+      "center": "13:2422",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 34,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 10,
+        "TEXT": 19
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:2363",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11097",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2456",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:2363",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11097",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2456",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1857",
+      "center": "13:2544",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 105,
+      "typeCounts": {
+        "FRAME": 19,
+        "INSTANCE": 29,
+        "TEXT": 55,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:2497",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11371",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2622",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:2497",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11371",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2622",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "12:1858",
+      "center": "13:2710",
+      "width": 726,
+      "height": 846,
+      "cards": 3,
+      "descendantCount": 122,
+      "typeCounts": {
+        "FRAME": 26,
+        "INSTANCE": 33,
+        "TEXT": 61,
+        "VECTOR": 3
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "13:2663",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11623",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2798",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "13:2663",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11623",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "13:2798",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "18:2265",
+      "center": "18:2304",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 31,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 9,
+        "TEXT": 17
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "18:2271",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11875",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "18:2321",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "18:2271",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:11875",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "18:2321",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "48:2397",
+      "center": "48:2433",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 37,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 11,
+        "TEXT": 21
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "48:2403",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:12179",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "48:2452",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "48:2403",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "48:12179",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "48:2452",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    },
+    {
+      "root": "50:7750",
+      "center": "50:7762",
+      "width": 726,
+      "height": 846,
+      "cards": 0,
+      "descendantCount": 34,
+      "typeCounts": {
+        "FRAME": 6,
+        "INSTANCE": 10,
+        "TEXT": 19
+      },
+      "images": [],
+      "rightMigration": null,
+      "beforeOutside": [
+        {
+          "id": "50:7756",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "50:7761",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "50:7780",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ],
+      "afterOutside": [
+        {
+          "id": "50:7756",
+          "name": "Activity bar / illustrative",
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 846
+        },
+        {
+          "id": "50:7761",
+          "name": "PR Workbench / owned navigation",
+          "x": 40,
+          "y": 0,
+          "w": 334,
+          "h": 846
+        },
+        {
+          "id": "50:7780",
+          "name": "Review Companion / owned view",
+          "x": 1100,
+          "y": 0,
+          "w": 340,
+          "h": 846
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "passed": true,
+    "centres": 36,
+    "cards": 71,
+    "composers": 4,
+    "reviewed": 36,
+    "standardDiffRows": 512,
+    "diffMismatch": [],
+    "overflow": [],
+    "badDialogColors": [],
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ],
+    "completeUiRasters": 0,
+    "missingDestinations": [],
+    "livePlayer": "Not exercised; saved graph and visual checks only",
+    "visual": [
+      "representative suggestion and continuous writer",
+      "GitHub thread",
+      "narrow workspace",
+      "light-theme controls"
+    ],
+    "paletteScope": "Dialogues, boxes, tags and buttons only; standard green/red diffs preserved",
+    "unrelatedColumnsPreserved": 33,
+    "writingPanelMigrations": 3,
+    "feedbackComposerFullyVisible": true,
+    "suggestionFormat": [
+      "Title",
+      "Observation",
+      "Hypothesis",
+      "Source / labelled code chip",
+      "Limit"
+    ]
+  },
+  "pendingValidations": [],
+  "limitations": {
+    "livePlayer": "Not exercised; saved graph and visual checks only",
+    "textInput": "Existing prepared text-edit actions retained; real typing and clipboard are not verified"
+  },
+  "completedSteps": [
+    "focused-discovery",
+    "shared-components",
+    "representative-validation",
+    "36-suitable-code-screens",
+    "standard-diff-colors-restored",
+    "visual-and-structural-validation",
+    "reference-format-and-visible-feedback-correction"
+  ],
+  "feedbackCorrection": "figma-centre-feedback-correction.json",
+  "latestLifecycleRefinement": "figma-lifecycle-state.json"
+}

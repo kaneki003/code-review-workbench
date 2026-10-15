@@ -1,0 +1,62 @@
+{
+  "checks": {
+    "tabsContextPresent": true,
+    "chatDestination": true,
+    "checkpointDestination": true,
+    "prDestination": true,
+    "hideDestination": true,
+    "sourceDestination": true,
+    "menuVisibilityBound": true,
+    "menuOpenSetsTrue": true,
+    "menuCloseSetsFalse": true,
+    "missingDestinations": []
+  },
+  "passed": true,
+  "routes": [
+    {
+      "id": "I59:7965;58:8358",
+      "name": "action/companion-menu"
+    },
+    {
+      "id": "I59:7965;58:8366",
+      "name": "action/tab-context"
+    },
+    {
+      "id": "I59:7965;58:8368",
+      "name": "action/tab-chat"
+    },
+    {
+      "id": "I59:7965;58:8371",
+      "name": "action/hide"
+    },
+    {
+      "id": "I59:7965;58:8374",
+      "name": "action/close-menu"
+    },
+    {
+      "id": "59:7990",
+      "name": "action/context-file"
+    },
+    {
+      "id": "7:302",
+      "name": "action/relevant-source"
+    },
+    {
+      "id": "7:304",
+      "name": "action/source-context"
+    },
+    {
+      "id": "59:8020",
+      "name": "action/multipart-source"
+    },
+    {
+      "id": "59:8024",
+      "name": "action/context-checkpoint"
+    },
+    {
+      "id": "59:8051",
+      "name": "action/context-pr"
+    }
+  ],
+  "livePlayer": "Browser session is not authenticated; player returned access screen."
+}

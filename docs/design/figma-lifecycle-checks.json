@@ -1,0 +1,24 @@
+{
+  "danglingRemovedLinks": [],
+  "obsoleteRootsAbsent": true,
+  "markdownSections": [
+    "PR identity and metadata",
+    "AI-generated intent and summary",
+    "Original PR description",
+    "Changed files",
+    "Suggested review route"
+  ],
+  "changedFiles": 6,
+  "workerFiles": 3,
+  "remainingFileRole": 0,
+  "reviewActivity": 0,
+  "visual": {
+    "wide": "Representative shared inline composer and publication status inspected; clipped action label fixed before propagation.",
+    "narrow": "Existing earlier-code disclosure reused; post-fix screenshot shows the full composer without overlap.",
+    "light": "Affected light workspace inspected; existing semantic theme and Context companion retained."
+  },
+  "interactionValidation": "Saved interaction inspection only. Live click-through was attempted but Figma presentation access and native browser capture permissions blocked it.",
+  "streaming": "Two timed text snapshots simulate generation; no real streaming service.",
+  "stateTransitions": "Draft close retains text; Stop retains partial answer; Retry retains history; dismissal persists through navigation; confirmed receipt clears pending counts and returns to the existing workspace.",
+  "scope": "One final structural/visual pass, plus the targeted narrow fix. Extended checks stopped at the user request."
+}

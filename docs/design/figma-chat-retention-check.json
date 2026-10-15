@@ -1,0 +1,21 @@
+{
+  "mutatedVariableIds": [
+    "VariableID:100:11008"
+  ],
+  "affectedNodeIds": [
+    "I101:10986;100:10999",
+    "I101:11034;100:10999"
+  ],
+  "checks": {
+    "earlyPartialRetained": true,
+    "previewRestored": true
+  },
+  "early": [
+    "Start with a slow mocked upload",
+    "Start with a slow mocked upload"
+  ],
+  "restored": [
+    "Start with a slow mocked upload and observe whether buffering stays bounded.",
+    "Start with a slow mocked upload and observe whether buffering stays bounded."
+  ]
+}

@@ -1,0 +1,467 @@
+{
+  "runId": "workbench-lifecycle-2026-10-15",
+  "fileKey": "iUydEGUJkOMhggD3wMTFKU",
+  "step": "complete",
+  "scope": "Inline local draft, in-workspace publication confirmation, persistent suggestion visibility, Review activity removal, and final session validation",
+  "createdNodeIds": [
+    "112:11387",
+    "112:11388",
+    "112:11389",
+    "112:11396",
+    "112:11397",
+    "112:11398",
+    "112:11399",
+    "112:11401",
+    "112:11402",
+    "112:11427",
+    "112:11428",
+    "112:11431",
+    "I112:11389;41:2445",
+    "I112:11389;41:2446",
+    "I112:11389;41:2447",
+    "I112:11389;41:2448",
+    "I112:11389;41:2449",
+    "I112:11389;41:2450",
+    "I112:11399;41:2485",
+    "I112:11402;72:9799",
+    "I112:11402;72:9800",
+    "I112:11402;72:9801",
+    "I112:11402;72:9801;4:5",
+    "I112:11402;72:9803",
+    "I112:11402;72:9804",
+    "I112:11402;72:9804;4:7",
+    "I112:11402;72:9806",
+    "I112:11402;72:9807",
+    "I112:11402;72:9808",
+    "I112:11402;72:9809",
+    "I112:11402;72:9810",
+    "I112:11402;72:9811",
+    "I112:11402;72:9812",
+    "I112:11402;72:9813",
+    "I112:11402;72:9814",
+    "I112:11402;72:9815",
+    "I112:11402;72:9815;4:5",
+    "I112:11402;72:9817",
+    "I112:11402;72:9818",
+    "I112:11402;72:9818;4:5",
+    "I112:11402;72:9820",
+    "I112:11402;72:9821",
+    "I112:11402;72:9821;4:3",
+    "I112:11428;41:2462",
+    "I112:11428;41:2463"
+  ],
+  "createdVariableIds": [
+    "VariableID:112:11379",
+    "VariableID:112:11380",
+    "VariableID:112:11381",
+    "VariableID:112:11382",
+    "VariableID:112:11383",
+    "VariableID:112:11384",
+    "VariableID:112:11385",
+    "VariableID:112:11386"
+  ],
+  "components": {
+    "Centre/Anchored review thread": "112:11387",
+    "Workbench/Publication status": "112:11427"
+  },
+  "props": {
+    "Centre/Anchored review thread": {
+      "Anchor": "Anchor#112:0",
+      "Provenance": "Provenance#112:1",
+      "Show editor": "Show editor#112:2"
+    },
+    "Workbench/Publication status": {
+      "Message": "Message#112:3"
+    }
+  },
+  "flags": {
+    "performance": "VariableID:112:11379",
+    "security": "VariableID:112:11380",
+    "publication": "VariableID:112:11381",
+    "publicationText": "VariableID:112:11382",
+    "pendingMenu": "VariableID:112:11383",
+    "pendingTitle": "VariableID:112:11384",
+    "pendingAction": "VariableID:112:11385",
+    "reviewReturn": "VariableID:112:11386"
+  },
+  "styles": {
+    "Body": "S:075da826278bc953201b159a445d75e48db2de68,",
+    "Strong": "S:ae0007507691cef08ee29895ccb4df4018194ac6,",
+    "Mono": "S:1661c528606fd690cf244d2318226a470d55cf01,",
+    "Caption": "S:75003d63fd33950f0f01da071f97ddae8fa52702,"
+  },
+  "thread": {
+    "header": "112:11388",
+    "editor": "112:11401",
+    "composer": "112:11402"
+  },
+  "checks": {
+    "reuseComposer": true,
+    "fonts": [
+      "JetBrains Mono",
+      "Inter"
+    ]
+  },
+  "screens": [
+    {
+      "root": "6:16",
+      "center": "8:1406",
+      "status": "114:11634",
+      "statusArea": "114:11633",
+      "draft": "114:11641",
+      "editor": "I114:11641;112:11401",
+      "openVariable": "VariableID:114:11639",
+      "anchor": "I114:11641;112:11388"
+    },
+    {
+      "root": "6:3",
+      "center": "7:124",
+      "status": "116:11298",
+      "statusArea": "116:11297"
+    },
+    {
+      "root": "6:4",
+      "center": "7:206",
+      "status": "116:11306",
+      "statusArea": "116:11305",
+      "draft": "116:11313",
+      "editor": "I116:11313;112:11401",
+      "openVariable": "VariableID:116:11311",
+      "anchor": "I116:11313;112:11388"
+    },
+    {
+      "root": "6:5",
+      "center": "7:379",
+      "status": "116:11380",
+      "statusArea": "116:11379",
+      "draft": "116:11387",
+      "editor": "I116:11387;112:11401",
+      "openVariable": "VariableID:116:11385",
+      "anchor": "I116:11387;112:11388"
+    },
+    {
+      "root": "6:6",
+      "center": "7:552",
+      "status": "116:11447",
+      "statusArea": "116:11446"
+    },
+    {
+      "root": "6:7",
+      "center": "7:680",
+      "status": "116:11453",
+      "statusArea": "116:11452"
+    },
+    {
+      "root": "6:8",
+      "center": "7:802",
+      "status": "116:11868",
+      "statusArea": "116:11867",
+      "draft": "116:11875",
+      "editor": "I116:11875;112:11401",
+      "openVariable": "VariableID:116:11873",
+      "anchor": "I116:11875;112:11388"
+    },
+    {
+      "root": "6:9",
+      "center": "7:960",
+      "status": "116:11935",
+      "statusArea": "116:11934",
+      "draft": "116:11942",
+      "editor": "I116:11942;112:11401",
+      "openVariable": "VariableID:116:11940",
+      "anchor": "I116:11942;112:11388"
+    },
+    {
+      "root": "6:10",
+      "center": "7:1117",
+      "status": "116:12002",
+      "statusArea": "116:12001",
+      "draft": "116:12009",
+      "editor": "I116:12009;112:11401",
+      "openVariable": "VariableID:116:12007",
+      "anchor": "I116:12009;112:11388"
+    },
+    {
+      "root": "6:11",
+      "center": "8:570",
+      "status": "116:12070",
+      "statusArea": "116:12069"
+    },
+    {
+      "root": "6:12",
+      "center": "8:699",
+      "status": "116:12076",
+      "statusArea": "116:12075",
+      "draft": "116:12083",
+      "editor": "I116:12083;112:11401",
+      "openVariable": "VariableID:116:12081",
+      "anchor": "I116:12083;112:11388"
+    },
+    {
+      "root": "6:13",
+      "center": "8:873",
+      "status": "116:13058",
+      "statusArea": "116:13057",
+      "draft": "116:13065",
+      "editor": "I116:13065;112:11401",
+      "openVariable": "VariableID:116:13063",
+      "anchor": "I116:13065;112:11388"
+    },
+    {
+      "root": "6:14",
+      "center": "8:1053",
+      "status": "116:13126",
+      "statusArea": "116:13125",
+      "draft": "116:13133",
+      "editor": "I116:13133;112:11401",
+      "openVariable": "VariableID:116:13131",
+      "anchor": "I116:13133;112:11388"
+    },
+    {
+      "root": "6:15",
+      "center": "8:1231",
+      "status": "116:13194",
+      "statusArea": "116:13193",
+      "draft": "116:13201",
+      "editor": "I116:13201;112:11401",
+      "openVariable": "VariableID:116:13199",
+      "anchor": "I116:13201;112:11388"
+    },
+    {
+      "root": "6:18",
+      "center": "8:1681",
+      "status": "116:13262",
+      "statusArea": "116:13261",
+      "draft": "116:13269",
+      "editor": "I116:13269;112:11401",
+      "openVariable": "VariableID:116:13267",
+      "anchor": "I116:13269;112:11388"
+    },
+    {
+      "root": "6:19",
+      "center": "8:1855",
+      "status": "116:13330",
+      "statusArea": "116:13329",
+      "draft": "116:13337",
+      "editor": "I116:13337;112:11401",
+      "openVariable": "VariableID:116:13335",
+      "anchor": "I116:13337;112:11388"
+    },
+    {
+      "root": "6:20",
+      "center": "8:2034",
+      "status": "116:13803",
+      "statusArea": "116:13802",
+      "draft": "116:13810",
+      "editor": "I116:13810;112:11401",
+      "openVariable": "VariableID:116:13808",
+      "anchor": "I116:13810;112:11388"
+    },
+    {
+      "root": "6:21",
+      "center": "8:2213",
+      "status": "116:13871",
+      "statusArea": "116:13870",
+      "draft": "116:13878",
+      "editor": "I116:13878;112:11401",
+      "openVariable": "VariableID:116:13876",
+      "anchor": "I116:13878;112:11388"
+    },
+    {
+      "root": "6:23",
+      "center": "11:1403",
+      "status": "116:13939",
+      "statusArea": "116:13938",
+      "draft": "116:13946",
+      "editor": "I116:13946;112:11401",
+      "openVariable": "VariableID:116:13944",
+      "anchor": "I116:13946;112:11388"
+    },
+    {
+      "root": "6:24",
+      "center": "11:1573",
+      "status": "116:14006",
+      "statusArea": "116:14005",
+      "draft": "116:14013",
+      "editor": "I116:14013;112:11401",
+      "openVariable": "VariableID:116:14011",
+      "anchor": "I116:14013;112:11388"
+    },
+    {
+      "root": "6:27",
+      "center": "11:1973",
+      "status": "116:14073",
+      "statusArea": "116:14072",
+      "draft": "116:14080",
+      "editor": "I116:14080;112:11401",
+      "openVariable": "VariableID:116:14078",
+      "anchor": "I116:14080;112:11388"
+    },
+    {
+      "root": "6:28",
+      "center": "11:2138",
+      "status": "116:14567",
+      "statusArea": "116:14566",
+      "draft": "116:14574",
+      "editor": "I116:14574;112:11401",
+      "openVariable": "VariableID:116:14572",
+      "anchor": "I116:14574;112:11388"
+    },
+    {
+      "root": "6:29",
+      "center": "11:2267",
+      "status": "116:14634",
+      "statusArea": "116:14633",
+      "draft": "116:14641",
+      "editor": "I116:14641;112:11401",
+      "openVariable": "VariableID:116:14639",
+      "anchor": "I116:14641;112:11388"
+    },
+    {
+      "root": "12:1852",
+      "center": "13:1904",
+      "status": "116:14701",
+      "statusArea": "116:14700"
+    },
+    {
+      "root": "12:1853",
+      "center": "13:2044",
+      "status": "116:14707",
+      "statusArea": "116:14706"
+    },
+    {
+      "root": "12:1854",
+      "center": "13:2163",
+      "status": "116:14713",
+      "statusArea": "116:14712"
+    },
+    {
+      "root": "12:1855",
+      "center": "13:2285",
+      "status": "116:15094",
+      "statusArea": "116:15093"
+    },
+    {
+      "root": "12:1856",
+      "center": "13:2422",
+      "status": "116:15100",
+      "statusArea": "116:15099"
+    },
+    {
+      "root": "12:1857",
+      "center": "13:2544",
+      "status": "116:15106",
+      "statusArea": "116:15105",
+      "draft": "116:15113",
+      "editor": "I116:15113;112:11401",
+      "openVariable": "VariableID:116:15111",
+      "anchor": "I116:15113;112:11388"
+    },
+    {
+      "root": "12:1858",
+      "center": "13:2710",
+      "status": "116:15173",
+      "statusArea": "116:15172",
+      "draft": "116:15180",
+      "editor": "I116:15180;112:11401",
+      "openVariable": "VariableID:116:15178",
+      "anchor": "I116:15180;112:11388"
+    },
+    {
+      "root": "18:2265",
+      "center": "18:2304",
+      "status": "116:15241",
+      "statusArea": "116:15240"
+    },
+    {
+      "root": "48:2397",
+      "center": "48:2433",
+      "status": "116:15427",
+      "statusArea": "116:15426"
+    },
+    {
+      "root": "50:7750",
+      "center": "50:7762",
+      "status": "116:15433",
+      "statusArea": "116:15432"
+    },
+    {
+      "root": "101:11081",
+      "center": "101:11093",
+      "status": "116:15439",
+      "statusArea": "116:15438",
+      "draft": "116:15446",
+      "editor": "I116:15446;112:11401",
+      "openVariable": "VariableID:116:15444",
+      "anchor": "I116:15446;112:11388"
+    }
+  ],
+  "removedFrames": [
+    {
+      "id": "6:17",
+      "name": "16 \u2022 Resume unsent draft"
+    },
+    {
+      "id": "6:22",
+      "name": "21 \u2022 Published / review remains open"
+    },
+    {
+      "id": "18:2397",
+      "name": "37 \u2022 Published / original source retained"
+    },
+    {
+      "id": "6:25",
+      "name": "24 \u2022 Dismissed Companion suggestion"
+    },
+    {
+      "id": "6:26",
+      "name": "25 \u2022 Review activity / unanchored records"
+    },
+    {
+      "id": "6:46",
+      "name": "Writing \u2022 immediate Comment receipt"
+    }
+  ],
+  "rewireLedger": "figma-lifecycle-rewired.json",
+  "validationLedger": "figma-lifecycle-checks.json",
+  "narrowFix": {
+    "root": "6:27",
+    "createdNodeIds": [
+      "121:10065",
+      "121:10082",
+      "121:10083"
+    ],
+    "retainedEarlierRows": 14,
+    "narrowLayoutFix": "Reuse existing earlier-code disclosure so the autosaved inline composer remains visible"
+  },
+  "changeNote": "lifecycle-refinement.md",
+  "frameNumbersPreserved": true,
+  "previousSessionRefinements": [
+    "figma-pr-refinement-state.json",
+    "figma-chat-state-refinement.json"
+  ],
+  "finalValidation": {
+    "danglingRemovedLinks": [],
+    "obsoleteRootsAbsent": true,
+    "markdownSections": [
+      "PR identity and metadata",
+      "AI-generated intent and summary",
+      "Original PR description",
+      "Changed files",
+      "Suggested review route"
+    ],
+    "changedFiles": 6,
+    "workerFiles": 3,
+    "remainingFileRole": 0,
+    "reviewActivity": 0,
+    "visual": {
+      "wide": "Representative shared inline composer and publication status inspected; clipped action label fixed before propagation.",
+      "narrow": "Existing earlier-code disclosure reused; post-fix screenshot shows the full composer without overlap.",
+      "light": "Affected light workspace inspected; existing semantic theme and Context companion retained."
+    },
+    "interactionValidation": "Saved interaction inspection only. Live click-through was attempted but Figma presentation access and native browser capture permissions blocked it.",
+    "streaming": "Two timed text snapshots simulate generation; no real streaming service.",
+    "stateTransitions": "Draft close retains text; Stop retains partial answer; Retry retains history; dismissal persists through navigation; confirmed receipt clears pending counts and returns to the existing workspace.",
+    "scope": "One final structural/visual pass, plus the targeted narrow fix. Extended checks stopped at the user request."
+  }
+}

@@ -1,0 +1,317 @@
+{
+  "mutatedNodeIds": [
+    "6:12",
+    "101:11081",
+    "101:11128",
+    "I101:11128;100:10981",
+    "I101:11034;100:11006"
+  ],
+  "states": [
+    {
+      "root": "6:12",
+      "conversation": "101:10892",
+      "main": "100:10998",
+      "response": "Start with a slow mocked upload",
+      "props": {
+        "Show error#100:3": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show stopped#100:2": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show copy#100:1": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Response#100:0": {
+          "type": "TEXT",
+          "value": "Start with a slow mocked upload"
+        }
+      },
+      "submit": {
+        "id": "I101:10892;100:10981",
+        "label": "■",
+        "x": 1387,
+        "y": 799,
+        "w": 30,
+        "h": 30,
+        "actions": [
+          {
+            "type": "SET_VARIABLE",
+            "variableId": "VariableID:100:11008",
+            "variableValue": {
+              "value": "Start with a slow mocked upload",
+              "type": "STRING",
+              "resolvedType": "STRING"
+            }
+          },
+          {
+            "type": "NODE",
+            "destinationId": "6:14",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          }
+        ]
+      },
+      "timer": [
+        {
+          "action": {
+            "type": "NODE",
+            "destinationId": "101:11081",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "101:11081",
+              "navigation": "NAVIGATE",
+              "transition": null,
+              "resetVideoPosition": false,
+              "resetScrollPosition": false
+            }
+          ],
+          "trigger": {
+            "type": "AFTER_TIMEOUT",
+            "timeout": 1.2999999523162842
+          }
+        }
+      ]
+    },
+    {
+      "root": "101:11081",
+      "conversation": "101:11128",
+      "main": "100:10998",
+      "response": "Start with a slow mocked upload and observe whether buffering stays bounded.",
+      "props": {
+        "Show error#100:3": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show stopped#100:2": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show copy#100:1": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Response#100:0": {
+          "type": "TEXT",
+          "value": "Start with a slow mocked upload and observe whether buffering stays bounded."
+        }
+      },
+      "submit": {
+        "id": "I101:11128;100:10981",
+        "label": "■",
+        "x": 1387,
+        "y": 799,
+        "w": 30,
+        "h": 30,
+        "actions": [
+          {
+            "type": "SET_VARIABLE",
+            "variableId": "VariableID:100:11008",
+            "variableValue": {
+              "value": "Start with a slow mocked upload and observe whether buffering stays bounded.",
+              "type": "STRING",
+              "resolvedType": "STRING"
+            }
+          },
+          {
+            "type": "NODE",
+            "destinationId": "6:14",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          }
+        ]
+      },
+      "timer": [
+        {
+          "action": {
+            "type": "NODE",
+            "destinationId": "6:13",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          },
+          "actions": [
+            {
+              "type": "NODE",
+              "destinationId": "6:13",
+              "navigation": "NAVIGATE",
+              "transition": null,
+              "resetVideoPosition": false,
+              "resetScrollPosition": false
+            }
+          ],
+          "trigger": {
+            "type": "AFTER_TIMEOUT",
+            "timeout": 1.7999999523162842
+          }
+        }
+      ]
+    },
+    {
+      "root": "6:13",
+      "conversation": "101:10939",
+      "main": "100:10998",
+      "response": "Start with a slow mocked upload and observe whether buffering stays bounded. Check cancellation separately.",
+      "props": {
+        "Show error#100:3": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show stopped#100:2": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show copy#100:1": {
+          "type": "BOOLEAN",
+          "value": true
+        },
+        "Response#100:0": {
+          "type": "TEXT",
+          "value": "Start with a slow mocked upload and observe whether buffering stays bounded. Check cancellation separately."
+        }
+      },
+      "submit": {
+        "id": "I101:10939;100:10981",
+        "label": "↑",
+        "x": 1387,
+        "y": 799,
+        "w": 30,
+        "h": 30,
+        "actions": [
+          {
+            "type": "NODE",
+            "destinationId": "6:12",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          }
+        ]
+      },
+      "timer": []
+    },
+    {
+      "root": "6:14",
+      "conversation": "101:10986",
+      "main": "100:10998",
+      "response": "Start with a slow mocked upload and observe whether buffering stays bounded.",
+      "props": {
+        "Show error#100:3": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show stopped#100:2": {
+          "type": "BOOLEAN",
+          "value": true
+        },
+        "Show copy#100:1": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Response#100:0": {
+          "boundVariables": {
+            "value": {
+              "type": "VARIABLE_ALIAS",
+              "id": "VariableID:100:11008"
+            }
+          },
+          "type": "TEXT",
+          "value": "Start with a slow mocked upload and observe whether buffering stays bounded."
+        }
+      },
+      "submit": {
+        "id": "I101:10986;100:10981",
+        "label": "↑",
+        "x": 1387,
+        "y": 799,
+        "w": 30,
+        "h": 30,
+        "actions": [
+          {
+            "type": "NODE",
+            "destinationId": "6:12",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          }
+        ]
+      },
+      "timer": []
+    },
+    {
+      "root": "6:15",
+      "conversation": "101:11034",
+      "main": "100:10998",
+      "response": "Start with a slow mocked upload and observe whether buffering stays bounded.",
+      "props": {
+        "Show error#100:3": {
+          "type": "BOOLEAN",
+          "value": true
+        },
+        "Show stopped#100:2": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Show copy#100:1": {
+          "type": "BOOLEAN",
+          "value": false
+        },
+        "Response#100:0": {
+          "boundVariables": {
+            "value": {
+              "type": "VARIABLE_ALIAS",
+              "id": "VariableID:100:11008"
+            }
+          },
+          "type": "TEXT",
+          "value": "Start with a slow mocked upload and observe whether buffering stays bounded."
+        }
+      },
+      "submit": {
+        "id": "I101:11034;100:10981",
+        "label": "↑",
+        "x": 1387,
+        "y": 799,
+        "w": 30,
+        "h": 30,
+        "actions": [
+          {
+            "type": "NODE",
+            "destinationId": "6:12",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false,
+            "resetScrollPosition": false
+          }
+        ]
+      },
+      "timer": []
+    }
+  ],
+  "timing": {
+    "firstPartialSeconds": 1.3,
+    "secondPartialSeconds": 1.8,
+    "totalSeconds": 3.1,
+    "addedFrames": 1
+  },
+  "retry": {
+    "node": "I101:11034;100:11006",
+    "destination": "101:11081",
+    "appendsUserMessage": false
+  }
+}

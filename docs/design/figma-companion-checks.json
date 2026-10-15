@@ -1,0 +1,600 @@
+{
+  "passed": true,
+  "checks": {
+    "unchangedOutsideColumns": 35,
+    "chromeInstances": 31,
+    "rowInstances": 81,
+    "reactionNodes": 259,
+    "boundNodes": 1643,
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ],
+    "outsideChanges": [],
+    "badBounds": [],
+    "imageFills": [],
+    "missingDestinations": []
+  },
+  "screens": [
+    {
+      "root": "6:4",
+      "panel": "7:279",
+      "chrome": "59:7965",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:5",
+      "panel": "7:452",
+      "chrome": "65:8243",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:6",
+      "panel": "7:592",
+      "chrome": "65:8375",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:7",
+      "panel": "7:714",
+      "chrome": "65:8532",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:8",
+      "panel": "7:875",
+      "chrome": "65:8689",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:9",
+      "panel": "7:1033",
+      "chrome": "65:8850",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:10",
+      "panel": "7:1203",
+      "chrome": "65:9011",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:11",
+      "panel": "8:611",
+      "chrome": "65:9176",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:12",
+      "panel": "8:785",
+      "chrome": "65:9341",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:13",
+      "panel": "8:959",
+      "chrome": "62:8009",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:14",
+      "panel": "8:1139",
+      "chrome": "65:9442",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:15",
+      "panel": "8:1317",
+      "chrome": "65:9548",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:18",
+      "panel": "8:1767",
+      "chrome": "65:9799",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:19",
+      "panel": "8:1946",
+      "chrome": "65:9964",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:20",
+      "panel": "8:2125",
+      "chrome": "65:10129",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:21",
+      "panel": "8:2299",
+      "chrome": "65:10294",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:22",
+      "panel": "8:2465",
+      "chrome": "65:10459",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:23",
+      "panel": "11:1484",
+      "chrome": "65:10624",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:25",
+      "panel": "11:1809",
+      "chrome": "65:10864",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:29",
+      "panel": "11:2340",
+      "chrome": "65:11254",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1852",
+      "panel": "13:1944",
+      "chrome": "65:11431",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1853",
+      "panel": "13:2075",
+      "chrome": "65:11554",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1854",
+      "panel": "13:2197",
+      "chrome": "65:11733",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1855",
+      "panel": "13:2322",
+      "chrome": "65:11890",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1856",
+      "panel": "13:2456",
+      "chrome": "65:12013",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1857",
+      "panel": "13:2622",
+      "chrome": "65:12170",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1858",
+      "panel": "13:2798",
+      "chrome": "65:12335",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "18:2265",
+      "panel": "18:2321",
+      "chrome": "65:12512",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "18:2397",
+      "panel": "18:2466",
+      "chrome": "65:12669",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "48:2397",
+      "panel": "48:2452",
+      "chrome": "65:12800",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "50:7750",
+      "panel": "50:7780",
+      "chrome": "65:12923",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    }
+  ],
+  "excluded": [
+    "6:16",
+    "6:17",
+    "6:24",
+    "6:27"
+  ],
+  "newPreparedScreens": 0,
+  "outsideValidation": {
+    "passed": true,
+    "unchanged": 35,
+    "total": 35,
+    "checks": [
+      {
+        "id": "6:4",
+        "before": "1a3b5c03",
+        "after": "1a3b5c03",
+        "unchanged": true
+      },
+      {
+        "id": "6:5",
+        "before": "c5e9c79e",
+        "after": "c5e9c79e",
+        "unchanged": true
+      },
+      {
+        "id": "6:6",
+        "before": "3e3f3fc9",
+        "after": "3e3f3fc9",
+        "unchanged": true
+      },
+      {
+        "id": "6:7",
+        "before": "c288be06",
+        "after": "c288be06",
+        "unchanged": true
+      },
+      {
+        "id": "6:8",
+        "before": "b44c233a",
+        "after": "b44c233a",
+        "unchanged": true
+      },
+      {
+        "id": "6:9",
+        "before": "356a899d",
+        "after": "356a899d",
+        "unchanged": true
+      },
+      {
+        "id": "6:10",
+        "before": "6f99a7da",
+        "after": "6f99a7da",
+        "unchanged": true
+      },
+      {
+        "id": "6:11",
+        "before": "2ed4971",
+        "after": "2ed4971",
+        "unchanged": true
+      },
+      {
+        "id": "6:12",
+        "before": "9e6e2b2d",
+        "after": "9e6e2b2d",
+        "unchanged": true
+      },
+      {
+        "id": "6:13",
+        "before": "8aa05455",
+        "after": "8aa05455",
+        "unchanged": true
+      },
+      {
+        "id": "6:14",
+        "before": "de027975",
+        "after": "de027975",
+        "unchanged": true
+      },
+      {
+        "id": "6:15",
+        "before": "c54e1973",
+        "after": "c54e1973",
+        "unchanged": true
+      },
+      {
+        "id": "6:16",
+        "before": "b01d2ded",
+        "after": "b01d2ded",
+        "unchanged": true
+      },
+      {
+        "id": "6:17",
+        "before": "d6ee7b4d",
+        "after": "d6ee7b4d",
+        "unchanged": true
+      },
+      {
+        "id": "6:18",
+        "before": "795c24c9",
+        "after": "795c24c9",
+        "unchanged": true
+      },
+      {
+        "id": "6:19",
+        "before": "c2bc3aa2",
+        "after": "c2bc3aa2",
+        "unchanged": true
+      },
+      {
+        "id": "6:20",
+        "before": "c24c8055",
+        "after": "c24c8055",
+        "unchanged": true
+      },
+      {
+        "id": "6:21",
+        "before": "200608e8",
+        "after": "200608e8",
+        "unchanged": true
+      },
+      {
+        "id": "6:22",
+        "before": "7e75c0f7",
+        "after": "7e75c0f7",
+        "unchanged": true
+      },
+      {
+        "id": "6:23",
+        "before": "d9b27922",
+        "after": "d9b27922",
+        "unchanged": true
+      },
+      {
+        "id": "6:24",
+        "before": "e78c9faf",
+        "after": "e78c9faf",
+        "unchanged": true
+      },
+      {
+        "id": "6:25",
+        "before": "1a4fbf11",
+        "after": "1a4fbf11",
+        "unchanged": true
+      },
+      {
+        "id": "6:27",
+        "before": "981e24ed",
+        "after": "981e24ed",
+        "unchanged": true
+      },
+      {
+        "id": "6:29",
+        "before": "d84a7f87",
+        "after": "d84a7f87",
+        "unchanged": true
+      },
+      {
+        "id": "12:1852",
+        "before": "828227a4",
+        "after": "828227a4",
+        "unchanged": true
+      },
+      {
+        "id": "12:1853",
+        "before": "68490213",
+        "after": "68490213",
+        "unchanged": true
+      },
+      {
+        "id": "12:1854",
+        "before": "1160d752",
+        "after": "1160d752",
+        "unchanged": true
+      },
+      {
+        "id": "12:1855",
+        "before": "86f60f64",
+        "after": "86f60f64",
+        "unchanged": true
+      },
+      {
+        "id": "12:1856",
+        "before": "e8c1adb9",
+        "after": "e8c1adb9",
+        "unchanged": true
+      },
+      {
+        "id": "12:1857",
+        "before": "c6d360b8",
+        "after": "c6d360b8",
+        "unchanged": true
+      },
+      {
+        "id": "12:1858",
+        "before": "d1ad0a1",
+        "after": "d1ad0a1",
+        "unchanged": true
+      },
+      {
+        "id": "18:2265",
+        "before": "1932c5b5",
+        "after": "1932c5b5",
+        "unchanged": true
+      },
+      {
+        "id": "18:2397",
+        "before": "823fa885",
+        "after": "823fa885",
+        "unchanged": true
+      },
+      {
+        "id": "48:2397",
+        "before": "359a8d1b",
+        "after": "359a8d1b",
+        "unchanged": true
+      },
+      {
+        "id": "50:7750",
+        "before": "e7865f16",
+        "after": "e7865f16",
+        "unchanged": true
+      }
+    ],
+    "correction": "Baseline traversal skipped hidden instance descendants; same setting restored for comparison."
+  },
+  "visual": [
+    "file context",
+    "Chat response with composer and copy affordances",
+    "expanded checkpoint",
+    "expanded PR",
+    "light context",
+    "open companion menu",
+    "full workspace"
+  ],
+  "representative": {
+    "checks": {
+      "tabsContextPresent": true,
+      "chatDestination": true,
+      "checkpointDestination": true,
+      "prDestination": true,
+      "hideDestination": true,
+      "sourceDestination": true,
+      "menuVisibilityBound": true,
+      "menuOpenSetsTrue": true,
+      "menuCloseSetsFalse": true,
+      "missingDestinations": []
+    },
+    "passed": true,
+    "routes": [
+      {
+        "id": "I59:7965;58:8358",
+        "name": "action/companion-menu"
+      },
+      {
+        "id": "I59:7965;58:8366",
+        "name": "action/tab-context"
+      },
+      {
+        "id": "I59:7965;58:8368",
+        "name": "action/tab-chat"
+      },
+      {
+        "id": "I59:7965;58:8371",
+        "name": "action/hide"
+      },
+      {
+        "id": "I59:7965;58:8374",
+        "name": "action/close-menu"
+      },
+      {
+        "id": "59:7990",
+        "name": "action/context-file"
+      },
+      {
+        "id": "7:302",
+        "name": "action/relevant-source"
+      },
+      {
+        "id": "7:304",
+        "name": "action/source-context"
+      },
+      {
+        "id": "59:8020",
+        "name": "action/multipart-source"
+      },
+      {
+        "id": "59:8024",
+        "name": "action/context-checkpoint"
+      },
+      {
+        "id": "59:8051",
+        "name": "action/context-pr"
+      }
+    ],
+    "livePlayer": "Browser session is not authenticated; player returned access screen."
+  },
+  "limitations": {
+    "livePlayer": "Attempted; browser Figma session is unauthenticated.",
+    "clipboard": "Copy affordances are editable, but Figma prototype cannot execute the clipboard action.",
+    "keyboard": "Hint is a design affordance; real keyboard/focus is not verified."
+  }
+}

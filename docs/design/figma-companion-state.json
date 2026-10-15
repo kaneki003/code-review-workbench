@@ -1,0 +1,508 @@
+{
+  "runId": "workbench-companion-2026-10-15",
+  "fileKey": "iUydEGUJkOMhggD3wMTFKU",
+  "fileUrl": "https://www.figma.com/design/iUydEGUJkOMhggD3wMTFKU?node-id=6-4",
+  "scope": "Only right companion Context / Chat views",
+  "step": "complete",
+  "components": {
+    "Chrome/Context": "58:8353",
+    "Chrome/Chat": "58:8377",
+    "Context row/Expanded": "58:8402",
+    "Context row/Collapsed": "58:8416",
+    "Copy response": "64:8399",
+    "Conversation shell": "100:10998"
+  },
+  "sets": {
+    "Chrome": "58:8401",
+    "ContextRow": "58:8430"
+  },
+  "properties": {
+    "ContextRow": {
+      "Title": "Title#58:6",
+      "Detail": "Detail#58:7",
+      "Icon": "Icon#58:8",
+      "State": "State"
+    }
+  },
+  "variables": {
+    "surface": "VariableID:58:8337",
+    "card": "VariableID:58:8338",
+    "raised": "VariableID:58:8339",
+    "border": "VariableID:58:8340",
+    "primary": "VariableID:58:8341",
+    "muted": "VariableID:58:8342",
+    "link": "VariableID:58:8343",
+    "accent": "VariableID:58:8344",
+    "focus": "VariableID:58:8345",
+    "space/0": "VariableID:3:71",
+    "space/2": "VariableID:41:2415",
+    "space/4": "VariableID:3:72",
+    "space/6": "VariableID:3:73",
+    "space/8": "VariableID:3:74",
+    "space/10": "VariableID:41:2417",
+    "space/12": "VariableID:3:75",
+    "space/14": "VariableID:41:2418",
+    "space/16": "VariableID:3:76",
+    "space/20": "VariableID:41:2420",
+    "space/24": "VariableID:3:77",
+    "radius": "VariableID:3:78"
+  },
+  "styles": {
+    "Body": "S:075da826278bc953201b159a445d75e48db2de68,",
+    "Strong": "S:ae0007507691cef08ee29895ccb4df4018194ac6,",
+    "Section": "S:ffab0ac91f946110ba81088898c44fa0e955bdc2,",
+    "Mono": "S:1661c528606fd690cf244d2318226a470d55cf01,",
+    "Caption": "S:75003d63fd33950f0f01da071f97ddae8fa52702,"
+  },
+  "menuFlag": "VariableID:58:8347",
+  "createdComponentNodeIds": [
+    "58:8353",
+    "58:8354",
+    "58:8355",
+    "58:8356",
+    "58:8357",
+    "58:8358",
+    "58:8359",
+    "I58:8359;41:2477",
+    "I58:8359;41:2478",
+    "I58:8359;41:2479",
+    "58:8365",
+    "58:8366",
+    "I58:8366;4:23",
+    "58:8368",
+    "I58:8368;4:25",
+    "58:8370",
+    "58:8371",
+    "58:8372",
+    "58:8374",
+    "58:8375",
+    "58:8377",
+    "58:8378",
+    "58:8379",
+    "58:8380",
+    "58:8381",
+    "58:8382",
+    "58:8383",
+    "I58:8383;41:2477",
+    "I58:8383;41:2478",
+    "I58:8383;41:2479",
+    "58:8389",
+    "58:8390",
+    "I58:8390;4:25",
+    "58:8392",
+    "I58:8392;4:23",
+    "58:8394",
+    "58:8395",
+    "58:8396",
+    "58:8398",
+    "58:8399",
+    "58:8401",
+    "58:8402",
+    "58:8403",
+    "I58:8403;41:2446",
+    "I58:8403;41:2447",
+    "I58:8403;41:2448",
+    "I58:8403;41:2449",
+    "I58:8403;41:2450",
+    "58:8410",
+    "58:8411",
+    "58:8412",
+    "58:8413",
+    "I58:8413;41:2438",
+    "58:8416",
+    "58:8417",
+    "I58:8417;41:2446",
+    "I58:8417;41:2447",
+    "I58:8417;41:2448",
+    "I58:8417;41:2449",
+    "I58:8417;41:2450",
+    "58:8424",
+    "58:8425",
+    "58:8426",
+    "58:8427",
+    "I58:8427;41:2438",
+    "58:8430",
+    "64:8399",
+    "64:8400",
+    "64:8401",
+    "64:8402"
+  ],
+  "createdVariableIds": [
+    "VariableID:58:8337",
+    "VariableID:58:8338",
+    "VariableID:58:8339",
+    "VariableID:58:8340",
+    "VariableID:58:8341",
+    "VariableID:58:8342",
+    "VariableID:58:8343",
+    "VariableID:58:8344",
+    "VariableID:58:8346",
+    "VariableID:58:8345",
+    "VariableID:58:8347"
+  ],
+  "createdStyleIds": [
+    "S:075da826278bc953201b159a445d75e48db2de68,",
+    "S:ae0007507691cef08ee29895ccb4df4018194ac6,",
+    "S:ffab0ac91f946110ba81088898c44fa0e955bdc2,",
+    "S:1661c528606fd690cf244d2318226a470d55cf01,",
+    "S:75003d63fd33950f0f01da071f97ddae8fa52702,"
+  ],
+  "representative": {
+    "context": "6:4",
+    "chat": "6:13",
+    "validation": "figma-companion-representative-checks.json"
+  },
+  "screens": [
+    {
+      "root": "6:4",
+      "panel": "7:279",
+      "chrome": "59:7965",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:5",
+      "panel": "7:452",
+      "chrome": "65:8243",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:6",
+      "panel": "7:592",
+      "chrome": "65:8375",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:7",
+      "panel": "7:714",
+      "chrome": "65:8532",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:8",
+      "panel": "7:875",
+      "chrome": "65:8689",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:9",
+      "panel": "7:1033",
+      "chrome": "65:8850",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:10",
+      "panel": "7:1203",
+      "chrome": "65:9011",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:11",
+      "panel": "8:611",
+      "chrome": "65:9176",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:12",
+      "panel": "8:785",
+      "chrome": "65:9341",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:13",
+      "panel": "8:959",
+      "chrome": "62:8009",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:14",
+      "panel": "8:1139",
+      "chrome": "65:9442",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:15",
+      "panel": "8:1317",
+      "chrome": "65:9548",
+      "kind": "Chat / conversation",
+      "width": 340,
+      "height": 846,
+      "rows": 0
+    },
+    {
+      "root": "6:18",
+      "panel": "8:1767",
+      "chrome": "65:9799",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:19",
+      "panel": "8:1946",
+      "chrome": "65:9964",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:20",
+      "panel": "8:2125",
+      "chrome": "65:10129",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:21",
+      "panel": "8:2299",
+      "chrome": "65:10294",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:22",
+      "panel": "8:2465",
+      "chrome": "65:10459",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:23",
+      "panel": "11:1484",
+      "chrome": "65:10624",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:25",
+      "panel": "11:1809",
+      "chrome": "65:10864",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "6:29",
+      "panel": "11:2340",
+      "chrome": "65:11254",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1852",
+      "panel": "13:1944",
+      "chrome": "65:11431",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1853",
+      "panel": "13:2075",
+      "chrome": "65:11554",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1854",
+      "panel": "13:2197",
+      "chrome": "65:11733",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1855",
+      "panel": "13:2322",
+      "chrome": "65:11890",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1856",
+      "panel": "13:2456",
+      "chrome": "65:12013",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1857",
+      "panel": "13:2622",
+      "chrome": "65:12170",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "12:1858",
+      "panel": "13:2798",
+      "chrome": "65:12335",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "18:2265",
+      "panel": "18:2321",
+      "chrome": "65:12512",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "18:2397",
+      "panel": "18:2466",
+      "chrome": "65:12669",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "48:2397",
+      "panel": "48:2452",
+      "chrome": "65:12800",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    },
+    {
+      "root": "50:7750",
+      "panel": "50:7780",
+      "chrome": "65:12923",
+      "kind": "Context / structured scope",
+      "width": 340,
+      "height": 846,
+      "rows": 3
+    }
+  ],
+  "excluded": [
+    "6:16",
+    "6:17",
+    "6:24",
+    "6:27"
+  ],
+  "validation": {
+    "passed": true,
+    "chromeInstances": 31,
+    "contextRows": 81,
+    "reactionNodes": 259,
+    "unchangedOutsideColumns": 35,
+    "newPreparedScreens": 0,
+    "editable": true,
+    "fonts": [
+      "Inter",
+      "JetBrains Mono"
+    ],
+    "visual": [
+      "file context",
+      "Chat response with composer and copy affordances",
+      "expanded checkpoint",
+      "expanded PR",
+      "light context",
+      "open companion menu",
+      "full workspace"
+    ],
+    "limitations": {
+      "livePlayer": "Attempted; browser Figma session is unauthenticated.",
+      "clipboard": "Copy affordances are editable, but Figma prototype cannot execute the clipboard action.",
+      "keyboard": "Hint is a design affordance; real keyboard/focus is not verified."
+    }
+  },
+  "completedSteps": [
+    "focused-discovery",
+    "existing-components-and-palette",
+    "representative-component-and-route-validation",
+    "representative-visual-corrections",
+    "31-suitable-views",
+    "visual-and-structural-checks"
+  ],
+  "pendingValidations": [],
+  "outsideScopeLimits": {
+    "livePlayer": "Attempted; browser Figma session is unauthenticated.",
+    "clipboard": "Copy affordances are editable, but Figma prototype cannot execute the clipboard action.",
+    "keyboard": "Hint is a design affordance; real keyboard/focus is not verified."
+  },
+  "ledgerFiles": [
+    "figma-companion-representative.json",
+    "figma-companion-chat-representative.json",
+    "figma-companion-applied-1.json",
+    "figma-companion-applied-2.json",
+    "figma-companion-applied-3.json",
+    "figma-companion-applied-4.json",
+    "figma-companion-applied-5.json",
+    "figma-companion-applied-6.json",
+    "figma-companion-applied-7.json",
+    "figma-companion-fixes.json",
+    "figma-companion-checks.json"
+  ],
+  "chatRefinement": {
+    "stateFile": "figma-chat-state-refinement.json",
+    "scope": "Screens 11\u201314 and one continued-streaming snapshot; older chat body IDs superseded",
+    "component": "100:10998",
+    "screens": [
+      "6:12",
+      "101:11081",
+      "6:13",
+      "6:14",
+      "6:15"
+    ]
+  }
+}

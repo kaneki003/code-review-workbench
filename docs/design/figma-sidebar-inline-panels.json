@@ -1,0 +1,52 @@
+{
+  "createdNodeIds": [
+    "46:3029",
+    "46:3041",
+    "46:3042",
+    "46:3043",
+    "46:3054",
+    "46:3055",
+    "46:3056",
+    "46:3057",
+    "46:3068",
+    "46:3069",
+    "46:3070",
+    "46:3071",
+    "46:3072"
+  ],
+  "mutatedNodeIds": [
+    "I46:3029;41:2808",
+    "I46:3029;41:2810",
+    "I46:3029;41:2812",
+    "I46:3029;41:2814",
+    "I46:3029;41:2816",
+    "41:2593"
+  ],
+  "createdVariableIds": [
+    "VariableID:46:3024",
+    "VariableID:46:3025",
+    "VariableID:46:3026",
+    "VariableID:46:3027",
+    "VariableID:46:3028"
+  ],
+  "flags": {
+    "menu": "VariableID:46:3024",
+    "repository": "VariableID:46:3025",
+    "pr": "VariableID:46:3026",
+    "repoTip": "VariableID:46:3027",
+    "prTip": "VariableID:46:3028"
+  },
+  "panels": {
+    "repository": "46:3041",
+    "pr": "46:3055"
+  },
+  "tips": {
+    "repoTip": "46:3069",
+    "prTip": "46:3071"
+  },
+  "menu": "46:3029",
+  "fonts": [
+    "Inter",
+    "JetBrains Mono"
+  ]
+}

@@ -1,0 +1,454 @@
+{
+  "passed": true,
+  "errors": [],
+  "missingDest": [],
+  "counts": {
+    "FRAME": 2145,
+    "INSTANCE": 1755,
+    "TEXT": 2301,
+    "VECTOR": 2350,
+    "RECTANGLE": 234
+  },
+  "mainScreens": 39,
+  "sharedMaster": "41:2593",
+  "fonts": [
+    "Inter",
+    "JetBrains Mono"
+  ],
+  "images": 0,
+  "footers": 0,
+  "actions": 3553,
+  "allModeIds": [
+    "6:5",
+    "6:6",
+    "12:1853",
+    "12:1856",
+    "48:2397",
+    "50:7750"
+  ],
+  "checkpointIds": [
+    "6:2",
+    "6:3",
+    "6:4",
+    "6:7",
+    "6:8",
+    "6:9",
+    "6:10",
+    "6:11",
+    "6:12",
+    "6:13",
+    "6:14",
+    "6:15",
+    "6:16",
+    "6:17",
+    "6:18",
+    "6:19",
+    "6:20",
+    "6:21",
+    "6:22",
+    "6:23",
+    "6:24",
+    "6:25",
+    "6:26",
+    "6:27",
+    "6:28",
+    "6:29",
+    "12:1855",
+    "12:1857",
+    "12:1858",
+    "18:2397"
+  ],
+  "rows": [
+    [
+      "6:2",
+      "48:2525",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:3",
+      "48:2992",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:4",
+      "48:3263",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:5",
+      "48:3515",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:6",
+      "48:3767",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:7",
+      "48:4077",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:8",
+      "48:4351",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:9",
+      "48:4603",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:10",
+      "48:4855",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:11",
+      "48:5107",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:12",
+      "48:5358",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:13",
+      "48:5610",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:14",
+      "48:5862",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:15",
+      "48:6114",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:16",
+      "48:6366",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:17",
+      "48:6618",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:18",
+      "48:6892",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:19",
+      "48:7144",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:20",
+      "48:7396",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:21",
+      "48:7648",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:22",
+      "48:7900",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:23",
+      "48:8152",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:24",
+      "48:8404",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:25",
+      "48:8656",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:26",
+      "48:8908",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:27",
+      "48:9159",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      714,
+      "VERTICAL"
+    ],
+    [
+      "6:28",
+      "48:9411",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "6:29",
+      "48:9663",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1852",
+      "48:9915",
+      "FILES IN CHECKPOINT 1 (2)",
+      2,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1853",
+      "48:10221",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1854",
+      "48:10525",
+      "FILES IN CHECKPOINT 2 (1)",
+      1,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1855",
+      "48:10821",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1856",
+      "48:11097",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1857",
+      "48:11371",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "12:1858",
+      "48:11623",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "18:2265",
+      "48:11875",
+      "FILES IN CHECKPOINT 1 (2)",
+      2,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "18:2397",
+      "48:12939",
+      "FILES IN CHECKPOINT 3 (3)",
+      3,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "48:2397",
+      "48:12179",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ],
+    [
+      "50:7750",
+      "50:7761",
+      "ALL CHANGED FILES (6)",
+      6,
+      334,
+      846,
+      "VERTICAL"
+    ]
+  ],
+  "prototypeState": [
+    {
+      "id": "VariableID:46:3024",
+      "name": "prototype/sidebar-menu",
+      "values": {
+        "11:0": false
+      }
+    },
+    {
+      "id": "VariableID:46:3025",
+      "name": "prototype/sidebar-repository",
+      "values": {
+        "11:0": false
+      }
+    },
+    {
+      "id": "VariableID:46:3026",
+      "name": "prototype/sidebar-pr",
+      "values": {
+        "11:0": false
+      }
+    },
+    {
+      "id": "VariableID:46:3027",
+      "name": "prototype/sidebar-repoTip",
+      "values": {
+        "11:0": false
+      }
+    },
+    {
+      "id": "VariableID:46:3028",
+      "name": "prototype/sidebar-prTip",
+      "values": {
+        "11:0": false
+      }
+    }
+  ],
+  "validation": "Saved structure and reaction graph; visual reviews of shared/sidebar wide/narrow/light compositions. Live player click-through not claimed.",
+  "popupBindings": 195,
+  "finalMenuClosed": true
+}
