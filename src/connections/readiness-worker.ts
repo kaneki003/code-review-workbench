@@ -11,7 +11,8 @@ try {
   database.exec('ROLLBACK');
   const empty = database.prepare('SELECT count(*) AS count FROM probe').get();
   const version = database.prepare('SELECT sqlite_version() AS version').get();
-  if (row?.value !== 'packaged worker' || empty?.count !== 0) throw new Error('SQLite transaction probe failed');
+  if (row?.value !== 'packaged worker' || empty?.count !== 0)
+    throw new Error('SQLite transaction probe failed');
   parentPort?.postMessage({ ok: true, sqlite: version?.version, node: process.versions.node });
 } finally {
   database.close();

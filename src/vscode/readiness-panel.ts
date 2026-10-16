@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { isReadinessRequest, type ReadinessReport } from '../shared/readiness';
 
-export function createReadinessPanel(extensionUri: vscode.Uri, check: () => Promise<ReadinessReport>) {
+export function createReadinessPanel(
+  extensionUri: vscode.Uri,
+  check: () => Promise<ReadinessReport>,
+) {
   let panel: vscode.WebviewPanel | undefined;
   return {
     async show() {
@@ -12,15 +15,32 @@ export function createReadinessPanel(extensionUri: vscode.Uri, check: () => Prom
       let last: ReadinessReport | undefined;
       let running: Promise<ReadinessReport> | undefined;
       function run() {
-        if (!running) running = check().then(report => { last = report; return report; }).finally(() => { running = undefined; });
+        if (!running)
+          running = check()
+            .then((report) => {
+              last = report;
+              return report;
+            })
+            .finally(() => {
+              running = undefined;
+            });
         return running;
       }
       let renderer = '';
-      const project = (report: ReadinessReport): ReadinessReport => ({ ...report, checks: [...report.checks,
-        { id: 'renderer', label: 'Packaged webview', status: 'passed', detail: renderer }] });
+      const project = (report: ReadinessReport): ReadinessReport => ({
+        ...report,
+        checks: [
+          ...report.checks,
+          { id: 'renderer', label: 'Packaged webview', status: 'passed', detail: renderer },
+        ],
+      });
       const resources = vscode.Uri.joinPath(extensionUri, 'dist');
-      const current = vscode.window.createWebviewPanel('codeReviewWorkbench.readiness', 'Workbench readiness', vscode.ViewColumn.Beside,
-        { enableScripts: true, localResourceRoots: [resources] });
+      const current = vscode.window.createWebviewPanel(
+        'codeReviewWorkbench.readiness',
+        'Workbench readiness',
+        vscode.ViewColumn.Beside,
+        { enableScripts: true, localResourceRoots: [resources] },
+      );
       panel = current;
       const instanceId = randomUUID();
       const nonce = randomUUID();
@@ -30,16 +50,30 @@ export function createReadinessPanel(extensionUri: vscode.Uri, check: () => Prom
       let timer: ReturnType<typeof setTimeout>;
       const loaded = new Promise<boolean>((resolve, reject) => {
         settleLoaded = resolve;
-        timer = setTimeout(() => reject(new Error('Packaged readiness screen did not load. Reinstall the VSIX and try again.')), 12000);
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                'Packaged readiness screen did not load. Reinstall the VSIX and try again.',
+              ),
+            ),
+          12000,
+        );
       });
       const listener = current.webview.onDidReceiveMessage(async (message: unknown) => {
-        if (!isReadinessRequest(message) || message.instanceId !== instanceId || panel !== current) return;
+        if (!isReadinessRequest(message) || message.instanceId !== instanceId || panel !== current)
+          return;
         // Renderer metadata is display evidence only; it never authorizes work.
         renderer = message.renderer;
-        const report = message.type === 'ready' ? last ?? await run() : await run();
+        const report = message.type === 'ready' ? (last ?? (await run())) : await run();
         if (panel !== current) return;
-        await current.webview.postMessage({ version: 1, type: 'readinessResult', instanceId,
-          requestId: message.requestId, report: project(report) });
+        await current.webview.postMessage({
+          version: 1,
+          type: 'readinessResult',
+          instanceId,
+          requestId: message.requestId,
+          report: project(report),
+        });
         if (message.type === 'ready') settleLoaded(true);
       });
       current.onDidDispose(() => {
@@ -56,8 +90,12 @@ export function createReadinessPanel(extensionUri: vscode.Uri, check: () => Prom
       try {
         const [report, attached] = await Promise.all([run(), loaded]);
         return attached && panel === current ? project(report) : undefined;
-      } finally { clearTimeout(timer!); }
+      } finally {
+        clearTimeout(timer!);
+      }
     },
-    dispose() { panel?.dispose(); },
+    dispose() {
+      panel?.dispose();
+    },
   };
 }

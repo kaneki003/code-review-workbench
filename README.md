@@ -10,14 +10,15 @@ Use Node >=24.15.0 <25 and pnpm 12.11.2:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm check
-pnpm test
+pnpm validate
 pnpm package
 ```
 
 Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install from VSIX…** command, open a trusted, already-cloned local folder and run **Code Review Workbench: Check Readiness**. Extension users need Git on PATH and VS Code >=1.141.2; a separate Node installation and development server are unnecessary.
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
+
+For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 
 ## Project layout
 

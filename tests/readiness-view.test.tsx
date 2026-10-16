@@ -5,7 +5,9 @@ import { ReadinessView } from '../src/webviews/readiness-view';
 
 afterEach(cleanup);
 test('the retry control has an accessible name and failures remain retryable with textual status', async () => {
-  const check = async () => { throw new Error('Host did not respond. Check again.'); };
+  const check = async () => {
+    throw new Error('Host did not respond. Check again.');
+  };
   render(<ReadinessView check={check} />);
   expect(await screen.findByText('Host did not respond. Check again.')).toBeTruthy();
   const retry = screen.getByRole('button', { name: 'Check again' });

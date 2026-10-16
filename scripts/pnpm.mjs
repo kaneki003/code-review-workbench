@@ -6,6 +6,9 @@ export function spawnPnpm(args, options = {}) {
   const executable = process.env.npm_execpath;
   if (!executable) throw new Error('Run this script through pnpm run.');
   const script = /\.(?:cjs|mjs|js)$/i.test(executable);
-  return spawn(script ? process.execPath : executable, script ? [executable, ...args] : args,
-    { stdio: 'inherit', ...options, shell: false });
+  return spawn(script ? process.execPath : executable, script ? [executable, ...args] : args, {
+    stdio: 'inherit',
+    ...options,
+    shell: false,
+  });
 }

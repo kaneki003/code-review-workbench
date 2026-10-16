@@ -23,6 +23,7 @@ jobs:
         with:
           version: 12.11.2
       - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
       - run: pnpm check
       - run: pnpm test
       - name: Packaged desktop host (Windows and macOS)

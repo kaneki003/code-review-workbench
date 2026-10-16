@@ -4,22 +4,39 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
+import {
+  downloadAndUnzipVSCode,
+  resolveCliArgsFromVSCodeExecutablePath,
+} from '@vscode/test-electron';
 import { spawnPnpm } from './pnpm.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 async function run(command, args, options = {}) {
   await new Promise((resolveRun, reject) => {
     const spawnOptions = { cwd: root, stdio: 'inherit', ...options, shell: false };
-    const child = command === 'pnpm' ? spawnPnpm(args, spawnOptions) : spawn(command, args, spawnOptions);
+    const child =
+      command === 'pnpm' ? spawnPnpm(args, spawnOptions) : spawn(command, args, spawnOptions);
     child.on('error', reject);
-    child.on('exit', code => code === 0 ? resolveRun() : reject(new Error(`${command} exited ${code}`)));
+    child.on('exit', (code) =>
+      code === 0 ? resolveRun() : reject(new Error(`${command} exited ${code}`)),
+    );
   });
 }
 await mkdir(join(root, '.host-test'), { recursive: true });
 const evidence = join(root, '.host-test/evidence.json');
-await writeFile(evidence, JSON.stringify({ status: 'starting', startedAt: new Date().toISOString(),
-  requestedVscode: process.env.CRW_VSCODE_VERSION || 'stable', developerNode: process.versions.node }, null, 2));
+await writeFile(
+  evidence,
+  JSON.stringify(
+    {
+      status: 'starting',
+      startedAt: new Date().toISOString(),
+      requestedVscode: process.env.CRW_VSCODE_VERSION || 'stable',
+      developerNode: process.versions.node,
+    },
+    null,
+    2,
+  ),
+);
 try {
   await run('pnpm', ['run', 'package']);
   const sandbox = await mkdtemp(join(tmpdir(), 'crw packaged host '));
@@ -27,22 +44,53 @@ try {
   const extensions = join(sandbox, 'extensions');
   const profile = join(sandbox, 'profile');
   const harness = join(sandbox, 'harness');
-  await Promise.all([workspace, extensions, harness, join(profile, 'User')].map(path => mkdir(path, { recursive: true })));
-  await writeFile(join(harness, 'package.json'), JSON.stringify({ name: 'readiness-test-harness', publisher: 'fixture', version: '0.0.0', engines: { vscode: '^1.141.2' } }));
+  await Promise.all(
+    [workspace, extensions, harness, join(profile, 'User')].map((path) =>
+      mkdir(path, { recursive: true }),
+    ),
+  );
+  await writeFile(
+    join(harness, 'package.json'),
+    JSON.stringify({
+      name: 'readiness-test-harness',
+      publisher: 'fixture',
+      version: '0.0.0',
+      engines: { vscode: '^1.141.2' },
+    }),
+  );
   // Only this disposable profile disables trust prompts and the built-in Git UI.
-  await writeFile(join(profile, 'User/settings.json'), JSON.stringify({
-    'security.workspace.trust.enabled': false, 'git.enabled': false, 'workbench.startupEditor': 'none',
-    'extensions.autoCheckUpdates': false, 'extensions.autoUpdate': false, 'telemetry.telemetryLevel': 'off',
-  }));
+  await writeFile(
+    join(profile, 'User/settings.json'),
+    JSON.stringify({
+      'security.workspace.trust.enabled': false,
+      'git.enabled': false,
+      'workbench.startupEditor': 'none',
+      'extensions.autoCheckUpdates': false,
+      'extensions.autoUpdate': false,
+      'telemetry.telemetryLevel': 'off',
+    }),
+  );
   await run('git', ['-C', workspace, 'init', '--quiet']);
   await writeFile(join(workspace, 'fixture.txt'), 'staged fixture\n');
   await run('git', ['-C', workspace, 'add', 'fixture.txt']);
   await writeFile(join(workspace, 'fixture.txt'), 'unstaged fixture\n');
   await writeFile(join(workspace, 'untracked.txt'), 'keep me\n');
-  const executable = process.env.CRW_VSCODE_EXECUTABLE || await downloadAndUnzipVSCode({ version: process.env.CRW_VSCODE_VERSION || 'stable' });
-  const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(executable, { reuseMachineInstall: true });
-  const installArgs = [...cliArgs, '--user-data-dir', profile, '--extensions-dir', extensions,
-    '--install-extension', join(root, 'dist/code-review-workbench.vsix'), '--force'];
+  const executable =
+    process.env.CRW_VSCODE_EXECUTABLE ||
+    (await downloadAndUnzipVSCode({ version: process.env.CRW_VSCODE_VERSION || 'stable' }));
+  const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(executable, {
+    reuseMachineInstall: true,
+  });
+  const installArgs = [
+    ...cliArgs,
+    '--user-data-dir',
+    profile,
+    '--extensions-dir',
+    extensions,
+    '--install-extension',
+    join(root, 'dist/code-review-workbench.vsix'),
+    '--force',
+  ];
   if (process.platform === 'win32') {
     // Installed archives can put resources in a versioned subdirectory. Read the
     // vendor launcher rather than assuming an unversioned installation layout.
@@ -51,27 +99,56 @@ try {
     if (!match) throw new Error(`Cannot locate the packaged Windows CLI in ${cli}`);
     const cliScript = resolve(dirname(cli), match[1]);
     const withinInstallation = relative(dirname(executable), cliScript);
-    if (isAbsolute(withinInstallation) || withinInstallation.startsWith('..')) throw new Error('Windows CLI is outside the selected installation');
-    await run(executable, [cliScript, ...installArgs],
-      { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+    if (isAbsolute(withinInstallation) || withinInstallation.startsWith('..'))
+      throw new Error('Windows CLI is outside the selected installation');
+    await run(executable, [cliScript, ...installArgs], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    });
   } else await run(cli, installArgs);
   const suite = join(root, '.host-test/readiness.cjs');
-  await build({ entryPoints: [join(root, 'tests/host/readiness.ts')], outfile: suite, bundle: true,
-    platform: 'node', format: 'cjs', target: 'node24', external: ['vscode', 'mocha'] });
+  await build({
+    entryPoints: [join(root, 'tests/host/readiness.ts')],
+    outfile: suite,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    target: 'node24',
+    external: ['vscode', 'mocha'],
+  });
   const config = join(root, '.host-test/config.mjs');
-  await writeFile(config, `export default ${JSON.stringify({
-    files: [suite], extensionDevelopmentPath: harness, workspaceFolder: workspace,
-    useInstallation: { fromPath: executable }, skipExtensionDependencies: true,
-    env: { CRW_HOST_SANDBOX: sandbox, CRW_SOURCE_ROOT: root, CRW_HOST_EVIDENCE: evidence },
-    launchArgs: ['--user-data-dir', profile, '--extensions-dir', extensions, '--skip-welcome', '--skip-release-notes', '--no-sandbox', '--disable-gpu',
-      '--disable-extension', 'github.copilot', '--disable-extension', 'github.copilot-chat'],
-    mocha: { timeout: 25000, ui: 'tdd' },
-  })};`);
+  await writeFile(
+    config,
+    `export default ${JSON.stringify({
+      files: [suite],
+      extensionDevelopmentPath: harness,
+      workspaceFolder: workspace,
+      useInstallation: { fromPath: executable },
+      skipExtensionDependencies: true,
+      env: { CRW_HOST_SANDBOX: sandbox, CRW_SOURCE_ROOT: root, CRW_HOST_EVIDENCE: evidence },
+      launchArgs: [
+        '--user-data-dir',
+        profile,
+        '--extensions-dir',
+        extensions,
+        '--skip-welcome',
+        '--skip-release-notes',
+        '--no-sandbox',
+        '--disable-gpu',
+        '--disable-extension',
+        'github.copilot',
+        '--disable-extension',
+        'github.copilot-chat',
+      ],
+      mocha: { timeout: 25000, ui: 'tdd' },
+    })};`,
+  );
   console.log(`Installed-host fixtures: ${sandbox}`);
   await run('pnpm', ['exec', 'vscode-test', '--config', config]);
-}
-catch (error) {
+} catch (error) {
   const previous = JSON.parse(await readFile(evidence, 'utf8'));
-  await writeFile(evidence, JSON.stringify({ ...previous, status: 'failed', failure: String(error) }, null, 2));
+  await writeFile(
+    evidence,
+    JSON.stringify({ ...previous, status: 'failed', failure: String(error) }, null, 2),
+  );
   throw error;
 }

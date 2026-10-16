@@ -1,0 +1,16 @@
+# pnpm owns the generated lockfile.
+pnpm-lock.yaml
+
+# Keep the accepted planning documents and installed skills in their source format.
+.agents/
+AGENTS.md
+GLOSSARY.md
+skills-lock.json
+docs/*
+!docs/development/
+
+# Generated output is also excluded by .gitignore.
+dist/
+coverage/
+.host-test/
+.vscode-test/

@@ -2,13 +2,13 @@
 
 Evidence for issue #17, 16 October 2026. These are readiness-package checks; they do not establish the later review milestone, disk-backed SQLite durability, cross-window ownership or safe stash/checkout/restoration.
 
-| OS / architecture | VS Code | Result |
-| --- | --- | --- |
-| Darwin 25.6.0 / arm64 | 1.142.0, current stable | Passed locally: installed VSIX outside source tree, real React handshake, worker transaction/rollback and unchanged repository manifest |
-| Darwin 25.6.0 / arm64 | 1.141.2, minimum | Passed locally with the same installed-package and unchanged-repository checks |
-| Darwin 24.6.0 / arm64 | 1.141.2 and 1.142.0 | Both passed CI |
-| Windows 10.0.26100 / x64 | 1.141.2 and 1.142.0 | Both passed CI |
-| Linux 6.17.0-1022-azure / x64 | 1.141.2 and 1.142.0 | Both passed CI |
+| OS / architecture             | VS Code                 | Result                                                                                                                                  |
+| ----------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Darwin 25.6.0 / arm64         | 1.142.0, current stable | Passed locally: installed VSIX outside source tree, real React handshake, worker transaction/rollback and unchanged repository manifest |
+| Darwin 25.6.0 / arm64         | 1.141.2, minimum        | Passed locally with the same installed-package and unchanged-repository checks                                                          |
+| Darwin 24.6.0 / arm64         | 1.141.2 and 1.142.0     | Both passed CI                                                                                                                          |
+| Windows 10.0.26100 / x64      | 1.141.2 and 1.142.0     | Both passed CI                                                                                                                          |
+| Linux 6.17.0-1022-azure / x64 | 1.141.2 and 1.142.0     | Both passed CI                                                                                                                          |
 
 Both passing local runs measured embedded Node 24.21.0, Electron 43.7.7, Chromium 150.0.7871.250, SQLite 3.53.4 and Git 2.56.0. Developer tools ran on Node 24.22.0 and pnpm 12.11.2. The worker uses the embedded runtime, not developer Node. The report also explicitly keeps review ownership pending and review availability false.
 

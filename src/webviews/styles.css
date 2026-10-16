@@ -1,5 +1,5 @@
-@import "tailwindcss/theme.css";
-@import "tailwindcss/utilities.css";
+@import 'tailwindcss/theme.css';
+@import 'tailwindcss/utilities.css';
 @source "./*.tsx";
 
 @theme inline {
@@ -10,8 +10,25 @@
   --color-outline: var(--vscode-contrastBorder, var(--vscode-panel-border));
 }
 
-body { margin: 0; background: var(--vscode-editor-background); color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
-button { font: inherit; border: 1px solid var(--vscode-button-border, transparent); cursor: pointer; }
-button:hover:enabled { background: var(--vscode-button-hoverBackground); }
-button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 3px; }
-p { line-height: 1.5; }
+body {
+  margin: 0;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+button {
+  font: inherit;
+  border: 1px solid var(--vscode-button-border, transparent);
+  cursor: pointer;
+}
+button:hover:enabled {
+  background: var(--vscode-button-hoverBackground);
+}
+button:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 3px;
+}
+p {
+  line-height: 1.5;
+}

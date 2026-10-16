@@ -6,21 +6,45 @@
   "publisher": "kaneki003",
   "private": true,
   "type": "module",
-  "repository": { "type": "git", "url": "https://github.com/kaneki003/code-review-workbench.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaneki003/code-review-workbench.git"
+  },
   "license": "UNLICENSED",
-  "engines": { "node": ">=24.15.0 <25", "vscode": "^1.141.2" },
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "vscode": "^1.141.2"
+  },
   "packageManager": "pnpm@12.11.2",
-  "extensionKind": ["ui"],
+  "extensionKind": [
+    "ui"
+  ],
   "main": "./dist/extension.cjs",
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "capabilities": {
-    "untrustedWorkspaces": { "supported": false, "description": "Readiness requires a trusted local folder before running Git or the SQLite worker." },
-    "virtualWorkspaces": { "supported": false, "description": "Open an already-cloned repository in a local desktop folder." }
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Readiness requires a trusted local folder before running Git or the SQLite worker."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Open an already-cloned repository in a local desktop folder."
+    }
   },
   "contributes": {
-    "commands": [{ "command": "codeReviewWorkbench.checkReadiness", "title": "Code Review Workbench: Check Readiness" }]
+    "commands": [
+      {
+        "command": "codeReviewWorkbench.checkReadiness",
+        "title": "Code Review Workbench: Check Readiness"
+      }
+    ]
   },
   "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "pnpm format:check && pnpm check && pnpm test",
     "dev": "node scripts/build.mjs --watch",
     "check": "tsc --noEmit",
     "test": "vitest run",
@@ -28,7 +52,10 @@
     "build": "node scripts/build.mjs",
     "package": "pnpm run build && pnpm exec vsce package --no-dependencies --allow-missing-repository --skip-license --out dist/code-review-workbench.vsix"
   },
-  "dependencies": { "react": "19.3.1", "react-dom": "19.3.1" },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
     "@testing-library/dom": "10.4.2",
@@ -44,6 +71,7 @@
     "esbuild": "0.28.2",
     "jsdom": "30.1.3",
     "mocha": "11.7.6",
+    "prettier": "3.9.10",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.4",

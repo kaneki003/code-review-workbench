@@ -6,16 +6,34 @@ import type { ReadinessRequest } from '../src/shared/readiness';
 test('the real webview entry rejects malformed and stale host responses and requests a fresh check', async () => {
   const requests: ReadinessRequest[] = [];
   document.body.innerHTML = '<div id="root" data-instance="fixture-instance"></div>';
-  Object.assign(globalThis, { acquireVsCodeApi: () => ({ postMessage: (request: ReadinessRequest) => requests.push(request) }) });
-  await act(async () => { await import('../src/webviews/main'); });
-  await waitFor(() => expect(requests.length).toBe(1));
-  const respond = async (request: ReadinessRequest, detail: string, extra = {}) => act(async () => {
-    window.dispatchEvent(new MessageEvent('message', { data: {
-      version: 1, type: 'readinessResult', instanceId: request.instanceId, requestId: request.requestId,
-      report: { checkedAt: '2026-10-16T00:00:00Z', reviewAvailable: false,
-        checks: [{ id: 'git', label: 'Git', status: 'blocked', detail }] }, ...extra,
-    } }));
+  Object.assign(globalThis, {
+    acquireVsCodeApi: () => ({
+      postMessage: (request: ReadinessRequest) => requests.push(request),
+    }),
   });
+  await act(async () => {
+    await import('../src/webviews/main');
+  });
+  await waitFor(() => expect(requests.length).toBe(1));
+  const respond = async (request: ReadinessRequest, detail: string, extra = {}) =>
+    act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            version: 1,
+            type: 'readinessResult',
+            instanceId: request.instanceId,
+            requestId: request.requestId,
+            report: {
+              checkedAt: '2026-10-16T00:00:00Z',
+              reviewAvailable: false,
+              checks: [{ id: 'git', label: 'Git', status: 'blocked', detail }],
+            },
+            ...extra,
+          },
+        }),
+      );
+    });
   await respond(requests[0]!, 'malformed', { report: { reviewAvailable: true } });
   await respond({ ...requests[0]!, instanceId: 'old-view' }, 'stale');
   expect(screen.queryByText('malformed')).toBeNull();
