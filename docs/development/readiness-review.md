@@ -22,3 +22,13 @@ Two initial findings, all resolved:
 The most consequential initial Spec finding was incomplete Windows packaged validation. The [completed six-cell run](https://github.com/kaneki003/code-review-workbench/actions/runs/38903955463) now supplies actual minimum/current platform evidence. No scope creep was found. Full manual native accessibility/visual behavior and later ownership/disk-durability remain outside the measured readiness evidence.
 
 Standards: 3 findings resolved, 0 open. Spec: 2 findings resolved, 0 open.
+
+## Readability and formatting follow-up
+
+The owner requested readable control flow, an enforced formatter and a walkthrough that accounts for every changed file. The follow-up covers `f7abb2a...8df4476` and was reviewed again by separate Standards and Spec agents.
+
+- Prettier is pinned, available through `format` and `format:check`, and checked by CI. `validate` combines formatting, types and the fast tests.
+- Named operations replace compressed callbacks and chained conditions in the manager, panel, message validators, connections and host-test launcher. The reviewers found no unintended behavior changes or speculative abstractions.
+- The walkthrough and rewritten PR description explain all 38 files, actual connection wiring, 14 fast tests, two installed-host tests and daily commands. A wording correction distinguishes the host's screen-identity check from the browser's screen-and-request matching.
+
+Both follow-up reviews finished with 0 actionable findings. Local formatting, types, all 14 fast tests and both installed tests passed after the refactor. The new PR checks provide the cross-platform result for this revision; the platform records elsewhere retain their original tested commit.
