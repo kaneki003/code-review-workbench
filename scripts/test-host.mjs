@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
@@ -44,9 +44,15 @@ try {
   const installArgs = [...cliArgs, '--user-data-dir', profile, '--extensions-dir', extensions,
     '--install-extension', join(root, 'dist/code-review-workbench.vsix'), '--force'];
   if (process.platform === 'win32') {
-    // Match the vendor's code.cmd launcher using Electron's Node mode directly;
-    // executable and source/temp paths containing spaces stay individual arguments.
-    await run(executable, [join(dirname(executable), 'resources/app/out/cli.js'), ...installArgs],
+    // Installed archives can put resources in a versioned subdirectory. Read the
+    // vendor launcher rather than assuming an unversioned installation layout.
+    const launcher = await readFile(cli, 'utf8');
+    const match = /"%~dp0([^"\r\n]*resources\\app\\out\\cli\.js)"/i.exec(launcher);
+    if (!match) throw new Error(`Cannot locate the packaged Windows CLI in ${cli}`);
+    const cliScript = resolve(dirname(cli), match[1]);
+    const withinInstallation = relative(dirname(executable), cliScript);
+    if (isAbsolute(withinInstallation) || withinInstallation.startsWith('..')) throw new Error('Windows CLI is outside the selected installation');
+    await run(executable, [cliScript, ...installArgs],
       { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
   } else await run(cli, installArgs);
   const suite = join(root, '.host-test/readiness.cjs');
