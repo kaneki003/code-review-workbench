@@ -23,7 +23,7 @@ export async function probeGit(folder: string): Promise<Capability> {
   try {
     const { stdout } = await execute('git', ['--no-optional-locks', '-c', 'core.fsmonitor=false',
       'rev-parse', '--is-inside-work-tree', '--is-bare-repository'], options);
-    if (stdout.trim() !== 'true\nfalse') throw new Error('Not a working repository');
+    if (stdout.trim().replaceAll('\r\n', '\n') !== 'true\nfalse') throw new Error('Not a working repository');
     return result('passed', `${version}; local working repository detected. Read-only discovery passed. Checkout, stash and ref-update behavior still require later preservation/ownership fixtures.`);
   } catch {
     return result('blocked', `${version}; no accessible working repository. Open an already-cloned repository; check Git safe.directory configuration and folder access. Nothing was cloned.`);

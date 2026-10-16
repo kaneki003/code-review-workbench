@@ -1,5 +1,5 @@
 import { build, context } from 'esbuild';
-import { spawn } from 'node:child_process';
+import { spawnPnpm } from './pnpm.mjs';
 import { mkdir, rm } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 
@@ -22,9 +22,9 @@ if (watch) {
 } else {
   await Promise.all(bundles.map(options => build(options)));
 }
-const css = spawn(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', [
+const css = spawnPnpm([
   'exec', 'tailwindcss', '-i', 'src/webviews/styles.css', '-o', 'dist/readiness.css',
   watch ? '--watch' : '--minify',
-], { stdio: 'inherit', shell: process.platform === 'win32' });
+]);
 css.on('error', error => { console.error(error); process.exitCode = 1; });
 css.on('exit', code => { if (code) process.exitCode = code; });
