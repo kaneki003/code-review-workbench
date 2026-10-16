@@ -32,3 +32,7 @@ The owner requested readable control flow, an enforced formatter and a walkthrou
 - The walkthrough and rewritten PR description explain all 38 files, actual connection wiring, 14 fast tests, two installed-host tests and daily commands. A wording correction distinguishes the host's screen-identity check from the browser's screen-and-request matching.
 
 Both follow-up reviews finished with 0 actionable findings. Local formatting, types, all 14 fast tests and both installed tests passed after the refactor. The new PR checks provide the cross-platform result for this revision; the platform records elsewhere retain their original tested commit.
+
+## Windows formatting check
+
+The first CI run after adding Prettier failed in both Windows jobs at `format:check`; the four Linux/macOS jobs passed. A local `git -c core.autocrlf=true checkout-index` reproduction produced CRLF text and the same formatter failure using the pinned version and explicit configuration. Adding `.gitattributes` with `* text=auto eol=lf` made the same checkout produce LF and pass. This preserves binary-file detection and makes checkout behavior agree with Prettier's LF rule. The file map now includes this rule as the 39th file.

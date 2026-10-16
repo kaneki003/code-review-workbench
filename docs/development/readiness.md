@@ -35,7 +35,7 @@ For development, open this worktree in VS Code and press F5 using **Workbench re
 | `pnpm package`                                 | Before installing or sharing the extension      | Builds, then creates `dist/code-review-workbench.vsix`. A VSIX is VS Code's extension installer.                           |
 | `pnpm test:host`                               | Before handing a runtime change back for review | Builds the installer, installs it in a disposable profile, launches real VS Code and runs the two installed-package tests. |
 
-VS Code recommends the Prettier extension and formats on save when it is installed. The workspace settings use this repo's Prettier configuration; they do not change global editor settings. The command-line checks work without the editor extension.
+VS Code recommends the Prettier extension and formats on save when it is installed. The workspace settings use this repo's Prettier configuration; they do not change global editor settings. The command-line checks work without the editor extension. `.gitattributes` keeps text files on LF during checkout, including on Windows, so Git and Prettier use the same line-ending rule.
 
 Prettier controls layout. Readable control flow still needs review: use descriptive names, braces around branches, separate statements and named steps where a long callback hides its purpose. Explain why a timer, identity check or process boundary exists. Keep helpers next to the code that uses them.
 
@@ -110,7 +110,7 @@ Closing during initial loading settles that command as cancelled (`undefined`) a
 
 ## Reading order: every changed file
 
-There are 38 changed files after adding the formatter and editor settings. The groups below account for all of them. Start with the behavior and wiring, then the tests, then the machinery that builds and checks it. Read the generated lockfile as dependency evidence rather than line-by-line application logic.
+There are 39 changed files after adding the formatter, editor settings and checkout line-ending rule. The groups below account for all of them. Start with the behavior and wiring, then the tests, then the machinery that builds and checks it. Read the generated lockfile as dependency evidence rather than line-by-line application logic.
 
 ### 1. Entry point and what the user can run — 2 files
 
@@ -163,18 +163,19 @@ There are 38 changed files after adding the formatter and editor settings. The g
 | [.vscode/settings.json](../../.vscode/settings.json)             | Uses the repository's formatter and formats supported source/config files on save.                              |
 | [.github/workflows/check.yml](../../.github/workflows/check.yml) | Runs formatting, typechecking, fast tests and installed-package tests on the six platform/version combinations. |
 
-### 6. Formatting, compiler and packaging rules — 8 files
+### 6. Formatting, compiler and packaging rules — 9 files
 
-| File                                             | Why it is here                                                                                                                |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| [.prettierrc.json](../../.prettierrc.json)       | Agreed formatting: single quotes, trailing commas, 100-column target and LF line endings.                                     |
-| [.prettierignore](../../.prettierignore)         | Excludes generated output, the pnpm-owned lockfile and pre-existing planning/skill records; development docs remain included. |
-| [tsconfig.json](../../tsconfig.json)             | Strict TypeScript checking for source and tests. esbuild does not perform this check.                                         |
-| [.npmrc](../../.npmrc)                           | Refuses incompatible development Node engines during installation.                                                            |
-| [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | Allows esbuild's required install hook and explicitly disables two optional transitive hooks.                                 |
-| [pnpm-lock.yaml](../../pnpm-lock.yaml)           | Generated record of exact resolved dependencies. This accounts for roughly 4,450 lines of the initial PR; pnpm maintains it.  |
-| [.vscodeignore](../../.vscodeignore)             | Installer allowlist: manifest, README and the four compiled assets. Source and development tools stay out of the VSIX.        |
-| [.gitignore](../../.gitignore)                   | Keeps dependencies, compiled output, VSIX files and disposable test output out of Git.                                        |
+| File                                             | Why it is here                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [.prettierrc.json](../../.prettierrc.json)       | Agreed formatting: single quotes, trailing commas, 100-column target and LF line endings.                                                              |
+| [.prettierignore](../../.prettierignore)         | Excludes generated output, the pnpm-owned lockfile and pre-existing planning/skill records; development docs remain included.                          |
+| [.gitattributes](../../.gitattributes)           | Checks out text files with LF line endings on every platform, so Windows Git settings cannot make formatted files fail CI. Binary files remain binary. |
+| [tsconfig.json](../../tsconfig.json)             | Strict TypeScript checking for source and tests. esbuild does not perform this check.                                                                  |
+| [.npmrc](../../.npmrc)                           | Refuses incompatible development Node engines during installation.                                                                                     |
+| [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | Allows esbuild's required install hook and explicitly disables two optional transitive hooks.                                                          |
+| [pnpm-lock.yaml](../../pnpm-lock.yaml)           | Generated record of exact resolved dependencies. This accounts for roughly 4,450 lines of the initial PR; pnpm maintains it.                           |
+| [.vscodeignore](../../.vscodeignore)             | Installer allowlist: manifest, README and the four compiled assets. Source and development tools stay out of the VSIX.                                 |
+| [.gitignore](../../.gitignore)                   | Keeps dependencies, compiled output, VSIX files and disposable test output out of Git.                                                                 |
 
 ### 7. Walkthrough and recorded evidence — 4 files
 
