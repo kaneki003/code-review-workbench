@@ -10,145 +10,194 @@ import {
 } from '@vscode/test-electron';
 import { spawnPnpm } from './pnpm.mjs';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
-async function run(command, args, options = {}) {
-  await new Promise((resolveRun, reject) => {
-    const spawnOptions = { cwd: root, stdio: 'inherit', ...options, shell: false };
-    const child =
-      command === 'pnpm' ? spawnPnpm(args, spawnOptions) : spawn(command, args, spawnOptions);
-    child.on('error', reject);
-    child.on('exit', (code) =>
-      code === 0 ? resolveRun() : reject(new Error(`${command} exited ${code}`)),
-    );
-  });
-}
-await mkdir(join(root, '.host-test'), { recursive: true });
-const evidence = join(root, '.host-test/evidence.json');
-await writeFile(
-  evidence,
-  JSON.stringify(
-    {
-      status: 'starting',
-      startedAt: new Date().toISOString(),
-      requestedVscode: process.env.CRW_VSCODE_VERSION || 'stable',
-      developerNode: process.versions.node,
-    },
-    null,
-    2,
-  ),
-);
+const projectRoot = fileURLToPath(new URL('..', import.meta.url));
+const testOutputDirectory = join(projectRoot, '.host-test');
+const evidenceFile = join(testOutputDirectory, 'evidence.json');
+
+await mkdir(testOutputDirectory, { recursive: true });
+await writeJson(evidenceFile, {
+  status: 'starting',
+  startedAt: new Date().toISOString(),
+  requestedVscode: process.env.CRW_VSCODE_VERSION || 'stable',
+  developerNode: process.versions.node,
+});
+
 try {
-  await run('pnpm', ['run', 'package']);
-  const sandbox = await mkdtemp(join(tmpdir(), 'crw packaged host '));
-  const workspace = join(sandbox, 'repository');
-  const extensions = join(sandbox, 'extensions');
-  const profile = join(sandbox, 'profile');
-  const harness = join(sandbox, 'harness');
-  await Promise.all(
-    [workspace, extensions, harness, join(profile, 'User')].map((path) =>
-      mkdir(path, { recursive: true }),
-    ),
-  );
-  await writeFile(
-    join(harness, 'package.json'),
-    JSON.stringify({
-      name: 'readiness-test-harness',
-      publisher: 'fixture',
-      version: '0.0.0',
-      engines: { vscode: '^1.141.2' },
-    }),
-  );
-  // Only this disposable profile disables trust prompts and the built-in Git UI.
-  await writeFile(
-    join(profile, 'User/settings.json'),
-    JSON.stringify({
-      'security.workspace.trust.enabled': false,
-      'git.enabled': false,
-      'workbench.startupEditor': 'none',
-      'extensions.autoCheckUpdates': false,
-      'extensions.autoUpdate': false,
-      'telemetry.telemetryLevel': 'off',
-    }),
-  );
-  await run('git', ['-C', workspace, 'init', '--quiet']);
-  await writeFile(join(workspace, 'fixture.txt'), 'staged fixture\n');
-  await run('git', ['-C', workspace, 'add', 'fixture.txt']);
-  await writeFile(join(workspace, 'fixture.txt'), 'unstaged fixture\n');
-  await writeFile(join(workspace, 'untracked.txt'), 'keep me\n');
-  const executable =
+  await runCommand('pnpm', ['run', 'package']);
+  const fixture = await createDisposableWorkspace();
+  const vscodeExecutable =
     process.env.CRW_VSCODE_EXECUTABLE ||
     (await downloadAndUnzipVSCode({ version: process.env.CRW_VSCODE_VERSION || 'stable' }));
-  const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(executable, {
+
+  await installPackagedExtension(vscodeExecutable, fixture);
+  const runnerConfig = await prepareHostTestRunner(vscodeExecutable, fixture);
+
+  console.log(`Installed-host fixtures: ${fixture.directory}`);
+  await runCommand('pnpm', ['exec', 'vscode-test', '--config', runnerConfig]);
+} catch (error) {
+  // Keep versions and any completed test outcomes, even if a later step fails.
+  const recordedEvidence = JSON.parse(await readFile(evidenceFile, 'utf8'));
+  await writeJson(evidenceFile, {
+    ...recordedEvidence,
+    status: 'failed',
+    failure: String(error),
+  });
+  throw error;
+}
+
+async function createDisposableWorkspace() {
+  // Spaces make every platform exercise argument handling as well as packaging.
+  const directory = await mkdtemp(join(tmpdir(), 'crw packaged host '));
+  const fixture = {
+    directory,
+    workspace: join(directory, 'repository'),
+    extensions: join(directory, 'extensions'),
+    profile: join(directory, 'profile'),
+    harness: join(directory, 'harness'),
+  };
+
+  const fixtureDirectories = [
+    fixture.workspace,
+    fixture.extensions,
+    fixture.harness,
+    join(fixture.profile, 'User'),
+  ];
+  await Promise.all(fixtureDirectories.map((path) => mkdir(path, { recursive: true })));
+
+  // VS Code's test runner needs a development extension. This empty harness runs
+  // the tests; the real workbench is loaded from the separately installed VSIX.
+  await writeJson(join(fixture.harness, 'package.json'), {
+    name: 'readiness-test-harness',
+    publisher: 'fixture',
+    version: '0.0.0',
+    engines: { vscode: '^1.141.2' },
+  });
+
+  // These settings affect only the disposable profile, never the user's profile.
+  await writeJson(join(fixture.profile, 'User/settings.json'), {
+    'security.workspace.trust.enabled': false,
+    'git.enabled': false,
+    'workbench.startupEditor': 'none',
+    'extensions.autoCheckUpdates': false,
+    'extensions.autoUpdate': false,
+    'telemetry.telemetryLevel': 'off',
+  });
+
+  await runCommand('git', ['-C', fixture.workspace, 'init', '--quiet']);
+  await writeFile(join(fixture.workspace, 'fixture.txt'), 'staged fixture\n');
+  await runCommand('git', ['-C', fixture.workspace, 'add', 'fixture.txt']);
+  await writeFile(join(fixture.workspace, 'fixture.txt'), 'unstaged fixture\n');
+  await writeFile(join(fixture.workspace, 'untracked.txt'), 'keep me\n');
+
+  return fixture;
+}
+
+async function installPackagedExtension(vscodeExecutable, fixture) {
+  const [cliLauncher, ...cliArguments] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutable, {
     reuseMachineInstall: true,
   });
-  const installArgs = [
-    ...cliArgs,
+  const installArguments = [
+    ...cliArguments,
     '--user-data-dir',
-    profile,
+    fixture.profile,
     '--extensions-dir',
-    extensions,
+    fixture.extensions,
     '--install-extension',
-    join(root, 'dist/code-review-workbench.vsix'),
+    join(projectRoot, 'dist/code-review-workbench.vsix'),
     '--force',
   ];
-  if (process.platform === 'win32') {
-    // Installed archives can put resources in a versioned subdirectory. Read the
-    // vendor launcher rather than assuming an unversioned installation layout.
-    const launcher = await readFile(cli, 'utf8');
-    const match = /"%~dp0([^"\r\n]*resources\\app\\out\\cli\.js)"/i.exec(launcher);
-    if (!match) throw new Error(`Cannot locate the packaged Windows CLI in ${cli}`);
-    const cliScript = resolve(dirname(cli), match[1]);
-    const withinInstallation = relative(dirname(executable), cliScript);
-    if (isAbsolute(withinInstallation) || withinInstallation.startsWith('..'))
-      throw new Error('Windows CLI is outside the selected installation');
-    await run(executable, [cliScript, ...installArgs], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    });
-  } else await run(cli, installArgs);
-  const suite = join(root, '.host-test/readiness.cjs');
+
+  if (process.platform !== 'win32') {
+    await runCommand(cliLauncher, installArguments);
+    return;
+  }
+
+  // Windows .cmd files need a shell. Resolve the vendor's actual JS entry instead
+  // so Node can preserve each argument, including source/temp paths with spaces.
+  const cliScript = await findWindowsCliScript(cliLauncher, vscodeExecutable);
+  await runCommand(vscodeExecutable, [cliScript, ...installArguments], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+}
+
+async function findWindowsCliScript(cliLauncher, vscodeExecutable) {
+  // Some archives put resources under a versioned directory. The vendor launcher
+  // identifies that location; assuming resources/app is next to Code.exe fails.
+  const launcherSource = await readFile(cliLauncher, 'utf8');
+  const cliPathMatch = /"%~dp0([^"\r\n]*resources\\app\\out\\cli\.js)"/i.exec(launcherSource);
+  if (!cliPathMatch) {
+    throw new Error(`Cannot locate the packaged Windows CLI in ${cliLauncher}`);
+  }
+
+  const cliScript = resolve(dirname(cliLauncher), cliPathMatch[1]);
+  const relativeCliPath = relative(dirname(vscodeExecutable), cliScript);
+  if (isAbsolute(relativeCliPath) || relativeCliPath.startsWith('..')) {
+    throw new Error('Windows CLI is outside the selected installation');
+  }
+  return cliScript;
+}
+
+async function prepareHostTestRunner(vscodeExecutable, fixture) {
+  const compiledTests = join(testOutputDirectory, 'readiness.cjs');
   await build({
-    entryPoints: [join(root, 'tests/host/readiness.ts')],
-    outfile: suite,
+    entryPoints: [join(projectRoot, 'tests/host/readiness.ts')],
+    outfile: compiledTests,
     bundle: true,
     platform: 'node',
     format: 'cjs',
     target: 'node24',
     external: ['vscode', 'mocha'],
   });
-  const config = join(root, '.host-test/config.mjs');
-  await writeFile(
-    config,
-    `export default ${JSON.stringify({
-      files: [suite],
-      extensionDevelopmentPath: harness,
-      workspaceFolder: workspace,
-      useInstallation: { fromPath: executable },
-      skipExtensionDependencies: true,
-      env: { CRW_HOST_SANDBOX: sandbox, CRW_SOURCE_ROOT: root, CRW_HOST_EVIDENCE: evidence },
-      launchArgs: [
-        '--user-data-dir',
-        profile,
-        '--extensions-dir',
-        extensions,
-        '--skip-welcome',
-        '--skip-release-notes',
-        '--no-sandbox',
-        '--disable-gpu',
-        '--disable-extension',
-        'github.copilot',
-        '--disable-extension',
-        'github.copilot-chat',
-      ],
-      mocha: { timeout: 25000, ui: 'tdd' },
-    })};`,
-  );
-  console.log(`Installed-host fixtures: ${sandbox}`);
-  await run('pnpm', ['exec', 'vscode-test', '--config', config]);
-} catch (error) {
-  const previous = JSON.parse(await readFile(evidence, 'utf8'));
-  await writeFile(
-    evidence,
-    JSON.stringify({ ...previous, status: 'failed', failure: String(error) }, null, 2),
-  );
-  throw error;
+
+  const runnerConfig = {
+    files: [compiledTests],
+    extensionDevelopmentPath: fixture.harness,
+    workspaceFolder: fixture.workspace,
+    useInstallation: { fromPath: vscodeExecutable },
+    skipExtensionDependencies: true,
+    env: {
+      CRW_HOST_SANDBOX: fixture.directory,
+      CRW_SOURCE_ROOT: projectRoot,
+      CRW_HOST_EVIDENCE: evidenceFile,
+    },
+    launchArgs: [
+      '--user-data-dir',
+      fixture.profile,
+      '--extensions-dir',
+      fixture.extensions,
+      '--skip-welcome',
+      '--skip-release-notes',
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-extension',
+      'github.copilot',
+      '--disable-extension',
+      'github.copilot-chat',
+    ],
+    mocha: { timeout: 25000, ui: 'tdd' },
+  };
+  const configFile = join(testOutputDirectory, 'config.mjs');
+  await writeFile(configFile, `export default ${JSON.stringify(runnerConfig, null, 2)};`);
+  return configFile;
+}
+
+async function runCommand(command, args, options = {}) {
+  const spawnOptions = { cwd: projectRoot, stdio: 'inherit', ...options, shell: false };
+  const child =
+    command === 'pnpm' ? spawnPnpm(args, spawnOptions) : spawn(command, args, spawnOptions);
+
+  await new Promise((resolveRun, reject) => {
+    child.on('error', reject);
+    child.on('exit', (exitCode) => {
+      if (exitCode === 0) {
+        resolveRun();
+      } else {
+        reject(new Error(`${command} exited ${exitCode}`));
+      }
+    });
+  });
+}
+
+async function writeJson(path, value) {
+  await writeFile(path, JSON.stringify(value, null, 2));
 }

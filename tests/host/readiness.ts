@@ -6,30 +6,36 @@ import * as vscode from 'vscode';
 import { suite, test, suiteSetup, suiteTeardown, teardown } from 'mocha';
 import type { ReadinessReport } from '../../src/shared/readiness';
 
-async function manifest(directory: string): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  async function visit(path: string, prefix: string) {
-    for (const entry of await readdir(path, { withFileTypes: true })) {
-      const key = `${prefix}${entry.name}`;
-      if (entry.isDirectory()) await visit(join(path, entry.name), `${key}/`);
-      else
-        result[key] = createHash('sha256')
-          .update(await readFile(join(path, entry.name)))
-          .digest('hex');
+interface HostTestEvidence {
+  status: string;
+  tests: { name: string; result: string; failure?: string }[];
+  host?: unknown;
+  report?: ReadinessReport;
+  extensionPath?: string;
+}
+
+async function fingerprintFiles(directory: string): Promise<Record<string, string>> {
+  const fileHashes: Record<string, string> = {};
+
+  async function visitDirectory(absolutePath: string, relativePrefix: string) {
+    for (const entry of await readdir(absolutePath, { withFileTypes: true })) {
+      const relativePath = `${relativePrefix}${entry.name}`;
+      const entryPath = join(absolutePath, entry.name);
+
+      if (entry.isDirectory()) {
+        await visitDirectory(entryPath, `${relativePath}/`);
+      } else {
+        const contents = await readFile(entryPath);
+        fileHashes[relativePath] = createHash('sha256').update(contents).digest('hex');
+      }
     }
   }
-  await visit(directory, '');
-  return result;
+  await visitDirectory(directory, '');
+  return fileHashes;
 }
 
 suite('Installed readiness VSIX', () => {
-  const evidence: {
-    status: string;
-    tests: { name: string; result: string; failure?: string }[];
-    host?: unknown;
-    report?: ReadinessReport;
-    extensionPath?: string;
-  } = { status: 'running', tests: [] };
+  const evidence: HostTestEvidence = { status: 'running', tests: [] };
   const saveEvidence = () =>
     writeFile(process.env.CRW_HOST_EVIDENCE!, JSON.stringify(evidence, null, 2));
   suiteSetup(async () => {
@@ -60,7 +66,9 @@ suite('Installed readiness VSIX', () => {
   test('loads compiled UI and SQLite worker outside the source tree without changing the repository', async () => {
     const sandbox = process.env.CRW_HOST_SANDBOX!;
     const extension = vscode.extensions.getExtension('kaneki003.code-review-workbench');
-    if (extension) evidence.extensionPath = extension.extensionPath;
+    if (extension) {
+      evidence.extensionPath = extension.extensionPath;
+    }
     await saveEvidence();
     assert.ok(extension, 'VSIX must be installed');
     const installed = await realpath(extension.extensionPath);
@@ -69,7 +77,7 @@ suite('Installed readiness VSIX', () => {
     const sourceRelative = relative(await realpath(process.env.CRW_SOURCE_ROOT!), installed);
     assert.ok(isAbsolute(sourceRelative) || sourceRelative.startsWith('..'));
     const workspace = vscode.workspace.workspaceFolders![0]!.uri.fsPath;
-    const before = await manifest(workspace);
+    const filesBeforeCheck = await fingerprintFiles(workspace);
     const report = await vscode.commands.executeCommand<ReadinessReport>(
       'codeReviewWorkbench.checkReadiness',
     );
@@ -91,40 +99,42 @@ suite('Installed readiness VSIX', () => {
     assert.equal(report.reviewAvailable, false);
     assert.equal(report.checks.find((check) => check.id === 'ownership')?.status, 'pending');
     assert.deepEqual(
-      await manifest(workspace),
-      before,
+      await fingerprintFiles(workspace),
+      filesBeforeCheck,
       'Every file, index and ref must remain unchanged',
     );
     console.log(JSON.stringify(report, null, 2));
   });
   test('reinvoking during loading cancels the old attachment without a false installation failure', async () => {
-    let disposeListener: vscode.Disposable;
-    let timer: ReturnType<typeof setTimeout>;
-    const opened = new Promise<void>((resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('Readiness tab did not open')), 5000);
-      disposeListener = vscode.window.tabGroups.onDidChangeTabs((event) => {
-        if (event.opened.some((tab) => tab.label === 'Workbench readiness')) resolve();
+    let tabSubscription: vscode.Disposable;
+    let tabOpenTimeout: ReturnType<typeof setTimeout>;
+    const readinessTabOpened = new Promise<void>((resolve, reject) => {
+      tabOpenTimeout = setTimeout(() => reject(new Error('Readiness tab did not open')), 5000);
+      tabSubscription = vscode.window.tabGroups.onDidChangeTabs((event) => {
+        if (event.opened.some((tab) => tab.label === 'Workbench readiness')) {
+          resolve();
+        }
       });
     });
-    const older = vscode.commands.executeCommand<ReadinessReport | undefined>(
+    const firstCommand = vscode.commands.executeCommand<ReadinessReport | undefined>(
       'codeReviewWorkbench.checkReadiness',
     );
     try {
-      await opened;
-      const current = vscode.commands.executeCommand<ReadinessReport>(
+      await readinessTabOpened;
+      const replacementCommand = vscode.commands.executeCommand<ReadinessReport>(
         'codeReviewWorkbench.checkReadiness',
       );
       assert.equal(
-        await older,
+        await firstCommand,
         undefined,
         'Closing the old attachment is cancellation, not a package failure',
       );
-      const report = await current;
+      const report = await replacementCommand;
       assert.ok(report);
       assert.equal(report.checks.find((check) => check.id === 'renderer')?.status, 'passed');
     } finally {
-      disposeListener!.dispose();
-      clearTimeout(timer!);
+      tabSubscription!.dispose();
+      clearTimeout(tabOpenTimeout!);
     }
   });
 });

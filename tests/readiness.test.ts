@@ -7,7 +7,7 @@ import { ReviewManager, type HostEnvironment } from '../src/application/review-m
 import { probeGit } from '../src/connections/git-readiness';
 import { probeSqlite } from '../src/connections/sqlite-readiness';
 
-const local: HostEnvironment = {
+const supportedHost: HostEnvironment = {
   vscode: '1.142.0',
   node: '24.21.0',
   electron: '43.7.7',
@@ -22,7 +22,7 @@ const local: HostEnvironment = {
 
 test('a remote workspace explains the limitation before executing local probes', async () => {
   const manager = new ReviewManager({
-    environment: () => ({ ...local, remote: 'ssh-remote' }),
+    environment: () => ({ ...supportedHost, remote: 'ssh-remote' }),
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -31,32 +31,37 @@ test('a remote workspace explains the limitation before executing local probes',
     },
   });
   const report = await manager.checkReadiness();
-  expect(report.checks.find((c) => c.id === 'workspace')).toMatchObject({
+  expect(report.checks.find((check) => check.id === 'workspace')).toMatchObject({
     status: 'blocked',
     detail: expect.stringContaining('local desktop'),
   });
   expect(report.reviewAvailable).toBe(false);
-  expect(report.checks.map((c) => c.id)).not.toContain('git');
-  expect(report.checks.map((c) => c.id)).not.toContain('sqlite');
+  expect(report.checks.map((check) => check.id)).not.toContain('git');
+  expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
 });
 
-test.each([
-  { trusted: false },
-  { desktop: false },
-  { folders: [] },
-  { folders: [{ scheme: 'vscode-remote', path: '/remote' }] },
+const unsupportedHosts: { name: string; changes: Partial<HostEnvironment> }[] = [
+  { name: 'untrusted folder', changes: { trusted: false } },
+  { name: 'browser VS Code', changes: { desktop: false } },
+  { name: 'no open folder', changes: { folders: [] } },
+  { name: 'virtual folder', changes: { folders: [{ scheme: 'vscode-remote', path: '/remote' }] } },
   {
-    folders: [
-      { scheme: 'file', path: '/one' },
-      { scheme: 'file', path: '/two' },
-    ],
+    name: 'multiple workspace folders',
+    changes: {
+      folders: [
+        { scheme: 'file', path: '/one' },
+        { scheme: 'file', path: '/two' },
+      ],
+    },
   },
-  { vscode: '1.141.1' },
-  { node: '22.21.0' },
-  { platform: 'darwin', arch: 'x64' },
-])('unsupported setup %j skips all local probes', async (override) => {
+  { name: 'VS Code below the minimum version', changes: { vscode: '1.141.1' } },
+  { name: 'Node 22 instead of Node 24', changes: { node: '22.21.0' } },
+  { name: 'unsupported Intel Mac', changes: { platform: 'darwin', arch: 'x64' } },
+];
+
+test.each(unsupportedHosts)('$name skips all local probes', async ({ changes }) => {
   const manager = new ReviewManager({
-    environment: () => ({ ...local, ...override }),
+    environment: () => ({ ...supportedHost, ...changes }),
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -65,28 +70,28 @@ test.each([
     },
   });
   const report = await manager.checkReadiness();
-  expect(report.checks.map((c) => c.id)).not.toContain('git');
-  expect(report.checks.map((c) => c.id)).not.toContain('sqlite');
-  expect(report.checks.find((c) => c.id === 'probes')?.status).toBe('blocked');
+  expect(report.checks.map((check) => check.id)).not.toContain('git');
+  expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
+  expect(report.checks.find((check) => check.id === 'probes')?.status).toBe('blocked');
 });
 
-const directories: string[] = [];
+const temporaryDirectories: string[] = [];
 afterEach(async () => {
   await Promise.all(
-    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
 });
 
 test('a missing repository is explained without cloning or starting a review', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'crw-readiness-'));
-  directories.push(folder);
+  temporaryDirectories.push(folder);
   const manager = new ReviewManager({
-    environment: () => ({ ...local, folders: [{ scheme: 'file', path: folder }] }),
+    environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
     sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: 'Available' }),
   });
   const report = await manager.checkReadiness();
-  expect(report.checks.find((c) => c.id === 'git')).toMatchObject({
+  expect(report.checks.find((check) => check.id === 'git')).toMatchObject({
     status: 'blocked',
     detail: expect.stringContaining('already-cloned'),
   });
@@ -99,28 +104,28 @@ test('a missing repository is explained without cloning or starting a review', a
 
 test('checking a dirty repository retains the files, index and refs and keeps ownership pending', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'crw-readiness-'));
-  directories.push(folder);
-  const git = (...args: string[]) =>
+  temporaryDirectories.push(folder);
+  const runGit = (...args: string[]) =>
     execFileSync('git', ['-C', folder, ...args], {
       encoding: 'utf8',
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
     });
-  git('init', '--quiet');
+  runGit('init', '--quiet');
   await writeFile(join(folder, 'file.txt'), 'staged\n');
-  git('add', 'file.txt');
+  runGit('add', 'file.txt');
   await writeFile(join(folder, 'file.txt'), 'unstaged\n');
-  const index = await readFile(join(folder, '.git/index'));
-  const refs = git('for-each-ref');
+  const originalIndex = await readFile(join(folder, '.git/index'));
+  const originalRefs = runGit('for-each-ref');
   const manager = new ReviewManager({
-    environment: () => ({ ...local, folders: [{ scheme: 'file', path: folder }] }),
+    environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
     sqlite: () => probeSqlite(join(folder, 'missing-worker.cjs')),
   });
   const report = await manager.checkReadiness();
-  expect(report.checks.find((c) => c.id === 'git')?.status).toBe('passed');
-  expect(report.checks.find((c) => c.id === 'sqlite')?.status).toBe('blocked');
-  expect(report.checks.find((c) => c.id === 'ownership')?.status).toBe('pending');
-  expect(await readFile(join(folder, '.git/index'))).toEqual(index);
+  expect(report.checks.find((check) => check.id === 'git')?.status).toBe('passed');
+  expect(report.checks.find((check) => check.id === 'sqlite')?.status).toBe('blocked');
+  expect(report.checks.find((check) => check.id === 'ownership')?.status).toBe('pending');
+  expect(await readFile(join(folder, '.git/index'))).toEqual(originalIndex);
   expect(await readFile(join(folder, 'file.txt'), 'utf8')).toBe('unstaged\n');
-  expect(git('for-each-ref')).toBe(refs);
+  expect(runGit('for-each-ref')).toBe(originalRefs);
 });

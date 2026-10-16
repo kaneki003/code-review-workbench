@@ -1,31 +1,53 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReadinessReport } from '../shared/readiness';
+import type { Capability, ReadinessReport } from '../shared/readiness';
 
-export function ReadinessView({ check }: { check: () => Promise<ReadinessReport> }) {
+interface ReadinessViewProps {
+  check: () => Promise<ReadinessReport>;
+}
+
+const statusLabels: Record<Capability['status'], string> = {
+  passed: 'Passed',
+  blocked: 'Blocked',
+  pending: 'Pending',
+};
+
+export function ReadinessView({ check }: ReadinessViewProps) {
   const [report, setReport] = useState<ReadinessReport>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const active = useRef(true);
-  async function run() {
-    setBusy(true);
-    setError(undefined);
+  const [errorMessage, setErrorMessage] = useState<string>();
+  const [isChecking, setIsChecking] = useState(false);
+  const isMounted = useRef(true);
+
+  async function runCheck() {
+    setIsChecking(true);
+    setErrorMessage(undefined);
+
     try {
-      const next = await check();
-      if (active.current) setReport(next);
-    } catch (failure) {
-      if (active.current)
-        setError(failure instanceof Error ? failure.message : 'Check failed. Try again.');
+      const nextReport = await check();
+      if (isMounted.current) {
+        setReport(nextReport);
+      }
+    } catch (error) {
+      if (isMounted.current) {
+        const message = error instanceof Error ? error.message : 'Check failed. Try again.';
+        setErrorMessage(message);
+      }
     } finally {
-      if (active.current) setBusy(false);
+      if (isMounted.current) {
+        setIsChecking(false);
+      }
     }
   }
+
   useEffect(() => {
-    active.current = true;
-    void run();
+    isMounted.current = true;
+    void runCheck();
+
     return () => {
-      active.current = false;
+      // A host response can arrive after the user has closed this screen.
+      isMounted.current = false;
     };
   }, [check]);
+
   return (
     <main className="mx-auto max-w-3xl p-4 text-foreground">
       <h1 className="text-xl font-semibold">Workbench readiness</h1>
@@ -35,30 +57,25 @@ export function ReadinessView({ check }: { check: () => Promise<ReadinessReport>
       </p>
       <button
         type="button"
-        disabled={busy}
-        onClick={() => void run()}
+        disabled={isChecking}
+        onClick={() => void runCheck()}
         className="my-4 rounded bg-action px-3 py-2 text-action-text disabled:opacity-60"
       >
-        {busy ? 'Checking…' : 'Check again'}
+        {isChecking ? 'Checking…' : 'Check again'}
       </button>
-      <div role="status" aria-live="polite" aria-busy={busy}>
-        {error && <p>{error}</p>}
-        {busy && <p>Checking local capabilities…</p>}
+      <div role="status" aria-live="polite" aria-busy={isChecking}>
+        {errorMessage && <p>{errorMessage}</p>}
+        {isChecking && <p>Checking local capabilities…</p>}
         {report && (
           <>
             <p>Review unavailable · readiness inspection only</p>
             <ul className="list-none space-y-3 p-0">
-              {report.checks.map((item) => (
-                <li key={item.id} className="rounded border border-outline p-3">
+              {report.checks.map((capability) => (
+                <li key={capability.id} className="rounded border border-outline p-3">
                   <h2 className="m-0 font-semibold">
-                    {item.label} ·{' '}
-                    {item.status === 'passed'
-                      ? 'Passed'
-                      : item.status === 'blocked'
-                        ? 'Blocked'
-                        : 'Pending'}
+                    {capability.label} · {statusLabels[capability.status]}
                   </h2>
-                  <p className="mb-0 whitespace-pre-wrap break-words">{item.detail}</p>
+                  <p className="mb-0 whitespace-pre-wrap break-words">{capability.detail}</p>
                 </li>
               ))}
             </ul>

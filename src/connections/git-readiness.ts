@@ -2,41 +2,45 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Capability } from '../shared/readiness';
 
-const execute = promisify(execFile);
+const execFileAsync = promisify(execFile);
 
 export async function probeGit(folder: string): Promise<Capability> {
   // Ambient Git overrides must not redirect the read away from the selected folder.
-  const env = Object.fromEntries(
+  const environmentWithoutGitOverrides = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')),
   );
-  const options = {
+  const commandOptions = {
     cwd: folder,
-    env: { ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+    env: { ...environmentWithoutGitOverrides, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
     timeout: 5000,
     maxBuffer: 64 * 1024,
     windowsHide: true,
   };
-  const result = (status: Capability['status'], detail: string): Capability => ({
+  const gitCheck = (status: Capability['status'], detail: string): Capability => ({
     id: 'git',
     label: 'Git and repository',
     status,
     detail,
   });
-  let version: string;
+  let gitVersion: string;
   try {
-    version = (await execute('git', ['--version'], options)).stdout.trim();
+    const versionCommand = await execFileAsync('git', ['--version'], commandOptions);
+    gitVersion = versionCommand.stdout.trim();
   } catch {
-    return result(
+    return gitCheck(
       'blocked',
       'Git could not run within five seconds. Install Git 2.23+ on PATH, then check again.',
     );
   }
-  const match = /^git version (\d+)\.(\d+)/.exec(version);
-  if (!match || Number(match[1]) < 2 || (Number(match[1]) === 2 && Number(match[2]) < 23)) {
-    return result('blocked', `${version}. Update Git to 2.23 or newer.`);
+  const versionParts = /^git version (\d+)\.(\d+)/.exec(gitVersion);
+  const majorVersion = Number(versionParts?.[1]);
+  const minorVersion = Number(versionParts?.[2]);
+  const hasSupportedVersion = majorVersion > 2 || (majorVersion === 2 && minorVersion >= 23);
+  if (!hasSupportedVersion) {
+    return gitCheck('blocked', `${gitVersion}. Update Git to 2.23 or newer.`);
   }
   try {
-    const { stdout } = await execute(
+    const repositoryCommand = await execFileAsync(
       'git',
       [
         '--no-optional-locks',
@@ -46,18 +50,20 @@ export async function probeGit(folder: string): Promise<Capability> {
         '--is-inside-work-tree',
         '--is-bare-repository',
       ],
-      options,
+      commandOptions,
     );
-    if (stdout.trim().replaceAll('\r\n', '\n') !== 'true\nfalse')
+    const repositoryFacts = repositoryCommand.stdout.trim().replaceAll('\r\n', '\n');
+    if (repositoryFacts !== 'true\nfalse') {
       throw new Error('Not a working repository');
-    return result(
+    }
+    return gitCheck(
       'passed',
-      `${version}; local working repository detected. Read-only discovery passed. Checkout, stash and ref-update behavior still require later preservation/ownership fixtures.`,
+      `${gitVersion}; local working repository detected. Read-only discovery passed. Checkout, stash and ref-update behavior still require later preservation/ownership fixtures.`,
     );
   } catch {
-    return result(
+    return gitCheck(
       'blocked',
-      `${version}; no accessible working repository. Open an already-cloned repository; check Git safe.directory configuration and folder access. Nothing was cloned.`,
+      `${gitVersion}; no accessible working repository. Open an already-cloned repository; check Git safe.directory configuration and folder access. Nothing was cloned.`,
     );
   }
 }

@@ -1,8 +1,16 @@
 import { Worker } from 'node:worker_threads';
 import type { Capability } from '../shared/readiness';
 
+interface SqliteWorkerResult {
+  ok: true;
+  sqlite: string;
+  node: string;
+}
+
+const WORKER_TIMEOUT_MS = 5_000;
+
 export async function probeSqlite(workerPath: string): Promise<Capability> {
-  const blocked: Capability = {
+  const unavailableCheck: Capability = {
     id: 'sqlite',
     label: 'Packaged SQLite worker',
     status: 'blocked',
@@ -13,38 +21,46 @@ export async function probeSqlite(workerPath: string): Promise<Capability> {
   try {
     worker = new Worker(workerPath);
   } catch {
-    return blocked;
+    return unavailableCheck;
   }
   try {
     return await new Promise<Capability>((resolve) => {
-      const timer = setTimeout(() => resolve(blocked), 5000);
+      const workerTimeout = setTimeout(() => finish(unavailableCheck), WORKER_TIMEOUT_MS);
       const finish = (capability: Capability) => {
-        clearTimeout(timer);
+        clearTimeout(workerTimeout);
         resolve(capability);
       };
-      worker.once('message', (value: unknown) => {
-        if (
-          typeof value !== 'object' ||
-          value === null ||
-          !('ok' in value) ||
-          value.ok !== true ||
-          !('sqlite' in value) ||
-          typeof value.sqlite !== 'string' ||
-          !('node' in value) ||
-          typeof value.node !== 'string'
-        )
-          return finish(blocked);
+      worker.once('message', (result: unknown) => {
+        if (!isSqliteWorkerResult(result)) {
+          finish(unavailableCheck);
+          return;
+        }
         finish({
           id: 'sqlite',
           label: 'Packaged SQLite worker',
           status: 'passed',
-          detail: `SQLite ${value.sqlite}; worker Node ${value.node}. In-memory parameterized transaction and rollback passed. Disk durability, WAL and shared-store ownership remain unverified. No private store was opened.`,
+          detail: `SQLite ${result.sqlite}; worker Node ${result.node}. In-memory parameterized transaction and rollback passed. Disk durability, WAL and shared-store ownership remain unverified. No private store was opened.`,
         });
       });
-      worker.once('error', () => finish(blocked));
-      worker.once('exit', () => finish(blocked));
+      worker.once('error', () => finish(unavailableCheck));
+      worker.once('exit', () => finish(unavailableCheck));
     });
   } finally {
     await worker.terminate();
   }
+}
+
+function isSqliteWorkerResult(value: unknown): value is SqliteWorkerResult {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return (
+    'ok' in value &&
+    value.ok === true &&
+    'sqlite' in value &&
+    typeof value.sqlite === 'string' &&
+    'node' in value &&
+    typeof value.node === 'string'
+  );
 }
