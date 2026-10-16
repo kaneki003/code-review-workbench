@@ -1,0 +1,7 @@
+**
+!package.json
+!README.md
+!dist/extension.cjs
+!dist/readiness-worker.cjs
+!dist/readiness.js
+!dist/readiness.css
