@@ -2,7 +2,7 @@ name: Readiness checks
 on:
   pull_request:
   push:
-    branches: ['feat/17-workbench-readiness']
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
