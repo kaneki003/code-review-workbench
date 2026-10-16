@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the approved product baseline, the selected UI design handoff, and the engineering skills configuration. Production extension code and framework choices are still to be developed.
+This repository contains the product baseline, selected UI handoff, accepted architecture contracts, accepted personal-local technical design and engineering skills configuration. Production extension code remains to be developed.
 
 ## Project layout
 
@@ -19,7 +19,8 @@ This repository contains the approved product baseline, the selected UI design h
 
 Read the design baseline index before using a component note or an older state ledger.
 
-- [Approved PRD v0.3](docs/product/PRD.md) and [PDF booklet](docs/product/PRD.pdf).
+- [PRD v0.3, amended 16 October: committed-code review only](docs/product/PRD.md); the [11 October PDF booklet](docs/product/PRD.pdf) is historical.
+- [Accepted technical design and first working milestone](docs/design/technical-design.md): scoped personal-local handoff; public-release approval remains separate.
 - [Current design baseline and source precedence](docs/design/README.md).
 - [Selected interface interaction contract](docs/design/figma-interaction-contract.md).
 - [Architecture questions and native host checks](docs/design/interface-feasibility-questions.md).

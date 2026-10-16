@@ -2,6 +2,10 @@
 
 Started: 10 October 2026
 
+## Scope amendment — 16 October 2026
+
+The owner explicitly removed review of uncommitted work: “remove this feature of letting review the uncomiited work..the work till latest commit will be reviewed”. Review is an iterative commit → review → edit → commit → Sync workflow. Local committed comparisons and PR review remain; staged/unstaged/unsaved changes are not reviewed source. Ordinary editing and protective Git stashes still preserve unfinished work. This supersedes C13/Q13 and the uncommitted portion of D04, the earlier playback and the original PDF. Earlier entries below remain historical evidence, not current requirements where they conflict with this amendment.
+
 ## Alignment rules
 
 The PRD v0.2 is a draft. Specification decisions do not authorize actions on real repositories. Product behavior is in scope; architecture, frameworks, implementation and scheduling are out of scope.

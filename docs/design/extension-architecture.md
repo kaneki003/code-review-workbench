@@ -162,7 +162,7 @@ The prior prototype established bounded behaviour on macOS only; it did not vali
 | [Choose Git preservation and source synchronization contracts](https://github.com/kaneki003/code-review-workbench/issues/7) | Source identities/bytes, preservation strategy, checkout/Sync, safe fallback, editor/workspace restoration and recovery. |
 | [Choose durable private state and recovery storage](https://github.com/kaneki003/code-review-workbench/issues/8) | Engine/location/schema, transactions/acknowledgments, migrations, corruption, clear/retention and multi-window ownership. |
 | [Choose GitHub collaboration and delivery contracts](https://github.com/kaneki003/code-review-workbench/issues/9) | Account/API mechanics, complete discussion fetching, pending review reconciliation, publication/receipt checks and merge outcomes. |
-| [Choose subscription-based AI runtime and investigation contracts](https://github.com/kaneki003/code-review-workbench/issues/10) | Eligible account-based provider/runtime, tool permissions, process execution, streaming/context limits and actual credential isolation. |
+| [Choose AI runtime and investigation contracts](https://github.com/kaneki003/code-review-workbench/issues/10) | Account-login-first Gemini/ChatGPT access and eligible runtime, parallel API support, tool permissions, process execution, streaming/context limits and credential isolation. |
 | [Accept the technical design and first working milestone](https://github.com/kaneki003/code-review-workbench/issues/11) | Integrate accepted contracts into technical-design.md, cover FR01–FR20, define milestone acceptance checks and ordered implementation. |
 
 ## Evidence

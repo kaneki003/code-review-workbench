@@ -1,9 +1,9 @@
 # Product Baseline
 
-- [PRD v0.3 — Markdown](PRD.md).
-- [PRD v0.3 — PDF booklet](PRD.pdf).
+- [PRD v0.3 — Markdown, amended 16 October](PRD.md).
+- [Historical PRD v0.3 — 11 October PDF booklet](PRD.pdf).
 - [Product alignment decision history](product-alignment-decision-log.md).
 
-The PRD dated 11 October 2026 supplies the agreed MVP scope and FR01–FR20. The Markdown and PDF are imported without content changes. The [current design contract](../design/figma-interaction-contract.md) supplies the later selected interface treatment within that scope.
+The Markdown PRD supplies the current MVP scope and FR01–FR20. On 16 October the owner removed uncommitted review: review committed code, then commit further edits and Sync for another iteration. The PDF retains the earlier scope and is historical; the amended Markdown takes precedence. The [current design contract](../design/figma-interaction-contract.md) supplies the selected interface treatment.
 
 The decision log is historical source material, including earlier proposals, superseded decisions, and original machine-path citations. Use its confirmed decisions with their qualifications; it does not replace the current PRD, design contract, or user instructions.

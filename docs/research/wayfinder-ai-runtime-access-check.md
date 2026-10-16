@@ -1,0 +1,115 @@
+# Subscription AI runtime access check
+
+Checked 15 October 2026 for [Choose AI runtime and investigation contracts](https://github.com/kaneki003/code-review-workbench/issues/10). This focused documentation check supplements the [earlier account-access research](https://github.com/kaneki003/code-review-workbench/blob/cd1c238ec9d6e086261d8883401af1d1db5c6d4c/docs/research/wayfinder-ai-account-access.md). It makes no provider, distribution or implementation decision. No sign-in, credential inspection, installation, inference or working integration was tested.
+
+**Latest scope, 16 October 2026:** the owner restored **account login first for both ChatGPT and Gemini, consuming their existing plans' entitlements/limits**. API connections may exist in parallel but cannot substitute for this requirement. Public distribution, initially free as a trial, with private source remains the intended product. The brief 15 October API-first direction and its [runtime comparison](wayfinder-ai-api-runtime.md) are historical alternatives; they do not satisfy the restored first-connection requirement.
+
+## Recheck: account-plan access for this proprietary product — 16 October 2026
+
+Targeted official-source checks found no newly documented route that establishes both required consumer-plan connections for this exact distribution. The findings below describe provider prerequisites and restrictions; they neither change the owner's requirement nor select an API replacement.
+
+| Route | Current verified conclusion |
+| --- | --- |
+| Sign in with ChatGPT plus plan use | Supported for eligible users in participating apps, but private clients remain **selected**, not universally admitted. Workbench's public/private-source/free-trial release has no verified acceptance. Personal projects running locally are explicitly covered, but public proprietary distribution cannot simply be relabelled personal-local use. |
+| Codex managed app-server sign-in | The local/OSS allowance and recommendation to migrate to SIWC remain. Commercial/hosted use of managed app-server authentication is explicitly excluded. No checked source specifically admits this proprietary public free trial; seek clarification/acceptance rather than treating process-local execution as an eligibility loophole. |
+| Gemini CLI with consumer Google sign-in | Google's explicit deprecation still says individuals, Google AI Pro and Ultra access ended on **18 June 2026**, including Gemini CLI and its Google-login option. An ACP interface or stale setup page does not restore that service access. |
+| Antigravity consumer login through a Workbench wrapper | The current FAQ still explicitly excludes wrapping `agy` in third-party applications/agents under consumer plans. Its direct-scripting/CI features do not authorize the proposed product integration. |
+
+Sources re-opened for this check: [SIWC quickstart](https://developers.openai.com/siwc/quickstart), [official personal-local/selected-private cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt), [Codex auth restriction](https://learn.chatgpt.com/docs/app-server#auth-endpoints), [Google consumer deprecation](https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals), [Antigravity FAQ](https://www.antigravity.google/docs/faq/). The earlier dated section below records the conflicting Gemini setup documentation.
+
+**Identity is not plan access.** SIWC distinguishes identity sign-in from the separate user authorization to consume a ChatGPT plan. An approved-looking login, valid ID token, model catalog or developer API OAuth credential is insufficient evidence of plan-use eligibility. For Google, the [Gemini OAuth quickstart](https://ai.google.dev/gemini-api/docs/oauth?hl=en) configures a Cloud project and developer API access; it does not establish that Google AI Pro/Ultra allowances power Workbench. The [current Antigravity SDK guide](https://www.antigravity.google/docs/sdk/overview) still documents developer API keys/Cloud credentials, not a newly supported consumer-plan SDK product route.
+
+**Exact access/clarification channels:** OpenAI's [SIWC interest form](https://openai.com/form/sign-in-with-chatgpt-interest/) separately offers sign-in-only and **sign-in plus ChatGPT plan use for AI requests**. The latter is the required capability. Describe private source, public distribution, free trial/potential later charging and local per-user operation accurately; waitlist submission is not acceptance. For Google, [Antigravity terms section 6](https://www.antigravity.google/terms) directs questions to the [official Antigravity community](https://discuss.ai.google.dev/c/antigravity/64); the [support page](https://www.antigravity.google/support) is another official entry point. These are clarification channels, not a documented consumer third-party-app approval program or assurance of an exception.
+
+No new official alternative satisfying the exact consumer-plan requirement was established in the targeted search. The unresolved external facts are OpenAI acceptance for this proprietary product and a Google-supported consumer-plan integration agreement/route. No provider contact, form submission, authentication, installation or inference was performed.
+
+## Follow-up: public extension, private source, initially free
+
+The owner subsequently specified public distribution of a proprietary extension, free initially as a trial, with **both Gemini and GPT** as initial account-based connections. This is not the personal-project-only release discussed below. This follow-up supersedes the earlier candidate assessment wherever they conflict, especially Gemini consumer eligibility.
+
+| Route | Mapping to the declared release |
+| --- | --- |
+| ChatGPT plan through Sign in with ChatGPT | **Public proprietary eligibility is not established.** The quickstart reserves private clients to selected apps. Free pricing does not turn private source into OSS or make a distributed product a personal-local project. Seek explicit acceptance covering this distribution before promising account-powered GPT. |
+| Codex managed app-server login | **Not an established workaround.** The docs allow existing local/OSS integrations but explicitly prohibit commercial/hosted service use of managed app-server auth. They do not define whether a public proprietary free trial qualifies as a permitted local app. Potential later paid use makes reliance on that ambiguity particularly unsuitable; clarify with OpenAI. |
+| Actual Gemini CLI with consumer Google-account login, through ACP | **The previous consumer-account candidate is contradicted by Google's deprecation notice.** Google says individuals/AI Pro/AI Ultra access to Gemini CLI ended on 18 June 2026. ACP being documented does not preserve discontinued account service access. |
+| Replacement Antigravity CLI using the same Gemini provider | **Consumer-plan app wrapping is explicitly unsupported.** Current FAQ distinguishes direct headless scripting/CI from embedding the CLI inside third-party applications. Technical streaming/account features do not authorize Workbench's proposed use. |
+
+OpenAI's [quickstart](https://developers.openai.com/siwc/quickstart) distinguishes open-source and selected private clients. The [cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt) explicitly supports personal-local projects and directs paid/hosted apps to request access. The [app-server authentication section](https://learn.chatgpt.com/docs/app-server#auth-endpoints) supplies the commercial/hosted restriction. These do not establish a blanket ban on all free proprietary desktop software; they leave this release's eligibility unconfirmed.
+
+The official request path linked by both OpenAI documents is the [Sign in with ChatGPT interest form](https://openai.com/form/sign-in-with-chatgpt-interest/). It distinguishes identity-only sign-in from **sign-in and ChatGPT plan use for AI requests**. The latter is needed here. A request should accurately describe public private-source distribution, the initial free trial, potential later charging, local execution and per-user account use. A working OAuth flow or an interest-form submission is not provider acceptance. No published approval timeline or guaranteed solo-developer eligibility was found, and no form was submitted.
+
+The Gemini conflict was found by following the CLI terms' own FAQ link. The resulting [Google consumer deprecation page](https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals), updated 9 October 2026, explicitly states that consumer Google login no longer accesses Gemini CLI. Google's [19 May transition announcement](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/) independently confirms the 18 June cutoff and directs consumers to Antigravity. This conflicts with the [CLI authentication page](https://geminicli.com/docs/get-started/authentication/), marked updated 18 September, which still advertises consumer sign-in. Treat the explicit deprecation as the release blocker; do not claim consumer access from the stale-looking setup instructions. Enterprise/service-account alternatives do not establish compatibility with the owner's existing consumer subscription.
+
+For proprietary distribution specifically, the checked [ACP guide](https://geminicli.com/docs/cli/acp-mode/) documents third-party developer-tool integration without an OSS prerequisite or a dedicated approval process. The [CLI terms](https://geminicli.com/docs/resources/tos-privacy/) separately prohibit direct third-party use of backend services with CLI OAuth. Thus an actual CLI adapter and token reuse are distinct, but neither the CLI software license nor ACP support resolves the consumer-service cutoff. No proprietary-client approval path was found that reverses that cutoff.
+
+At the owner's request, the replacement runtime was checked for the **same Gemini provider**. Antigravity [installation/authentication](https://www.antigravity.google/docs/cli/install/) supports personal Google sign-in and OS-keyring credentials; [pricing](https://www.antigravity.google/pricing) lists Google AI Pro/Ultra. Its [headless interface](https://www.antigravity.google/docs/cli/headless/) documents cached credentials, JSON streaming, persistent stdin prompts, explicit conversation IDs and Gemini model selection. Approval-dependent tools are denied when headless mode cannot ask. No official ACP command was found in the checked current CLI reference/overview; this is a search limit, not proof that no such implementation exists.
+
+Crucially, the current [Antigravity FAQ](https://www.antigravity.google/docs/faq/) has a specific headless-in-third-party-applications entry. It permits direct scripting/CI but explicitly says consumer plans do not support wrapping `agy` inside third-party agents or applications. This resolves the tempting inference from the headless documentation: a technical subprocess interface does not permit the proposed consumer-account Workbench integration. The [consumer terms, section 6](https://www.antigravity.google/terms) also prohibit third-party service access. The [SDK overview](https://www.antigravity.google/docs/sdk/overview) documents API-key or Google Cloud authentication, not consumer-plan SDK access. Google points questions to its [Antigravity community](https://discuss.ai.google.dev/c/antigravity/64); no consumer third-party-app approval program or guaranteed exception was found.
+
+The requested two-provider release therefore cannot yet be treated as an eligible, proven plan. GPT needs explicit proprietary-product eligibility; Gemini needs a supported account/runtime agreement beyond the discontinued Gemini CLI consumer route and unsupported Antigravity consumer wrapper. Changing provider or billing remains an owner decision, not an automatic substitution. No provider was contacted and no account access was tested.
+
+## What a solo developer needs to decide first
+
+An account paying for an AI assistant does not automatically authorize every third-party integration. Personal use on your computer, distributing a free open-source extension, distributing a private extension, and operating a paid/hosted service can have different eligibility. Choose the intended first release before promising a provider connection. A public repository without an appropriate license is not automatically an open-source product.
+
+| Candidate | Account-first route | Distribution/access boundary |
+| --- | --- | --- |
+| Gemini | Actual Gemini CLI subprocess through its documented ACP editor protocol; Google sign-in | Documented developer-tool integration, with no open-source-client prerequisite stated in the checked ACP/authentication guides. Service terms still apply. Private extension compatibility is an inference from those interfaces, not explicit provider approval or tested access. |
+| ChatGPT with direct Responses | Sign in with ChatGPT, with separate permission to consume the user's plan | Official cookbook explicitly covers open-source projects and personal projects running locally; selected private apps are a distinct category. Paid/hosted apps must request access. |
+| ChatGPT with Codex app-server | Same approved Sign in with ChatGPT route plus a local Codex process, or the separately documented managed Codex sign-in route | Changing the process interface does not remove the account/distribution boundary. Managed app-server auth explicitly excludes commercial/hosted services. |
+| Claude Agent SDK | Subscription usage is mentioned in current Help Center guidance, but product-auth restrictions remain in current SDK/legal documentation | Conflicting official guidance: do not promise a shipped custom subscription-powered chat until Anthropic clarifies the specific use case or grants approval. |
+
+The sections below provide the primary sources for each row. Copilot was not evaluated in this focused follow-up; this is not a claim that it lacks a supported route.
+
+## Gemini: documented client integration, with controls to prove
+
+Google recommends personal Google-account sign-in. Google AI Pro/Ultra subscribers use the account holding their subscription; credentials are cached by Gemini CLI. Most individual accounts need no Cloud project, while organizational/licensed cases can need one. Headless mode can reuse cached authentication. [Authentication](https://geminicli.com/docs/get-started/authentication/).
+
+Google documents `gemini --acp` specifically for IDEs and developer tools, using JSON-RPC over standard input/output. Its guide lists authentication, session creation/loading, prompt/cancel, approval modes, an experimental model-switch method, an MCP route for client-owned tools, and a filesystem proxy. These support investigating an extension adapter; they do not establish every shipped binary's exact protocol or enforcement behavior. [ACP integration](https://geminicli.com/docs/cli/acp-mode/).
+
+The CLI's Apache 2.0 software license is separate from service access. Google expressly prohibits third-party software directly accessing the services behind Gemini CLI with CLI OAuth. Workbench must call the actual documented CLI interface rather than extract its tokens and call Code Assist endpoints itself. The checked sources do not state an OSS prerequisite for an ACP client; that absence is not blanket approval of every commercial distribution. [License, service terms and privacy](https://geminicli.com/docs/resources/tos-privacy/).
+
+Provider policy rules support allow, deny and approval, matching tools/arguments/commands and MCP servers. Global denies remove tools from the model's available set. Ordinary headless approval requests become denials. Critically, the current guide says workspace `.gemini/policies` is non-functional: an implementation cannot rely on that directory for its restrictions. An isolated User/Admin policy configuration and active-session revocation need validation. Do not replace permission handling with unrestricted `yolo` mode. [Policy engine](https://geminicli.com/docs/reference/policy-engine/).
+
+Current published daily maximums are 1,000 model requests for individual Google-account access, 1,500 for AI Pro and 2,000 for AI Ultra. Minute limits and demand also apply; a complete investigation can consume multiple requests. Other similarly named subscriptions are not necessarily eligible. [Quotas](https://geminicli.com/docs/resources/quota-and-pricing/).
+
+Installation guidance lists Node 20+, an appropriate shell, internet access and recommended OS versions. Using a separately installed CLI creates setup/version diagnostics for Workbench; bundling it creates redistribution/update work. Neither path was selected or tested here. [Installation](https://geminicli.com/docs/get-started/installation/).
+
+## ChatGPT: personal-local use is explicitly documented
+
+The official cookbook says plan usage is available for open-source projects, personal projects running locally and selected private apps. Its usage-policy section repeats personal-local eligibility and directs paid/remotely hosted apps to request access. Therefore keeping a personal project private does not by itself exclude this documented route. A distributed proprietary extension is not automatically the same personal-local case. [Sign in with ChatGPT cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt).
+
+The quickstart uses broader shorthand: all open-source partners and selected private clients; eligible Plus/Pro users authorize separate plan-use scopes. The overview covers OSS and locally hosted apps. Read those together with the explicit personal-local cookbook wording; do not infer that arbitrary private distribution has been approved. [Quickstart](https://developers.openai.com/siwc/quickstart), [overview](https://developers.openai.com/siwc/token-sharing-open-source).
+
+Direct Responses means Workbench owns the conversation/tool loop. App-server adds Codex's existing agent runtime, session/event/approval protocol and a local process to manage. Codex positions app-server for deep product integrations and its SDK for automation. Managed app-server login owns token refresh; its documentation permits existing local/OSS integrations, recommends migration to Sign in with ChatGPT and explicitly excludes commercial/hosted use of that managed auth. [App-server](https://learn.chatgpt.com/docs/app-server), [SDK](https://learn.chatgpt.com/docs/codex-sdk).
+
+With the documented Sign in with ChatGPT app-server configuration, the app supplies and renews an OAuth access token; renewal requires restarting app-server and resuming the saved thread. A listed model is a catalog entry, not proof of entitlement. [App-server configuration](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server).
+
+This plan-use route requires streaming and `store:false`; direct HTTP uses explicit history rather than persistent server conversation state. Supported function/custom tools can drive client execution, but hosted MCP/connectors, file search, Code Interpreter and Responses tool search are unsupported. App-server may still run local shell/MCP tools and retain local thread history. API-key billing is a different route and does not fulfill the owner's first-connection requirement. [Preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations).
+
+## Claude: preserve the official documentation conflict
+
+An official Help Center update dated 7 October 2026 says Agent SDK, `claude -p` and third-party apps can still use subscription limits, and mentions new Max/Team API credits. This is evidence against an unqualified claim that subscription SDK use is impossible. [Plan usage update](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan).
+
+However, the current SDK overview still says third-party developers need prior approval to offer claude.ai login/rate limits in their products. Current legal/compliance guidance prohibits offering that login or routing users' subscription credentials, while allowing an end user to sign into the unmodified Claude Code binary. Those sources do not establish that embedding a custom Workbench chat qualifies for that exception. Preserve the contradiction and seek authoritative clarification before a product commitment; private source code alone does not resolve it. [SDK overview](https://code.claude.com/docs/en/agent-sdk/overview), [legal/authentication guidance](https://code.claude.com/docs/en/legal-and-compliance).
+
+## Runtime features versus Workbench guarantees
+
+The provider interfaces above supply useful mechanisms. They do not prove the product contract in [FR13–FR19](../product/PRD.md):
+
+- Workbench must associate provider sessions with the exact review/account/provider and inspected source, preserve its canonical conversation and attempts locally, and prevent late events from updating a different active review.
+- Stop must retain produced text and stop Workbench-owned tools. Retry must reuse the visible question, with explicit handling of uncertain tool completion. A documented cancel request alone does not prove every child process has stopped.
+- Saved grants must be inspectable/revocable. Provider config, hooks, memory, plugins and external tools need controlled loading so they cannot silently override review guidance or import another review's private context.
+- GitHub publication/merge remains a human action. Omitting a publication tool is insufficient if an unrestricted shell inherits GitHub credentials and can call `gh`, Git or HTTP directly. Execution/credential isolation needs a concrete design and validation.
+- Context reads, text/PDF extraction, source references, omissions, freshness, agent examination scope and human Reviewed marks remain Workbench responsibilities. Provider output is not proof of complete examination or correctness.
+- Account/quota/model errors must leave manual review available and must not silently switch provider or billing method.
+
+These are product-derived implications, not claims that any specific provider already enforces them.
+
+## Questions for the owner and later validation
+
+1. Is the first usable version personal and local, distributed open source, or distributed privately/commercially?
+2. Which supported account does the owner intend to use first, and is one provider sufficient for the first milestone?
+3. For the chosen route, accept a provider harness with a subprocess/protocol dependency, or take ownership of a direct model/tool loop where supported?
+
+After those decisions, validate one bounded connection: sign-in and entitlement, one streamed question, retained partial text after Stop, tool denial/grant/revocation, exact review/session resume, stale-result rejection, quota/auth failure and desktop packaging. Documentation-only findings do not replace that evidence. No provider is selected by this note.

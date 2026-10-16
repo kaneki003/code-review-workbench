@@ -3,7 +3,9 @@
 
 ## Product Requirements Document
 
-**Version 0.3 | 11 October 2026**
+**Version 0.3 | 11 October 2026 | Scope amended 16 October 2026**
+
+**Owner amendment — committed code only:** reviews inspect committed versions. Local review compares commits or branches; reviewing staged, unstaged or unsaved changes is removed from scope. Further edits become reviewable after a new commit and source Sync. PR review follows the inspected GitHub PR commits; local committed review can inspect local commits before a PR exists. Ordinary editing and protective stashes remain available. This amendment supersedes earlier uncommitted-review requirements and the original PDF booklet, which remains a historical 11 October artifact.
 
 Aligned product behavior for a reviewer-controlled, agentic VS Code workbench.
 
@@ -88,9 +90,10 @@ The workbench does not judge whether a review was sufficiently thorough, quick o
 | --- | --- | --- |
 | GitHub PR review | Accessible public and authorized private GitHub.com PRs; peer and self-review; published discussion. | Associated GitHub PR, subject to permission and valid source correspondence. |
 | Local committed comparison | Compare two commits or branches, such as a feature branch against main. | Private local investigation unless a valid PR destination is associated. |
-| Local uncommitted review | Inspect working changes before a PR exists. | Private local investigation. |
 
 MVP supports one active review at a time. Other PRs remain in the personal list and retain saved progress. Repository-level synchronization remains a batch operation across relevant PRs; it does not imply several simultaneous active reviews.
+
+Review is iterative: commit a change, review that committed version, make further edits, commit again and Sync to review the newer version. Saving a file or staging changes does not update the inspected review source.
 
 ## Included feature groups
 
@@ -451,7 +454,7 @@ The proposed dedicated data-processing notice and file/folder exclusion controls
 
 ## FR01 - Open the selected change safely
 
-**Required behavior.** Open a relevant GitHub PR through the repository-filtered personal list or a pasted link, or inspect local commits/branches and uncommitted changes. Support any-language/mixed-language entry and one active review. For a PR, obtain the local repository, preserve prior unfinished work and automatically enter the target repository/branch. Explicit Exit Review restores the previous workspace and work.
+**Required behavior.** Open a relevant GitHub PR through the repository-filtered personal list or a pasted link, or inspect local commits/branches. Review committed source only; staged, unstaged and unsaved edits are not review inputs. Further work enters the review after a new commit and source Sync. Support any-language/mixed-language entry and one active review. For a PR, obtain the local repository, preserve prior unfinished work and automatically enter the target repository/branch. Explicit Exit Review restores the previous workspace and work.
 
 **Observable checks.** Missing local copies initiate cloning; failed setup offers recovery and does not claim remote-only review. A local read fallback leaves prior work intact when switching is unsafe. Open/history filters and relevant-list categories work. Local-only review has no invented GitHub destination.
 
