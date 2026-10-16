@@ -2,11 +2,28 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the product baseline, selected UI handoff, accepted architecture contracts, accepted personal-local technical design and engineering skills configuration. Production extension code remains to be developed.
+This repository contains the accepted planning baseline and the first production extension slice: an installable, read-only readiness command. Review entry and private-state writes remain unavailable until their implementation tickets are completed.
+
+## Run the readiness slice
+
+Use Node >=24.15.0 <25 and pnpm 12.11.2:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+pnpm package
+```
+
+Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install from VSIX…** command, open a trusted, already-cloned local folder and run **Code Review Workbench: Check Readiness**. Extension users need Git on PATH and VS Code >=1.141.2; a separate Node installation and development server are unnecessary.
+
+The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
 ## Project layout
 
-- `src/`: application source; currently empty.
+- `src/`: extension entry, readiness manager, Git/worker connections and React view.
+- `tests/`: behavior, React interaction and installed-host checks.
+- `scripts/`: explicit build and packaged-host test pipelines.
 - `docs/product/`: approved PRD in Markdown/PDF and the product decision history.
 - `docs/design/`: current UI contract, refinement notes, Figma links, state/check ledgers, and SVG reference assets.
 - `docs/research/`: dated VS Code host-feasibility research relevant to architecture.
