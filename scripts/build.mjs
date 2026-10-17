@@ -31,6 +31,11 @@ const bundles = [
     outfile: 'dist/native-probe-worker.cjs',
   },
   {
+    ...nodeBundleOptions,
+    entryPoints: ['src/connections/store-worker.ts'],
+    outfile: 'dist/store-worker.cjs',
+  },
+  {
     bundle: true,
     platform: 'browser',
     target: 'chrome150',

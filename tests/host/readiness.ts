@@ -1,10 +1,12 @@
 import * as assert from 'node:assert/strict';
-import { readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { readFile, readdir, realpath, writeFile, mkdir, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import * as vscode from 'vscode';
 import { suite, test, suiteSetup, suiteTeardown, teardown } from 'mocha';
 import type { ReadinessReport } from '../../src/shared/readiness';
+import type { ReviewManager } from '../../src/application/review-manager';
+import type { StoreConfiguration } from '../../src/application/private-store';
 
 interface HostTestEvidence {
   status: string;
@@ -109,7 +111,7 @@ suite('Installed readiness VSIX', () => {
     assert.equal(report.checks.find((check) => check.id === 'ownership')?.status, 'blocked');
     assert.match(
       report.checks.find((check) => check.id === 'ownership')!.detail,
-      /extension update/,
+      /shared private store/,
     );
     assert.deepEqual(
       await fingerprintFiles(workspace),
@@ -117,6 +119,62 @@ suite('Installed readiness VSIX', () => {
       'Every file, index and ref must remain unchanged',
     );
     console.log(JSON.stringify(report, null, 2));
+  });
+  test('installed public managers own one real store, commit, hand off and reopen it', async () => {
+    const extension = vscode.extensions.getExtension<{
+      createManager(configuration: StoreConfiguration): ReviewManager;
+    }>('kaneki003.code-review-workbench')!;
+    const api = await extension.activate();
+    const sandbox = await realpath(process.env.CRW_HOST_SANDBOX!);
+    const home = join(sandbox, 'store-home');
+    await mkdir(home, { mode: 0o700 });
+    const location = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
+    const first = api.createManager({
+      osHome: home,
+      candidateRoot: join(home, 'data-A'),
+      location,
+      windowId: 'installed-first',
+    });
+    const second = api.createManager({
+      osHome: home,
+      candidateRoot: join(home, 'data-B'),
+      location,
+      windowId: 'installed-second',
+    });
+    try {
+      const opened = await first.openPrivateStore();
+      assert.equal(opened.status, 'owned', JSON.stringify(opened));
+      assert.equal(opened.fence, 1);
+      assert.equal(opened.process?.pid, process.pid);
+      assert.equal(
+        (await first.checkReadiness()).checks.find((check) => check.id === 'ownership')?.status,
+        'passed',
+      );
+      const busy = await second.openPrivateStore();
+      assert.equal(busy.status, 'busy');
+      assert.equal(busy.ownerLocation, location);
+      assert.deepEqual(Object.keys(busy).sort(), ['detail', 'ownerLocation', 'status']);
+      const renewed = await first.renewOwnership();
+      assert.equal(renewed.revision, opened.revision! + 1);
+      const transfer = await first.offerStoreHandoff('installed-second');
+      assert.equal(transfer.view.status, 'closed');
+      const next = await second.openPrivateStore(transfer.handoff);
+      assert.equal(next.status, 'owned', JSON.stringify(next));
+      assert.equal(next.storeId, opened.storeId);
+      assert.equal(next.root, opened.root);
+      assert.equal(next.fence, 2);
+      assert.equal((await first.renewOwnership()).status, 'recovery');
+      assert.equal((await second.releasePrivateStore()).status, 'closed');
+      assert.equal((await first.openPrivateStore()).fence, 3);
+      assert.equal((await first.releasePrivateStore()).status, 'closed');
+    } finally {
+      await first.dispose();
+      await second.dispose();
+      await rm(home, { recursive: true, force: true });
+    }
+    const commands = await vscode.commands.getCommands();
+    assert.ok(commands.includes('codeReviewWorkbench.openPrivateStore'));
+    assert.ok(commands.includes('codeReviewWorkbench.releasePrivateStore'));
   });
   test('reinvoking during loading cancels the old attachment without a false installation failure', async () => {
     let tabSubscription: vscode.Disposable;

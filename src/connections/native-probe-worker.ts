@@ -1,6 +1,6 @@
 import { parentPort } from 'node:worker_threads';
 import { createRequire } from 'node:module';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -9,6 +9,9 @@ interface NativeGuard {
   release(handle: object): boolean;
   assertLocalDirectory(path: string): void;
   processIdentity(pid: number): { pid: number; start: string } | null;
+  assertHeld(handle: object): void;
+  ensurePrivateDirectory(path: string): boolean;
+  publishRecord(path: string, text: string): void;
 }
 
 // Load native code only in the worker. No canonical rendezvous or private store
@@ -23,6 +26,13 @@ try {
   const path = join(directory, 'guard');
   guard = native.tryAcquire(path);
   if (!guard || native.tryAcquire(path) !== null) throw new Error('OS guard exclusion failed');
+  native.assertHeld(guard);
+  const recovery = join(directory, 'private');
+  native.ensurePrivateDirectory(recovery);
+  native.publishRecord(join(recovery, 'control.json'), '{"phase":"probe"}');
+  native.publishRecord(join(recovery, 'control.json'), '{"phase":"complete"}');
+  if (readFileSync(join(recovery, 'control.json'), 'utf8') !== '{"phase":"complete"}')
+    throw new Error('Durable record publication failed');
   const identity = native.processIdentity(process.pid);
   if (!identity || identity.pid !== process.pid || !identity.start)
     throw new Error('OS identity unavailable');

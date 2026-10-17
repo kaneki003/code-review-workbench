@@ -1,7 +1,7 @@
 {
   "name": "code-review-workbench",
   "displayName": "Code Review Workbench",
-  "description": "Personal-local code review workbench: read-only installed-host readiness.",
+  "description": "Personal-local code review workbench: readiness and shared private-store ownership.",
   "version": "0.0.1",
   "publisher": "kaneki003",
   "private": true,
@@ -38,6 +38,14 @@
       {
         "command": "codeReviewWorkbench.checkReadiness",
         "title": "Code Review Workbench: Check Readiness"
+      },
+      {
+        "command": "codeReviewWorkbench.openPrivateStore",
+        "title": "Code Review Workbench: Open Private Store"
+      },
+      {
+        "command": "codeReviewWorkbench.releasePrivateStore",
+        "title": "Code Review Workbench: Release Private Store"
       }
     ]
   },

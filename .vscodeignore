@@ -4,6 +4,7 @@
 !dist/extension.cjs
 !dist/readiness-worker.cjs
 !dist/native-probe-worker.cjs
+!dist/store-worker.cjs
 !dist/native-guard.node
 !dist/readiness.js
 !dist/readiness.css
