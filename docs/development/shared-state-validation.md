@@ -2,6 +2,8 @@
 
 Validated 17 October 2026 at `a46840a`, against starting `main` commit `69e9ab2c3ef25fc47cbfecf1878bbd235e35c768`. This covers the [ownership blocker checkpoint](shared-state-ownership.md), not completed shared storage.
 
+The owner subsequently approved the native helper. See the [later helper implementation and validation](native-helper-validation.md) for current evidence; the results below describe the initial blocker checkpoint.
+
 ## Tests
 
 - Red: the two focused public-manager tests failed because ownership was still `pending`.

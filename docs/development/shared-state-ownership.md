@@ -71,4 +71,4 @@ All of #18's store/ownership acceptance criteria remain open. The checkpoint pro
 
 Install `dist/code-review-workbench.vsix`, open a trusted local repository and run **Code Review Workbench: Check Readiness**. Git/SQLite can pass while **Review ownership · Blocked** explains that an extension update is required. This is not evidence of cross-window exclusion or disk-store durability.
 
-See the [checkpoint's test evidence and automated review](shared-state-validation.md).
+See the [native helper's test evidence and automated review](native-helper-validation.md). The [earlier blocker checkpoint](shared-state-validation.md) is retained as historical evidence.
