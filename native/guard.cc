@@ -195,7 +195,10 @@ struct PrivateSecurity {
     if (!read) return false;
     LPWSTR sid = nullptr;
     if (!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid)) return false;
-    std::wstring rule = std::wstring(directory ? L"D:P(A;OICI;FA;;;" : L"D:P(A;;FA;;;") + sid + L")";
+    // Elevated Windows tokens can default new objects to the Administrators
+    // group. Set the actual OS user's owner SID as well as the protected DACL.
+    std::wstring rule = std::wstring(L"O:") + sid +
+        (directory ? L"D:P(A;OICI;FA;;;" : L"D:P(A;;FA;;;") + sid + L")";
     LocalFree(sid);
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(rule.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) return false;
     attributes.lpSecurityDescriptor = descriptor;
