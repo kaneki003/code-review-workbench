@@ -1,6 +1,6 @@
 {
-  "commit": "fabd17e0b0e0c0b2c3d8a7d1e8014234a2daa716",
-  "run": "https://github.com/kaneki003/code-review-workbench/actions/runs/39027907486",
+  "commit": "6c91fce988f222a983132f56f9e1f842b1b16186",
+  "run": "https://github.com/kaneki003/code-review-workbench/actions/runs/39045663277",
   "cells": [
     {
       "artifact": "readiness-macos-15-1.141.2",
@@ -12,8 +12,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "darwin-arm64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 100,
+      "behaviorTestsSkipped": 0,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     },
     {
@@ -26,8 +29,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "darwin-arm64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 100,
+      "behaviorTestsSkipped": 0,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     },
     {
@@ -40,8 +46,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "linux-x64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 99,
+      "behaviorTestsSkipped": 1,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     },
     {
@@ -54,8 +63,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "linux-x64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 99,
+      "behaviorTestsSkipped": 1,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     },
     {
@@ -68,8 +80,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "win32-x64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 98,
+      "behaviorTestsSkipped": 2,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     },
     {
@@ -82,8 +97,11 @@
       "electron": "43.7.7",
       "sqlite": "3.53.4",
       "packageTarget": "win32-x64",
-      "installedTestsPassed": 3,
+      "behaviorTestsPassed": 98,
+      "behaviorTestsSkipped": 2,
+      "installedTestsPassed": 4,
       "storeActions": "passed",
+      "operationRecovery": "passed",
       "reviewAvailable": false
     }
   ]
