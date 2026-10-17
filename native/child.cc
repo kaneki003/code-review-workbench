@@ -12,6 +12,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
 #endif
 
 namespace {
@@ -96,6 +99,18 @@ int AboveStdio(int descriptor) {
   int isolated = fcntl(descriptor, F_DUPFD_CLOEXEC, 3);
   close(descriptor);
   return isolated;
+}
+void CloseInheritedDescriptor(int descriptor) {
+#ifdef __linux__
+  // Chromium interposes libc close() with ownership checks for the parent's
+  // ScopedFDs. Only this forked child discards those inherited descriptors;
+  // its copied ownership table must not trap before exec. Use the kernel
+  // operation here, without binding to a private Chromium reset API. Parent
+  // cleanup continues through ordinary close().
+  syscall(SYS_close, descriptor);
+#else
+  close(descriptor);
+#endif
 }
 #endif
 napi_value Prepare(napi_env env, napi_callback_info info) {
@@ -183,10 +198,10 @@ napi_value Prepare(napi_env env, napi_callback_info info) {
     // Only async-signal-safe operations after fork in this multithreaded host.
     if (setpgid(0, 0) != 0 || chdir(directory.c_str()) != 0) _exit(127);
     for (int fd = 0; fd < 3; ++fd) if (dup2(nullFile, fd) == -1) _exit(127);
-    for (int fd = 3; fd < maximum; ++fd) if (fd != gates[1]) close(fd);
+    for (int fd = 3; fd < maximum; ++fd) if (fd != gates[1]) CloseInheritedDescriptor(fd);
     char byte = 0; ssize_t received;
     do { received = read(gates[1], &byte, 1); } while (received == -1 && errno == EINTR);
-    close(gates[1]);
+    CloseInheritedDescriptor(gates[1]);
     if (received != 1 || byte != 'G') _exit(126);
     execve(executable.c_str(), argv.data(), envp.data()); _exit(127);
   }

@@ -550,6 +550,7 @@ test('a typed reference update checks repository facts, records its outcome and 
   expect(result.operation, JSON.stringify(result)).toMatchObject({
     phase: 'observed',
     outcome: 'applied',
+    exitCode: 0,
   });
   expect(
     execFileSync('git', ['-C', repository, 'rev-parse', 'refs/code-review-workbench/test'], {
