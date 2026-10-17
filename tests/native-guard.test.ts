@@ -79,7 +79,9 @@ test.each(['write', 'file-flush', 'rename', 'directory-flush'])(
   async (failure) => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-record-fault-')));
     directories.push(directory);
-    const record = join(directory, 'control.json');
+    const records = join(directory, 'records');
+    native.ensurePrivateDirectory(records);
+    const record = join(records, 'control.json');
     native.publishRecord(record, '{"version":1}');
     expect(() => native.publishRecord(record, '{"version":2}', failure)).toThrowError(
       expect.objectContaining({
@@ -89,7 +91,7 @@ test.each(['write', 'file-flush', 'rename', 'directory-flush'])(
     expect(await readFile(record, 'utf8')).toBe(
       failure === 'directory-flush' ? '{"version":2}' : '{"version":1}',
     );
-    expect(await readdir(directory)).toEqual(['control.json']);
+    expect(await readdir(records)).toEqual(['control.json']);
   },
 );
 
@@ -128,6 +130,45 @@ test('a prepared child has a verified identity and cannot act until its exact ha
     native.closeChild(child);
   }
 });
+
+test.skipIf(process.platform === 'win32')(
+  'the child gate works when the host standard descriptors are closed',
+  async () => {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-closed-stdio-')));
+    directories.push(directory);
+    execFileSync(
+      process.execPath,
+      [
+        '-e',
+        `
+    const fs = require('node:fs');
+    const native = require(process.argv[1]);
+    const directory = process.argv[2];
+    for (let fd = 0; fd < 3; fd++) fs.closeSync(fd);
+    const child = native.prepareChild(process.execPath,
+      ['-e', "require('node:fs').writeFileSync(process.argv[1], 'done')", directory + '/effect'],
+      directory, process.env, require('node:crypto').randomUUID());
+    native.startChild(child);
+    const timer = setInterval(() => {
+      const status = native.pollChild(child);
+      if (status.settled) {
+        fs.writeFileSync(directory + '/result', JSON.stringify(status));
+        native.closeChild(child); clearInterval(timer);
+      }
+    }, 10);
+  `,
+        binary,
+        directory,
+      ],
+      { timeout: 5000 },
+    );
+    expect(JSON.parse(await readFile(join(directory, 'result'), 'utf8'))).toEqual({
+      settled: true,
+      exitCode: 0,
+    });
+    expect(await readFile(join(directory, 'effect'), 'utf8')).toBe('done');
+  },
+);
 
 test('a replaced guard pathname invalidates the original handle before another write', async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-guard-replaced-')));

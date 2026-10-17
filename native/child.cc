@@ -90,6 +90,14 @@ std::wstring Quote(const std::wstring& value) {
   result.append(slashes * 2, L'\\'); return result + L"\"";
 }
 #endif
+#ifndef _WIN32
+int AboveStdio(int descriptor) {
+  if (descriptor >= 3) return descriptor;
+  int isolated = fcntl(descriptor, F_DUPFD_CLOEXEC, 3);
+  close(descriptor);
+  return isolated;
+}
+#endif
 napi_value Prepare(napi_env env, napi_callback_info info) {
   size_t count = 6; napi_value args[6]; Children* children;
   if (napi_get_cb_info(env, info, &count, args, nullptr, reinterpret_cast<void**>(&children)) != napi_ok || count != 5)
@@ -146,6 +154,13 @@ napi_value Prepare(napi_env env, napi_callback_info info) {
   if (executable[0] != '/' || directory[0] != '/') return Error(env, "INVALID_CHILD", "Child paths must be absolute.");
   int gates[2];
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, gates) != 0) return Error(env, "CHILD_PREPARE", "Cannot create the child gate.");
+  // Extension hosts can have closed stdio. Never let dup2 below overwrite a
+  // start socket, or leave a same-fd /dev/null descriptor close-on-exec.
+  gates[0] = AboveStdio(gates[0]); gates[1] = AboveStdio(gates[1]);
+  if (gates[0] == -1 || gates[1] == -1) {
+    if (gates[0] != -1) close(gates[0]); if (gates[1] != -1) close(gates[1]);
+    return Error(env,"CHILD_PREPARE","Cannot isolate child descriptors.");
+  }
   if (fcntl(gates[0], F_SETFD, FD_CLOEXEC) == -1 || fcntl(gates[1], F_SETFD, FD_CLOEXEC) == -1) {
     close(gates[0]); close(gates[1]); return Error(env,"CHILD_PREPARE","Cannot isolate the child gate.");
   }
@@ -156,6 +171,7 @@ napi_value Prepare(napi_env env, napi_callback_info info) {
   }
 #endif
   int nullFile = open("/dev/null", O_RDWR | O_CLOEXEC);
+  if (nullFile != -1) nullFile = AboveStdio(nullFile);
   if (nullFile == -1) { close(gates[0]); close(gates[1]); return Error(env, "CHILD_PREPARE", "Cannot establish child output."); }
   std::vector<char*> argv, envp;
   for (auto& argument : arguments) argv.push_back(argument.data()); argv.push_back(nullptr);
