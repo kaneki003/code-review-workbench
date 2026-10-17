@@ -19,6 +19,12 @@ Local `pnpm validate` passed formatting, types and **100 tests** on macOS 25.6.0
 
 The checks exercise real file publication, injected I/O failures and process crashes. They do not simulate hardware power loss or certify every volume. Installed Linux initially trapped on Chromium's copied file-descriptor ownership table; child-only kernel closes fix it and both installed host versions then passed. Windows installed tests exposed drive-letter case differences; workspace validation now checks actual directory identity, with a regression that also rejects a different folder. The initial Windows native run also caught default administrator-token object ownership; creation explicitly sets the actual user SID and protected DACL.
 
+## Windows test budget follow-up
+
+The later [documentation-only run at `37be92e`](https://github.com/kaneki003/code-review-workbench/actions/runs/39046156574) hit Vitest's outer 5-second and 15-second deadlines in both Windows jobs. Different cases timed out; no assertion reported an incorrect store/Git result. The earlier green matrix above remains measured evidence for that run, rather than proof that the test budget was reliable.
+
+Windows shared-store integration cases now have a bounded 30-second budget for fixture building, real process startup and multiple storage/Git actions. Other platforms retain their previous budgets. Assertions, failure injection, skips and the application's request/Git/SQLite deadlines are unchanged; no retries were added. Local validation still passes all 100 cases. [PR checks](https://github.com/kaneki003/code-review-workbench/pull/31/checks) record the Windows confirmation.
+
 ## Standards
 
 The final review found redirected ref/reflog paths and ambiguous unchanged-reference receipts. Both are fixed: canonical path/link checks and recorded path identities guard start/settlement; unchanged updates are refused before intent. The reviewer confirmed **0 remaining documented-standard violations**.
