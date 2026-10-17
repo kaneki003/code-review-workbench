@@ -58,3 +58,5 @@ All of #18's store/ownership acceptance criteria remain open. The checkpoint pro
 `pnpm validate` checks formatting, types and all fast tests. `pnpm test:host` packages/installs the VSIX and checks the real public command, React handshake, worker and unchanged disposable repository. Use `CRW_VSCODE_VERSION=1.141.2 pnpm test:host` for the minimum host.
 
 Install `dist/code-review-workbench.vsix`, open a trusted local repository and run **Code Review Workbench: Check Readiness**. Git/SQLite can pass while **Review ownership · Blocked** explains that an extension update is required. This is not evidence of cross-window exclusion or disk-store durability.
+
+See the [checkpoint's test evidence and automated review](shared-state-validation.md).
