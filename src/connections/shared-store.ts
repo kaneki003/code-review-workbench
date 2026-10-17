@@ -6,12 +6,14 @@ import type {
   StoreRequest,
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
+import type { StorageDiagnostics } from './storage-diagnostics';
 
 // Configuration is host-owned. Never accept OS-home/root overrides from a
 // webview, repository, VS Code setting or process HOME/USERPROFILE variable.
 export function createStoreConnection(
   workerPath: string,
   configuration: StoreConfiguration,
+  diagnostics?: StorageDiagnostics,
 ): StoreConnection {
   let worker: Worker | undefined;
   let failed = false;
@@ -40,7 +42,9 @@ export function createStoreConnection(
     if (failed)
       throw new StoreError('CONNECTION_UNKNOWN', 'The storage connection needs a window restart.');
     if (worker) return worker;
-    worker = new Worker(workerPath, { workerData: configuration });
+    worker = new Worker(workerPath, {
+      workerData: { ...configuration, ...(diagnostics ? { storageDiagnostics: diagnostics } : {}) },
+    });
     worker.on('message', (message: unknown) => {
       if (
         !message ||

@@ -2,9 +2,15 @@ import { spawn } from 'node:child_process';
 import { ReviewManager } from '../../src/application/review-manager';
 import { createStoreConnection } from '../../src/connections/shared-store';
 import type { StoreConfiguration } from '../../src/application/private-store';
+import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 
 const configuration = JSON.parse(process.argv[3]!) as StoreConfiguration;
-const store = createStoreConnection(process.argv[2]!, configuration);
+const store = createStoreConnection(
+  process.argv[2]!,
+  configuration,
+  process.argv[4] ? (JSON.parse(process.argv[4]) as StorageDiagnostics) : undefined,
+);
+let operationId: string | undefined;
 const manager = new ReviewManager({
   environment: () => ({
     vscode: '1.142.0',
@@ -42,7 +48,15 @@ process.on(
   'message',
   async (message: {
     id: number;
-    action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child' | 'prepare-ref' | 'recover';
+    action:
+      | 'open'
+      | 'release'
+      | 'renew'
+      | 'inspect'
+      | 'reserve-child'
+      | 'prepare-ref'
+      | 'recover'
+      | 'execute-ref';
     ref?: string;
     oid?: string;
   }) => {
@@ -51,9 +65,13 @@ process.on(
       release: () => manager.releasePrivateStore(),
       renew: () => manager.renewOwnership(),
       inspect: () => manager.inspectPrivateStore(),
-      'prepare-ref': async () =>
-        (await manager.prepareReferenceUpdate(message.ref!, message.oid!)).view,
-      recover: async () => (await manager.recoverPrivateStore()).view,
+      'prepare-ref': async () => {
+        const reply = await manager.prepareReferenceUpdate(message.ref!, message.oid!);
+        operationId = reply.operation?.id;
+        return reply;
+      },
+      'execute-ref': () => manager.executeRepositoryOperation(operationId!),
+      recover: () => manager.recoverPrivateStore(),
       'reserve-child': async () => {
         const receipt = await manager.recordRepositoryIntent();
         if (receipt.reservation) {
@@ -68,7 +86,8 @@ process.on(
         return receipt.view;
       },
     };
-    process.send!({ id: message.id, view: await actions[message.action]() });
+    const result = await actions[message.action]();
+    process.send!({ id: message.id, ...('view' in result ? result : { view: result }) });
   },
 );
 process.send!({ ready: true });

@@ -73,6 +73,9 @@ export class ReviewManager {
   recoverPrivateStore(): Promise<StoreReply> {
     return this.storeRequest('recover');
   }
+  inspectRepositoryOperation(operationId: string): Promise<StoreReply> {
+    return this.storeRequest('inspectOperation', { operationId });
+  }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
     return this.storeRequest(action).then((reply) => reply.view);
@@ -121,11 +124,18 @@ export class ReviewManager {
           protocol: 1,
           id: randomUUID(),
           action,
+          workspacePath: host.folders[0]!.path,
           ...fields,
           ...(this.storeLease ? { lease: this.storeLease } : {}),
         };
         const reply = await this.connections.store.request(request);
-        this.storeLease = reply.lease;
+        if (
+          !reply.lease ||
+          !this.storeLease ||
+          reply.lease.token !== this.storeLease.token ||
+          reply.lease.revision >= this.storeLease.revision
+        )
+          this.storeLease = reply.lease;
         return reply;
       } catch (error) {
         return {

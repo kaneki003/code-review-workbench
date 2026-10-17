@@ -9,11 +9,15 @@ import type {
   StoreConfiguration,
   StoreConnection,
   StoreRequest,
+  StoreReply,
 } from '../src/application/private-store';
 import type { StoreView } from '../src/application/private-store';
 import { fork, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
+import { createRequire } from 'node:module';
+import type { NativeStore } from '../src/connections/store-records';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -44,7 +48,7 @@ async function fixture() {
     target: 'node24',
     format: 'cjs',
   });
-  async function contender(name: string, data = 'data-A') {
+  async function contender(name: string, data = 'data-A', diagnostics?: StorageDiagnostics) {
     const child = fork(
       processPath,
       [
@@ -55,6 +59,7 @@ async function fixture() {
           windowId: name,
           location: join(directory, name),
         }),
+        ...(diagnostics ? [JSON.stringify(diagnostics)] : []),
       ],
       {
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -70,16 +75,32 @@ async function fixture() {
     });
     await once(child, 'message');
     let sequence = 0;
+    type Action =
+      | 'open'
+      | 'release'
+      | 'renew'
+      | 'inspect'
+      | 'reserve-child'
+      | 'prepare-ref'
+      | 'recover'
+      | 'execute-ref';
+    const pending = new Map<number, (reply: StoreReply) => void>();
+    child.on('message', (reply: StoreReply & { id: number }) => {
+      pending.get(reply.id)?.(reply);
+      pending.delete(reply.id);
+    });
+    function reply(action: Action, args?: string[]): Promise<StoreReply> {
+      const id = ++sequence;
+      return new Promise((resolveReply) => {
+        pending.set(id, resolveReply);
+        child.send({ id, action, ref: args?.[0], oid: args?.[1] });
+      });
+    }
     return {
       child,
-      async send(
-        action:
-          'open' | 'release' | 'renew' | 'inspect' | 'reserve-child' | 'prepare-ref' | 'recover',
-        args?: string[],
-      ): Promise<StoreView> {
-        const response = once(child, 'message');
-        child.send({ id: ++sequence, action, args, ref: args?.[0], oid: args?.[1] });
-        return (await response)[0].view as StoreView;
+      reply,
+      async send(action: Action, args?: string[]) {
+        return (await reply(action, args)).view;
       },
     };
   }
@@ -132,6 +153,262 @@ async function fixture() {
   }
   return { directory, home, worker, manager, connections, contender };
 }
+
+async function repositoryFixture(directory: string) {
+  const repository = join(directory, 'repository');
+  await mkdir(repository);
+  const git = (...args: string[]) =>
+    execFileSync(
+      'git',
+      [
+        '-C',
+        repository,
+        '-c',
+        `core.hooksPath=${join(directory, 'fixture-no-hooks')}`,
+        '-c',
+        'commit.gpgSign=false',
+        ...args,
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+  git('init');
+  await writeFile(join(repository, 'tracked.txt'), 'original\n');
+  git('add', 'tracked.txt');
+  git(
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.test',
+    'commit',
+    '-m',
+    'fixture',
+  );
+  return { repository, git, oid: git('rev-parse', 'HEAD').trim() };
+}
+
+test.each(['HEAD', 'index', 'files'])(
+  'a changed %s refuses a prepared Git effect and preserves repository work',
+  async (change) => {
+    const context = await fixture();
+    const { repository, git, oid } = await repositoryFixture(context.directory);
+    const manager = context.manager('repository');
+    await manager.openPrivateStore();
+    const prepared = await manager.prepareReferenceUpdate('refs/code-review-workbench/check', oid);
+    expect(prepared.operation?.phase, JSON.stringify(prepared)).toBe('prepared');
+    if (change === 'HEAD')
+      git(
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'external',
+      );
+    if (change === 'index') git('update-index', '--skip-worktree', 'tracked.txt');
+    if (change === 'files') await writeFile(join(repository, 'tracked.txt'), 'external\n');
+    const result = await manager.executeRepositoryOperation(prepared.operation!.id);
+    expect(result.operation, JSON.stringify(result)).toMatchObject({
+      phase: 'observed',
+      outcome: 'refused',
+    });
+    expect(() => git('rev-parse', '--verify', 'refs/code-review-workbench/check')).toThrow();
+    if (change === 'files')
+      expect(await readFile(join(repository, 'tracked.txt'), 'utf8')).toBe('external\n');
+    expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
+  },
+);
+
+test('Git hooks and arbitrary reference targets cannot start hidden child processes', async () => {
+  const context = await fixture();
+  const { repository, oid } = await repositoryFixture(context.directory);
+  await writeFile(
+    join(repository, '.git', 'hooks', 'reference-transaction'),
+    '#!/bin/sh\necho unsafe > hook-ran\n',
+    { mode: 0o755 },
+  );
+  const manager = context.manager('repository');
+  await manager.openPrivateStore();
+  expect((await manager.prepareReferenceUpdate('refs/heads/main', oid)).view).toMatchObject({
+    status: 'recovery',
+    code: 'INVALID_OPERATION',
+  });
+  const prepared = await manager.prepareReferenceUpdate(
+    'refs/code-review-workbench/hook-check',
+    oid,
+  );
+  const result = await manager.executeRepositoryOperation(prepared.operation!.id);
+  expect(result.operation, JSON.stringify(result)).toMatchObject({ outcome: 'applied' });
+  await expect(readFile(join(repository, 'hook-ran'))).rejects.toThrow();
+  expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('a lost acknowledgment after the outcome commit is reconciled from Git and its independent receipt', async () => {
+  const context = await fixture();
+  const { git, oid } = await repositoryFixture(context.directory);
+  const owner = await context.contender('repository', 'data-A', {
+    boundary: 'observed.commit.after',
+    mode: 'crash',
+  });
+  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+  const plan = await owner.reply('prepare-ref', ['refs/code-review-workbench/lost-ack', oid]);
+  expect(plan.operation?.phase).toBe('prepared');
+  expect((await owner.reply('execute-ref')).view.status).toBe('recovery');
+  const exited = once(owner.child, 'exit');
+  owner.child.kill('SIGKILL');
+  await exited;
+  const next = context.manager('repository', 'data-B');
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'recovery' });
+  const recovered = await next.recoverPrivateStore();
+  expect(recovered.view, JSON.stringify(recovered)).toMatchObject({ status: 'closed' });
+  expect(recovered.operation).toMatchObject({ outcome: 'applied' });
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'owned' });
+  expect((await next.inspectRepositoryOperation(plan.operation!.id)).operation).toMatchObject({
+    outcome: 'applied',
+  });
+  expect(
+    git('reflog', 'show', '--format=%H', 'refs/code-review-workbench/lost-ack').trim().split('\n'),
+  ).toEqual([oid]);
+  expect(await next.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+const operationFailures: StorageDiagnostics[] = [
+  ...['prepared', 'armed', 'observed'].flatMap((phase) =>
+    ['record', 'barrier', 'commit', 'ack'].flatMap((step) =>
+      ['before', 'after'].map((edge) => ({
+        boundary: `${phase}.${step}.${edge}`,
+        mode: 'crash' as const,
+      })),
+    ),
+  ),
+  { boundary: 'dispatch.before', mode: 'crash' },
+  { boundary: 'dispatch.after', mode: 'crash' },
+  ...['prepared', 'armed', 'observed'].map((phase) => ({
+    boundary: `${phase}.commit.before`,
+    mode: 'commit' as const,
+  })),
+  ...['prepared', 'observed'].flatMap((phase) =>
+    (['write', 'file-flush', 'rename', 'directory-flush'] as const).map((stage) => ({
+      boundary: `${phase}.record`,
+      mode: 'native' as const,
+      stage,
+    })),
+  ),
+  { boundary: 'dispatch.after', mode: 'error' },
+];
+test.each(operationFailures)(
+  'failure at $boundary ($mode $stage) never replays Git or acknowledges an uncertain result',
+  async (diagnostics) => {
+    const context = await fixture();
+    const { repository, git, oid } = await repositoryFixture(context.directory);
+    const index = await readFile(join(repository, '.git', 'index'));
+    const owner = await context.contender('repository', 'data-A', diagnostics);
+    expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+    const ref = 'refs/code-review-workbench/failure';
+    const plan = await owner.reply('prepare-ref', [ref, oid]);
+    const response = diagnostics.boundary.startsWith('prepared.')
+      ? plan
+      : await owner.reply('execute-ref');
+    expect(response.view.status, JSON.stringify({ diagnostics, response })).toBe('recovery');
+    expect(response.operation).toBeUndefined();
+    const exited = once(owner.child, 'exit');
+    owner.child.kill('SIGKILL');
+    await exited;
+    const next = context.manager('repository', 'data-B');
+    const opened = await next.openPrivateStore();
+    expect(['owned', 'recovery']).toContain(opened.status);
+    if (opened.status === 'recovery') {
+      let receipt = await next.recoverPrivateStore();
+      for (let attempt = 0; receipt.view.status === 'recovery' && attempt < 60; attempt++) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+        receipt = await next.recoverPrivateStore();
+      }
+      expect(receipt.view, JSON.stringify({ diagnostics, receipt })).toMatchObject({
+        status: 'closed',
+      });
+      expect(await next.openPrivateStore()).toMatchObject({ status: 'owned', fence: 2 });
+    }
+    let actual: string | null = null;
+    try {
+      actual = git('rev-parse', '--verify', ref).trim();
+    } catch {
+      /* absent is a known outcome */
+    }
+    expect([null, oid]).toContain(actual);
+    if (
+      diagnostics.boundary.startsWith('prepared.') ||
+      diagnostics.boundary.startsWith('armed.') ||
+      diagnostics.boundary === 'dispatch.before'
+    )
+      expect(actual).toBeNull();
+    if (diagnostics.boundary.startsWith('observed.')) expect(actual).toBe(oid);
+    if (plan.operation) {
+      const receipt = await next.inspectRepositoryOperation(plan.operation.id);
+      expect(receipt.operation, JSON.stringify({ diagnostics, receipt })).toMatchObject({
+        phase: 'observed',
+        outcome: actual === oid ? 'applied' : 'not-applied',
+      });
+    }
+    if (actual === oid)
+      expect(git('reflog', 'show', '--format=%H', ref).trim().split('\n')).toEqual([oid]);
+    expect(git('rev-parse', 'HEAD').trim()).toBe(oid);
+    expect(await readFile(join(repository, '.git', 'index'))).toEqual(index);
+    expect(await readFile(join(repository, 'tracked.txt'), 'utf8')).toBe('original\n');
+    expect(await next.releasePrivateStore()).toMatchObject({ status: 'closed' });
+  },
+  15000,
+);
+
+test('a recorded Git child outliving its host blocks recovery until its process group settles', async () => {
+  const context = await fixture();
+  const { repository, git, oid } = await repositoryFixture(context.directory);
+  const native = createRequire(import.meta.url)(
+    resolve('native/build/Release/crw_guard.node'),
+  ) as NativeStore;
+  const owner = await context.contender('repository', 'data-A', {
+    boundary: 'dispatch.after',
+    mode: 'error',
+  });
+  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+  const ref = 'refs/code-review-workbench/survivor';
+  const plan = await owner.reply('prepare-ref', [ref, oid]);
+  const lock = join(repository, '.git', 'refs', 'code-review-workbench', 'survivor.lock');
+  await mkdir(join(repository, '.git', 'refs', 'code-review-workbench'), { recursive: true });
+  await writeFile(lock, 'fixture-owned lock');
+  expect((await owner.reply('execute-ref')).view).toMatchObject({
+    status: 'recovery',
+    code: 'INJECTED_IO',
+  });
+  const record = JSON.parse(
+    await readFile(
+      join(context.home, '.code-review-workbench', `operation-${plan.operation!.id}.json`),
+      'utf8',
+    ),
+  );
+  const exited = once(owner.child, 'exit');
+  owner.child.kill('SIGKILL');
+  await exited;
+  const next = context.manager('repository', 'data-B');
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'recovery' });
+  if (process.platform !== 'win32') {
+    expect(native.processIdentity(record.child.pid)).toEqual(record.child);
+    expect((await next.recoverPrivateStore()).view).toMatchObject({ status: 'recovery' });
+  }
+  // Only remove the lock created by this fixture, never a Git-owned lock.
+  await rm(lock);
+  let receipt = await next.recoverPrivateStore();
+  for (let attempt = 0; receipt.view.status === 'recovery' && attempt < 160; attempt++) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+    receipt = await next.recoverPrivateStore();
+  }
+  expect(receipt.view, JSON.stringify(receipt)).toMatchObject({ status: 'closed' });
+  expect(native.childGroupSettled(record.child.pid, record.id)).toBe(true);
+  if (process.platform !== 'win32') {
+    expect(receipt.operation?.outcome).toBe('applied');
+    expect(git('reflog', 'show', '--format=%H', ref).trim().split('\n')).toEqual([oid]);
+  } else expect(receipt.operation?.outcome).toBe('not-applied');
+}, 15000);
 
 test('one manager opens the durable store; a second sees only its location and later claims the same store', async () => {
   const context = await fixture();

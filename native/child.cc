@@ -146,9 +146,14 @@ napi_value Prepare(napi_env env, napi_callback_info info) {
   if (executable[0] != '/' || directory[0] != '/') return Error(env, "INVALID_CHILD", "Child paths must be absolute.");
   int gates[2];
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, gates) != 0) return Error(env, "CHILD_PREPARE", "Cannot create the child gate.");
-  fcntl(gates[0], F_SETFD, FD_CLOEXEC); fcntl(gates[1], F_SETFD, FD_CLOEXEC);
+  if (fcntl(gates[0], F_SETFD, FD_CLOEXEC) == -1 || fcntl(gates[1], F_SETFD, FD_CLOEXEC) == -1) {
+    close(gates[0]); close(gates[1]); return Error(env,"CHILD_PREPARE","Cannot isolate the child gate.");
+  }
 #ifdef __APPLE__
-  int noSignal = 1; setsockopt(gates[0], SOL_SOCKET, SO_NOSIGPIPE, &noSignal, sizeof(noSignal));
+  int noSignal = 1;
+  if (setsockopt(gates[0], SOL_SOCKET, SO_NOSIGPIPE, &noSignal, sizeof(noSignal)) != 0) {
+    close(gates[0]); close(gates[1]); return Error(env,"CHILD_PREPARE","Cannot establish signal-safe child start.");
+  }
 #endif
   int nullFile = open("/dev/null", O_RDWR | O_CLOEXEC);
   if (nullFile == -1) { close(gates[0]); close(gates[1]); return Error(env, "CHILD_PREPARE", "Cannot establish child output."); }
@@ -173,6 +178,7 @@ napi_value Prepare(napi_env env, napi_callback_info info) {
   if (pid == -1) { close(gates[0]); return Error(env, "CHILD_PREPARE", "Cannot create the gated child."); }
   child->gate = gates[0]; child->pid = pid;
 #endif
+  children->handles.erase(std::remove_if(children->handles.begin(),children->handles.end(),[](const auto& weak){return weak.expired();}),children->handles.end());
   children->handles.push_back(child);
   napi_value result; napi_create_object(env, &result);
   auto* reference = new std::shared_ptr<Child>(child);

@@ -26,6 +26,8 @@ import {
 export interface RepositoryFacts {
   worktree: string;
   commonGitDir: string;
+  gitDir: string;
+  index: string;
   scopes: string[];
   digest: string;
 }
@@ -72,6 +74,8 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !object(value.facts) ||
     !text(value.facts.worktree) ||
     !text(value.facts.commonGitDir) ||
+    !text(value.facts.gitDir) ||
+    !text(value.facts.index) ||
     !Array.isArray(value.facts.scopes) ||
     value.facts.scopes.length !== 2 ||
     !value.facts.scopes.every((scope) => text(scope, 32768)) ||
@@ -138,7 +142,9 @@ export class RepositoryOperation {
     this.environment = Object.fromEntries(
       Object.entries(process.env).filter(
         (entry): entry is [string, string] =>
-          typeof entry[1] === 'string' && !/^(GIT_|LD_|DYLD_)/i.test(entry[0]),
+          typeof entry[1] === 'string' &&
+          !entry[0].includes('=') &&
+          !/^(GIT_|LD_|DYLD_)/i.test(entry[0]),
       ),
     );
     Object.assign(this.environment, {
@@ -154,6 +160,12 @@ export class RepositoryOperation {
       `core.hooksPath=${hooksDirectory}`,
       '-c',
       'core.fsmonitor=false',
+      '-c',
+      'core.filesRefLockTimeout=4000',
+      '-c',
+      'user.name=Code Review Workbench',
+      '-c',
+      'user.email=workbench@localhost',
       '-C',
       location,
     ];
@@ -203,14 +215,15 @@ export class RepositoryOperation {
       '--git-common-dir',
       '--git-path',
       'index',
+      '--absolute-git-dir',
     ])!
       .toString()
       .trimEnd()
       .split(/\r?\n/)
       .map(normalize);
-    if (paths.length !== 3 || paths[0] !== this.location)
+    if (paths.length !== 4 || paths[0] !== this.location)
       recovery('Repository discovery no longer matches this window.');
-    const [worktree, commonGitDir, index] = paths as [string, string, string];
+    const [worktree, commonGitDir, index, gitDir] = paths as [string, string, string, string];
     const scopes = [worktree, commonGitDir]
       .map((path) => {
         this.native.assertLocalDirectory(path);
@@ -219,16 +232,20 @@ export class RepositoryOperation {
       })
       .sort();
     const digest = createHash('sha256').update(JSON.stringify(scopes));
+    this.native.assertLocalDirectory(gitDir);
+    const admin = statSync(gitDir, { bigint: true });
+    digest.update(`${admin.dev}:${admin.ino}:${gitDir}:${index}`);
     digest.update(this.git(['symbolic-ref', '-q', 'HEAD'], true) ?? 'detached');
     digest.update(this.git(['rev-parse', '--verify', '--quiet', 'HEAD'], true) ?? 'unborn');
     if (existsSync(index)) {
       if (!lstatSync(index).isFile()) recovery('The repository index is redirected.');
       digest.update(readFileSync(index));
     } else digest.update('no-index');
+    digest.update(this.git(['ls-files', '--stage', '-z'])!);
     const files = [
       ...new Set(
-        this.git(['ls-files', '--cached', '--others', '--exclude-standard', '-z'])!
-          .toString('utf8')
+        new TextDecoder('utf-8', { fatal: true })
+          .decode(this.git(['ls-files', '--cached', '--others', '--exclude-standard', '-z'])!)
           .split('\0')
           .filter(Boolean),
       ),
@@ -245,11 +262,14 @@ export class RepositoryOperation {
       if (isAbsolute(local) || local.startsWith('..'))
         recovery('A repository file escapes the worktree.');
       digest.update(file).update('\0');
-      if (!existsSync(path)) {
+      let before;
+      try {
+        before = lstatSync(path, { bigint: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         digest.update('missing');
         continue;
       }
-      const before = lstatSync(path, { bigint: true });
       digest.update(String(before.mode));
       if (before.isSymbolicLink()) digest.update(readlinkSync(path));
       else if (before.isFile()) {
@@ -274,7 +294,7 @@ export class RepositoryOperation {
       } else if (before.isDirectory()) digest.update(`gitlink:${before.dev}:${before.ino}`);
       else recovery('A repository file has an unsupported type.');
     }
-    return { worktree, commonGitDir, scopes, digest: digest.digest('hex') };
+    return { worktree, commonGitDir, gitDir, index, scopes, digest: digest.digest('hex') };
   }
   sameFacts(expected: RepositoryFacts) {
     return JSON.stringify(this.facts()) === JSON.stringify(expected);
@@ -284,9 +304,25 @@ export class RepositoryOperation {
     // --no-deref and compare-and-swap bind the effect to this exact app ref.
     return this.native.prepareChild(
       this.executable,
-      [...this.prefix, 'update-ref', '--no-deref', record.ref, record.newOid, expected],
+      [
+        ...this.prefix,
+        `--git-dir=${record.facts.gitDir}`,
+        `--work-tree=${record.facts.worktree}`,
+        'update-ref',
+        '--no-deref',
+        '--create-reflog',
+        record.ref,
+        record.newOid,
+        expected,
+      ],
       this.location,
-      this.environment,
+      {
+        ...this.environment,
+        GIT_DIR: record.facts.gitDir,
+        GIT_COMMON_DIR: record.facts.commonGitDir,
+        GIT_WORK_TREE: record.facts.worktree,
+        GIT_INDEX_FILE: record.facts.index,
+      },
       record.id,
     );
   }

@@ -36,10 +36,43 @@ const native = createRequire(import.meta.url)(binary) as {
   startChild(handle: object): number;
   pollChild(handle: object): { settled: boolean; exitCode?: number };
   closeChild(handle: object): void;
+  cancelPreparedChild(handle: object): void;
 };
 const directories: string[] = [];
 const children: ChildProcess[] = [];
 const workers: Worker[] = [];
+
+test('cancelling a prepared child proves it stopped without permitting its effect', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-cancel-child-')));
+  directories.push(directory);
+  const marker = join(directory, 'forbidden');
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string' && !entry[0].includes('='),
+    ),
+  );
+  const child = native.prepareChild(
+    process.execPath,
+    ['-e', "require('node:fs').writeFileSync(process.argv[1],'unsafe')", marker],
+    directory,
+    environment,
+    randomUUID(),
+  );
+  try {
+    native.cancelPreparedChild(child);
+    let state = native.pollChild(child);
+    for (let attempt = 0; !state.settled && attempt < 200; attempt++) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+      state = native.pollChild(child);
+    }
+    expect(state.settled).toBe(true);
+    expect(state.exitCode).not.toBe(0);
+    expect(() => native.startChild(child)).toThrow();
+    await expect(access(marker)).rejects.toThrow();
+  } finally {
+    native.closeChild(child);
+  }
+});
 
 test.each(['write', 'file-flush', 'rename', 'directory-flush'])(
   'record %s failure never acknowledges publication or leaves a partial record',

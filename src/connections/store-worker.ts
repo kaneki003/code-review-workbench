@@ -44,6 +44,8 @@ import {
   type OperationRecord,
 } from './repository-operation';
 
+import { StorageFaults } from './storage-diagnostics';
+
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
 
 function configuration(value: unknown): StoreConfiguration {
@@ -91,6 +93,9 @@ class SharedStore {
   private lease: StoreLease | undefined;
   private poisoned = false;
   private recoveryOwner = false;
+  private readonly faults = new StorageFaults(
+    object(workerData) ? workerData.storageDiagnostics : undefined,
+  );
   private terminal: { id: string; digest: string; reply: StoreReply } | undefined;
 
   constructor(private readonly config: StoreConfiguration) {
@@ -562,17 +567,21 @@ class SharedStore {
 
   private projectOperation(record: OperationRecord, request?: StoreRequest): StoreReply {
     this.validate(this.lease, true);
+    if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
+      recovery('The metadata sequence is exhausted.');
     assertOperationOwner(record, this.lease!);
     // Receipt/intent first; SQLite is its projection, never evidence that an
     // external effect completed. The independent receipt is retained.
-    native.publishRecord(operationFile(this.rendezvous, record.id), JSON.stringify(record));
+    this.faults.publish(record.phase, native, operationFile(this.rendezvous, record.id), record);
     const pending = {
       id: record.id,
       scopeId: record.scopeId,
       scopes: record.facts.scopes,
       child: record.child,
     };
+    this.faults.at(`${record.phase}.barrier.before`);
     this.saveControl({ ...this.control!, pending });
+    this.faults.at(`${record.phase}.barrier.after`);
     const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
     const observed = record.phase === 'observed';
     const reply: StoreReply = {
@@ -593,11 +602,23 @@ class SharedStore {
       },
     };
     if (observed) delete reply.view.code;
+    this.faults.at(`${record.phase}.commit.before`, this.database);
     transaction(this.database!, () => {
       this.validate(this.lease, true);
       this.database!.exec(
         'CREATE TABLE IF NOT EXISTS operation_records (operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id), record TEXT NOT NULL) STRICT',
       );
+      const existing = this.database!.prepare(
+        'SELECT owner_token,scope_id FROM operations WHERE operation_id=?',
+      ).get(record.id);
+      if (
+        existing &&
+        (existing.owner_token !== record.ownerToken || existing.scope_id !== record.scopeId)
+      )
+        throw new StoreError(
+          'REQUEST_COLLISION',
+          'The operation identity belongs to another owner scope.',
+        );
       this.database!.prepare('INSERT OR IGNORE INTO operations VALUES (?,?,?,?)').run(
         record.id,
         record.ownerToken,
@@ -610,9 +631,12 @@ class SharedStore {
       this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
       if (request) saveReply(this.database!, request, lease, reply);
     });
+    this.faults.at(`${record.phase}.commit.after`);
     this.lease = lease;
     const { pending: _pending, ...control } = this.control!;
+    this.faults.at(`${record.phase}.ack.before`);
     this.saveControl({ ...control, revision: lease.revision, ...(observed ? {} : { pending }) });
+    this.faults.at(`${record.phase}.ack.after`);
     return reply;
   }
 
@@ -662,6 +686,15 @@ class SharedStore {
     assertOperationOwner(record, this.lease!);
     if (record.phase !== 'prepared')
       recovery('This operation may already have run. Use recovery; execution is never replayed.');
+    if (
+      this.control!.pending.child !== null ||
+      this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
+        record.id,
+      )?.record !== JSON.stringify(record)
+    )
+      recovery(
+        'Independent intent and database projection disagree. Use recovery; do not dispatch.',
+      );
     const repository = this.repository(record.facts.worktree);
     if (!repository.sameFacts(record.facts) || repository.refOid(record.ref) !== record.beforeOid) {
       return this.projectOperation({ ...record, phase: 'observed', outcome: 'refused' }, request);
@@ -682,7 +715,9 @@ class SharedStore {
         return this.projectOperation({ ...record, phase: 'observed', outcome: 'refused' }, request);
       }
       this.validate(this.lease, true);
+      this.faults.at('dispatch.before');
       native.startChild(child);
+      this.faults.at('dispatch.after');
       const status = await this.waitForChild(child);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
@@ -757,6 +792,10 @@ class SharedStore {
     if (priorAlive && !currentOwner)
       recovery(
         `The prior host at ${control.owner.location} is still alive. Close it before recovery.`,
+      );
+    if (!existsSync(operationFile(this.rendezvous, control.pending.id)))
+      recovery(
+        'Pending external work has no typed execution receipt or verified child identity. Keep the store blocked for manual recovery; host death or elapsed time cannot clear it.',
       );
     const record = readOperation(this.rendezvous, control.pending.id);
     const lease: StoreLease = {
@@ -843,10 +882,16 @@ class SharedStore {
         'prepareRef',
         'executeOperation',
         'recover',
+        'inspectOperation',
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
     const request = message as unknown as StoreRequest;
+    if (request.workspacePath !== this.config.location)
+      throw new StoreError(
+        'WORKSPACE_CHANGED',
+        'The window repository changed. Reopen the store before using a prepared operation.',
+      );
     try {
       if (request.action === 'inspect') return this.inspect();
       if (request.action === 'open') return this.open(request);
@@ -859,6 +904,36 @@ class SharedStore {
       if (request.action === 'recordIntent') return this.recordIntent(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
+      if (request.action === 'inspectOperation') {
+        this.validate(request.lease, false);
+        if (!uuid(request.operationId))
+          throw new StoreError('INVALID_OPERATION', 'An operation ID is required.');
+        const record = readOperation(this.rendezvous, request.operationId);
+        if (
+          record.scopeId !== this.lease!.scopeId ||
+          record.storeId !== this.lease!.storeId ||
+          record.incarnation !== this.lease!.incarnation
+        )
+          throw new StoreError(
+            'OPERATION_UNAVAILABLE',
+            'This owner scope cannot inspect that operation.',
+          );
+        const projected = this.database!.prepare(
+          'SELECT record FROM operation_records WHERE operation_id=?',
+        ).get(record.id)?.record;
+        if (projected !== JSON.stringify(record))
+          recovery(
+            'The independent receipt and database projection disagree. Use recovery, not execution retry.',
+          );
+        return {
+          ...this.owned(),
+          operation: {
+            id: record.id,
+            phase: record.phase,
+            ...(record.outcome ? { outcome: record.outcome } : {}),
+          },
+        };
+      }
       if (this.terminal?.id === request.id) {
         if (this.terminal.digest !== requestDigest(request))
           throw new StoreError(
@@ -871,9 +946,18 @@ class SharedStore {
     } catch (error) {
       if (
         !(error instanceof StoreError) ||
-        !['STALE_LEASE', 'REVISION_CONFLICT', 'REQUEST_COLLISION', 'HANDOFF_PENDING'].includes(
-          error.code,
-        )
+        ![
+          'STALE_LEASE',
+          'REVISION_CONFLICT',
+          'REQUEST_COLLISION',
+          'HANDOFF_PENDING',
+          'INVALID_OPERATION',
+          'OPERATION_UNAVAILABLE',
+          'WRONG_ACCOUNT',
+          'GIT_INSPECTION',
+          'REPOSITORY_LIMIT',
+          'REPOSITORY_CHANGED',
+        ].includes(error.code)
       )
         this.poisoned = true;
       throw error;

@@ -46,12 +46,14 @@ export interface StoreRequest {
     | 'recordIntent'
     | 'prepareRef'
     | 'executeOperation'
-    | 'recover';
+    | 'recover'
+    | 'inspectOperation';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
   refUpdate?: { ref: string; newOid: string };
   operationId?: string;
+  workspacePath?: string;
 }
 
 export interface StoreHandoff {
