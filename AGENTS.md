@@ -4,6 +4,15 @@ Treat this directory as the repository and implementation project root. Resolve 
 
 Before product or architecture planning, read `README.md`, `docs/product/PRD.md`, and `docs/design/README.md` for the baseline and source precedence. Keep implementation source and new project documentation in this directory. Product decision history and earlier Figma ledgers are reference evidence; current user instructions and the reconciled design contract govern new work.
 
+## Implementation workflow
+
+- Work on a feature branch, one ticket at a time.
+- Before coding, briefly explain the plan and any new framework concepts. Use `$teach` for deeper lessons when useful.
+- Make small, coherent commits. If the change grows large, pause at a working checkpoint for a walkthrough.
+- Run the tests and automated code review, then open a draft PR.
+- Keep the PR description short and direct. Include “Walk me through the diff”: reading order, one action's flow through the code, key decisions, and how to run and test it.
+- Stop for the owner's review. Do not merge, enable auto-merge, close the issue, or start another ticket until the owner explicitly approves.
+
 ## Agent skills
 
 ### Issue tracker
