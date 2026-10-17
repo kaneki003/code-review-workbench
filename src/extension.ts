@@ -51,6 +51,11 @@ export function activate(context: vscode.ExtensionContext) {
       void vscode.window.showInformationMessage(view.detail);
       return view;
     }),
+    vscode.commands.registerCommand('codeReviewWorkbench.recoverPrivateStore', async () => {
+      const reply = await manager.recoverPrivateStore();
+      void vscode.window.showInformationMessage(reply.view.detail);
+      return reply.view;
+    }),
   );
   return { createManager };
 }

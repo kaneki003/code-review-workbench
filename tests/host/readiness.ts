@@ -7,6 +7,8 @@ import { suite, test, suiteSetup, suiteTeardown, teardown } from 'mocha';
 import type { ReadinessReport } from '../../src/shared/readiness';
 import type { ReviewManager } from '../../src/application/review-manager';
 import type { StoreConfiguration } from '../../src/application/private-store';
+import { execFileSync, fork } from 'node:child_process';
+import { once } from 'node:events';
 
 interface HostTestEvidence {
   status: string;
@@ -34,6 +36,26 @@ async function fingerprintFiles(directory: string): Promise<Record<string, strin
   }
   await visitDirectory(directory, '');
   return fileHashes;
+}
+
+function fixtureCommit(location: string) {
+  const git = (args: string[], input = '') =>
+    execFileSync('git', ['-C', location, '-c', 'commit.gpgSign=false', ...args], {
+      encoding: 'utf8',
+      input,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  const tree = git(['mktree']);
+  return git([
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.test',
+    'commit-tree',
+    tree,
+    '-m',
+    'fixture',
+  ]);
 }
 
 suite('Installed readiness VSIX', () => {
@@ -129,6 +151,7 @@ suite('Installed readiness VSIX', () => {
     const home = join(sandbox, 'store-home');
     await mkdir(home, { mode: 0o700 });
     const location = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
+    const oid = fixtureCommit(location);
     const first = api.createManager({
       osHome: home,
       candidateRoot: join(home, 'data-A'),
@@ -156,6 +179,17 @@ suite('Installed readiness VSIX', () => {
       assert.deepEqual(Object.keys(busy).sort(), ['detail', 'ownerLocation', 'status']);
       const renewed = await first.renewOwnership();
       assert.equal(renewed.revision, opened.revision! + 1);
+      const prepared = await first.prepareReferenceUpdate(
+        'refs/code-review-workbench/installed',
+        oid,
+      );
+      assert.equal(prepared.operation?.phase, 'prepared', JSON.stringify(prepared));
+      const completed = await first.executeRepositoryOperation(prepared.operation!.id);
+      assert.equal(completed.operation?.outcome, 'applied', JSON.stringify(completed));
+      assert.equal(
+        (await first.inspectRepositoryOperation(prepared.operation!.id)).operation?.phase,
+        'observed',
+      );
       const transfer = await first.offerStoreHandoff('installed-second');
       assert.equal(transfer.view.status, 'closed');
       const next = await second.openPrivateStore(transfer.handoff);
@@ -175,6 +209,85 @@ suite('Installed readiness VSIX', () => {
     const commands = await vscode.commands.getCommands();
     assert.ok(commands.includes('codeReviewWorkbench.openPrivateStore'));
     assert.ok(commands.includes('codeReviewWorkbench.releasePrivateStore'));
+    assert.ok(commands.includes('codeReviewWorkbench.recoverPrivateStore'));
+  });
+  test('installed recovery reconciles the actual worker after a separate owning host dies', async () => {
+    const extension = vscode.extensions.getExtension<{
+      createManager(configuration: StoreConfiguration): ReviewManager;
+    }>('kaneki003.code-review-workbench')!;
+    const api = await extension.activate();
+    const sandbox = await realpath(process.env.CRW_HOST_SANDBOX!);
+    const home = join(sandbox, 'recovery-home');
+    await mkdir(home, { mode: 0o700 });
+    const location = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
+    const configuration: StoreConfiguration = {
+      osHome: home,
+      candidateRoot: join(home, 'data'),
+      location,
+      windowId: 'external-installed-owner',
+    };
+    const oid = fixtureCommit(location);
+    const script = join(sandbox, 'installed-owner.cjs');
+    await writeFile(
+      script,
+      `
+      const {Worker}=require('node:worker_threads');
+      const {randomUUID}=require('node:crypto');
+      const configuration=JSON.parse(process.argv[3]);
+      const worker=new Worker(process.argv[2],{workerData:configuration});
+      let lease;
+      async function request(action,fields={}) {
+        const id=randomUUID();
+        const reply=await new Promise((resolve,reject)=>{
+          const listener=(message)=>{if(message.id===id){worker.off('message',listener);message.error?reject(Error(message.error.message)):resolve(message.reply)}};
+          worker.on('message',listener);worker.once('error',reject);
+          worker.postMessage({protocol:1,id,action,workspacePath:configuration.location,...fields,...(lease?{lease}:{})});
+        });lease=reply.lease;return reply;
+      }
+      (async()=>{await request('open');const reply=await request('prepareRef',{refUpdate:{ref:'refs/code-review-workbench/installed-recovery',newOid:process.argv[4]}});process.send(reply)})().catch(error=>process.send({error:String(error)}));
+    `,
+    );
+    const child = fork(
+      script,
+      [
+        join(extension.extensionPath, 'dist', 'store-worker.cjs'),
+        JSON.stringify(configuration),
+        oid,
+      ],
+      {
+        execPath: process.execPath,
+        execArgv: [],
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      },
+    );
+    const manager = api.createManager({ ...configuration, windowId: 'installed-recovery' });
+    try {
+      const [prepared] = await once(child, 'message');
+      assert.equal(prepared.operation?.phase, 'prepared', JSON.stringify(prepared));
+      assert.equal((await manager.openPrivateStore()).status, 'busy');
+      const exited = once(child, 'exit');
+      child.kill('SIGKILL');
+      await exited;
+      assert.equal((await manager.openPrivateStore()).status, 'recovery');
+      const recovered = await manager.recoverPrivateStore();
+      assert.equal(recovered.view.status, 'closed', JSON.stringify(recovered));
+      assert.equal(recovered.operation?.outcome, 'not-applied');
+      assert.equal((await manager.openPrivateStore()).fence, 2);
+      assert.equal(
+        (await manager.inspectRepositoryOperation(prepared.operation.id)).operation?.outcome,
+        'not-applied',
+      );
+      assert.equal((await manager.releasePrivateStore()).status, 'closed');
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit');
+        child.kill('SIGKILL');
+        await exited;
+      }
+      await manager.dispose();
+      await rm(home, { recursive: true, force: true });
+    }
   });
   test('reinvoking during loading cancels the old attachment without a false installation failure', async () => {
     let tabSubscription: vscode.Disposable;

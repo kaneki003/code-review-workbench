@@ -46,6 +46,10 @@
       {
         "command": "codeReviewWorkbench.releasePrivateStore",
         "title": "Code Review Workbench: Release Private Store"
+      },
+      {
+        "command": "codeReviewWorkbench.recoverPrivateStore",
+        "title": "Code Review Workbench: Recover Private Store"
       }
     ]
   },
