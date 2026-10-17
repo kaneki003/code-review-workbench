@@ -1,4 +1,14 @@
 import type { Capability, ReadinessReport } from '../shared/readiness';
+import { randomUUID } from 'node:crypto';
+import {
+  StoreError,
+  type StoreConnection,
+  type StoreLease,
+  type StoreRequest,
+  type StoreView,
+  type StoreReply,
+  type StoreHandoff,
+} from './private-store';
 
 export interface HostEnvironment {
   vscode: string;
@@ -18,11 +28,100 @@ export interface ReadinessConnections {
   git(folder: string): Promise<Capability>;
   sqlite(): Promise<Capability>;
   native(): Promise<Capability>;
+  store?: StoreConnection;
 }
 
 // This public action only inspects capabilities. It never acquires review ownership.
 export class ReviewManager {
+  private storeLease: StoreLease | undefined;
+  private storeQueue: Promise<unknown> = Promise.resolve();
   constructor(private readonly connections: ReadinessConnections) {}
+
+  openPrivateStore(handoff?: StoreHandoff): Promise<StoreView> {
+    return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
+  }
+  releasePrivateStore(): Promise<StoreView> {
+    return this.storeAction('release');
+  }
+  inspectPrivateStore(): Promise<StoreView> {
+    return this.storeAction('inspect');
+  }
+  renewOwnership(): Promise<StoreView> {
+    return this.storeAction('renew');
+  }
+  offerStoreHandoff(targetWindowId: string): Promise<StoreReply> {
+    return this.storeRequest('handoff', { targetWindowId });
+  }
+
+  private storeAction(action: StoreRequest['action']): Promise<StoreView> {
+    return this.storeRequest(action).then((reply) => reply.view);
+  }
+
+  private storeRequest(
+    action: StoreRequest['action'],
+    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId'> = {},
+  ): Promise<StoreReply> {
+    const work = this.storeQueue.then(async (): Promise<StoreReply> => {
+      const host = this.connections.environment();
+      if (
+        [
+          checkWorkspace(host),
+          checkWorkspaceTrust(host),
+          checkEmbeddedRuntime(host),
+          checkPlatform(host),
+        ].some((check) => check.status !== 'passed')
+      ) {
+        return {
+          view: {
+            status: 'blocked',
+            detail:
+              'Use a trusted supported local desktop workspace before opening private storage.',
+          },
+        };
+      }
+      if (!this.connections.store)
+        return {
+          view: { status: 'blocked', detail: 'This installation has no shared-store connection.' },
+        };
+      try {
+        if (
+          action === 'open' &&
+          (await this.connections.git(host.folders[0]!.path)).status !== 'passed'
+        ) {
+          return {
+            view: {
+              status: 'blocked',
+              detail:
+                'Open an already-cloned local Git repository before claiming the private store.',
+            },
+          };
+        }
+        const request: StoreRequest = {
+          protocol: 1,
+          id: randomUUID(),
+          action,
+          ...fields,
+          ...(this.storeLease ? { lease: this.storeLease } : {}),
+        };
+        const reply = await this.connections.store.request(request);
+        this.storeLease = reply.lease;
+        return reply;
+      } catch (error) {
+        return {
+          view: {
+            status: 'recovery',
+            code: error instanceof StoreError ? error.code : 'STORE_UNAVAILABLE',
+            detail:
+              error instanceof StoreError
+                ? error.message
+                : 'The private store is unavailable. Preserve its files and check recovery before writing.',
+          },
+        };
+      }
+    });
+    this.storeQueue = work;
+    return work;
+  }
 
   async checkReadiness(): Promise<ReadinessReport> {
     const host = this.connections.environment();

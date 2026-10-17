@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { execFileSync, fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, symlink, realpath, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, realpath, readFile, readdir, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -13,10 +13,30 @@ const native = createRequire(import.meta.url)(binary) as {
   assertLocalDirectory(path: string): void;
   ensurePrivateDirectory(path: string): boolean;
   publishRecord(path: string, text: string): void;
+  tryAcquire(path: string): object | null;
+  assertHeld(handle: object): void;
+  release(handle: object): boolean;
 };
 const directories: string[] = [];
 const children: ChildProcess[] = [];
 const workers: Worker[] = [];
+
+test('a replaced guard pathname invalidates the original handle before another write', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-guard-replaced-')));
+  directories.push(directory);
+  const path = join(directory, 'guard');
+  const handle = native.tryAcquire(path)!;
+  try {
+    expect(() => native.assertHeld(handle)).not.toThrow();
+    if (process.platform !== 'win32') {
+      await rename(path, join(directory, 'old-guard'));
+      expect(() => native.assertHeld(handle)).toThrow();
+    }
+  } finally {
+    native.release(handle);
+  }
+  expect(() => native.assertHeld(handle)).toThrow();
+});
 
 afterEach(async () => {
   await Promise.all(workers.splice(0).map((worker) => worker.terminate()));

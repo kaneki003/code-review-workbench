@@ -386,6 +386,7 @@ napi_value PublishRecord(napi_env env, napi_callback_info info) {
 }
 
 struct Guard {
+  std::string path;
 #ifdef _WIN32
   HANDLE file = INVALID_HANDLE_VALUE;
   int Close() {
@@ -436,13 +437,16 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
 #endif
   if (!CheckLocalDirectory(env, path.substr(0, separator))) return nullptr;
   auto guard = std::make_shared<Guard>();
+  guard->path = path;
   bool busy = false;
+  bool created = false;
 #ifdef _WIN32
   std::wstring wide = WidePath(path);
   if (wide.empty()) return Fail(env, "INVALID_PATH", "File path is not valid UTF-8.");
   guard->file = CreateFileW(wide.c_str(), GENERIC_READ | GENERIC_WRITE,
       FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+  created = guard->file != INVALID_HANDLE_VALUE && GetLastError() != ERROR_ALREADY_EXISTS;
   if (guard->file == INVALID_HANDLE_VALUE) return Fail(env, "GUARD_OPEN", "Cannot open the guard file.");
   BY_HANDLE_FILE_INFORMATION metadata;
   if (!GetFileInformationByHandle(guard->file, &metadata) ||
@@ -456,7 +460,9 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
     busy = true;
   }
 #else
-  guard->file = open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
+  guard->file = open(path.c_str(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+  created = guard->file != -1;
+  if (guard->file == -1 && errno == EEXIST) guard->file = open(path.c_str(), O_RDWR | O_CLOEXEC | O_NOFOLLOW);
   if (guard->file == -1) return Fail(env, "GUARD_OPEN", "Cannot open the guard file.");
   struct stat metadata;
   if (fstat(guard->file, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
@@ -486,6 +492,8 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
     return nullptr;
   }
   if (napi_type_tag_object(env, result, &guardTag) != napi_ok) return nullptr;
+  napi_property_descriptor property = {"created", nullptr, nullptr, nullptr, nullptr, Boolean(env, created), napi_default, nullptr};
+  if (napi_define_properties(env, result, 1, &property) != napi_ok) return nullptr;
   return result;
 }
 
@@ -502,6 +510,36 @@ napi_value Release(napi_env env, napi_callback_info info) {
   int result = (*guard)->Close();
   if (result < 0) return Fail(env, "RELEASE_UNKNOWN", "The OS did not confirm guard release.");
   return Boolean(env, result == 1);
+}
+
+napi_value AssertHeld(napi_env env, napi_callback_info info) {
+  size_t argc = 2;
+  napi_value args[2];
+  bool valid = false;
+  if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok || argc != 1 ||
+      napi_check_object_type_tag(env, args[0], &guardTag, &valid) != napi_ok || !valid) {
+    return Fail(env, "INVALID_GUARD", "Validation requires the original guard handle.");
+  }
+  std::shared_ptr<Guard>* reference;
+  if (napi_unwrap(env, args[0], reinterpret_cast<void**>(&reference)) != napi_ok) return nullptr;
+  const auto& guard = *reference;
+  if (!CheckLocalDirectory(env, ParentPath(guard->path))) return nullptr;
+#ifdef _WIN32
+  // The live handle denies delete/rename sharing. Check its link and kind too.
+  BY_HANDLE_FILE_INFORMATION metadata;
+  if (guard->file == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(guard->file, &metadata) ||
+      metadata.nNumberOfLinks != 1 || (metadata.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY))) {
+    return Fail(env, "STALE_GUARD", "The live guard is unavailable or replaced.");
+  }
+#else
+  struct stat held, named;
+  if (guard->file == -1 || fstat(guard->file, &held) != 0 || lstat(guard->path.c_str(), &named) != 0 ||
+      !S_ISREG(named.st_mode) || held.st_dev != named.st_dev || held.st_ino != named.st_ino ||
+      named.st_nlink != 1 || named.st_uid != geteuid() || (named.st_mode & 0077)) {
+    return Fail(env, "STALE_GUARD", "The guard pathname no longer names this live lock.");
+  }
+#endif
+  return Boolean(env, true);
 }
 
 napi_value ProcessIdentity(napi_env env, napi_callback_info info) {
@@ -581,6 +619,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
   }
   napi_property_descriptor methods[] = {
       {"tryAcquire", nullptr, TryAcquire, nullptr, nullptr, nullptr, napi_default, state},
+      {"assertHeld", nullptr, AssertHeld, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"processIdentity", nullptr, ProcessIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"assertLocalDirectory", nullptr, AssertLocalDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"ensurePrivateDirectory", nullptr, EnsurePrivateDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
