@@ -3,13 +3,16 @@ import { build } from 'esbuild';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { ReviewManager } from '../src/application/review-manager';
 import { probeSqlite } from '../src/connections/sqlite-readiness';
+import { probeGit } from '../src/connections/git-readiness';
 
-test('the public readiness action probes real worker transactions without opening a disk store', async () => {
+test('passing Git and real SQLite probes still block review ownership without opening a disk store', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'crw-worker-'));
   const worker = join(directory, 'readiness-worker.cjs');
   try {
+    execFileSync('git', ['-C', directory, 'init', '--quiet']);
     await build({
       entryPoints: ['src/connections/readiness-worker.ts'],
       outfile: worker,
@@ -31,15 +34,20 @@ test('the public readiness action probes real worker transactions without openin
         remote: undefined,
         folders: [{ scheme: 'file', path: directory }],
       }),
-      git: async () => ({ id: 'git', label: 'Git', status: 'blocked', detail: 'No repository' }),
+      git: probeGit,
       sqlite: () => probeSqlite(worker),
     });
     const report = await manager.checkReadiness();
+    expect(report.checks.find((check) => check.id === 'git')?.status).toBe('passed');
     expect(report.checks.find((check) => check.id === 'sqlite')).toMatchObject({
       status: 'passed',
       detail: expect.stringContaining('In-memory parameterized transaction and rollback passed'),
     });
-    expect(await readdir(directory)).toEqual(['readiness-worker.cjs']);
+    expect(report.checks.find((check) => check.id === 'ownership')).toMatchObject({
+      status: 'blocked',
+      detail: expect.stringContaining('extension update'),
+    });
+    expect((await readdir(directory)).sort()).toEqual(['.git', 'readiness-worker.cjs']);
     expect(report.reviewAvailable).toBe(false);
   } finally {
     await rm(directory, { recursive: true, force: true });

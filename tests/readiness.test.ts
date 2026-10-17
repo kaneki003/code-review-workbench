@@ -102,7 +102,7 @@ test('a missing repository is explained without cloning or starting a review', a
   ).toThrow();
 });
 
-test('checking a dirty repository retains the files, index and refs and keeps ownership pending', async () => {
+test('checking a dirty repository retains the files, index and refs while ownership is blocked', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'crw-readiness-'));
   temporaryDirectories.push(folder);
   const runGit = (...args: string[]) =>
@@ -124,7 +124,10 @@ test('checking a dirty repository retains the files, index and refs and keeps ow
   const report = await manager.checkReadiness();
   expect(report.checks.find((check) => check.id === 'git')?.status).toBe('passed');
   expect(report.checks.find((check) => check.id === 'sqlite')?.status).toBe('blocked');
-  expect(report.checks.find((check) => check.id === 'ownership')?.status).toBe('pending');
+  expect(report.checks.find((check) => check.id === 'ownership')).toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('extension update'),
+  });
   expect(await readFile(join(folder, '.git/index'))).toEqual(originalIndex);
   expect(await readFile(join(folder, 'file.txt'), 'utf8')).toBe('unstaged\n');
   expect(runGit('for-each-ref')).toBe(originalRefs);

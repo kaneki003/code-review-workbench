@@ -57,9 +57,9 @@ export class ReviewManager {
     checks.push({
       id: 'ownership',
       label: 'Review ownership',
-      status: 'pending',
+      status: 'blocked',
       detail:
-        'Readiness inspection only. Shared-store ownership is not implemented (#18); starting a review and private-state writes remain unavailable.',
+        'Safe cross-window ownership is unavailable (#18). Starting a review and private-state writes remain disabled. Continue using the editor; ownership requires an extension update.',
     });
 
     return { checkedAt: new Date().toISOString(), checks, reviewAvailable: false };

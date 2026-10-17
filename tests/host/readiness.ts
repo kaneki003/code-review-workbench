@@ -97,7 +97,11 @@ suite('Installed readiness VSIX', () => {
     );
     assert.match(report.checks.find((check) => check.id === 'renderer')!.detail, /Chrome\//);
     assert.equal(report.reviewAvailable, false);
-    assert.equal(report.checks.find((check) => check.id === 'ownership')?.status, 'pending');
+    assert.equal(report.checks.find((check) => check.id === 'ownership')?.status, 'blocked');
+    assert.match(
+      report.checks.find((check) => check.id === 'ownership')!.detail,
+      /extension update/,
+    );
     assert.deepEqual(
       await fingerprintFiles(workspace),
       filesBeforeCheck,
