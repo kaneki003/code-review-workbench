@@ -1,0 +1,47 @@
+name: Readiness checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04, macos-15]
+        vscode: ['1.141.2', stable]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm check
+      - run: pnpm test
+      - name: Packaged desktop host (Windows and macOS)
+        if: runner.os != 'Linux'
+        run: pnpm test:host
+        env:
+          CRW_VSCODE_VERSION: ${{ matrix.vscode }}
+      - name: Packaged desktop host (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:host
+        env:
+          CRW_VSCODE_VERSION: ${{ matrix.vscode }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: readiness-${{ matrix.os }}-${{ matrix.vscode }}
+          include-hidden-files: true
+          path: |
+            .host-test/evidence.json
+            dist/*.vsix
+          if-no-files-found: warn

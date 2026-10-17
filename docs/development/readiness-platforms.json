@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-16",
+  "commit": "048ef42fec4af014365cb6070b1518cf62ac319c",
+  "run": "https://github.com/kaneki003/code-review-workbench/actions/runs/38903955463",
+  "scope": "Installed read-only readiness only; no authoritative store, ownership or mutation validation.",
+  "cells": [
+    {
+      "cell": "readiness-macos-15-1.141.2",
+      "result": "passed",
+      "os": "darwin",
+      "osRelease": "24.6.0",
+      "architecture": "arm64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.55.0",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "cell": "readiness-macos-15-stable",
+      "result": "passed",
+      "os": "darwin",
+      "osRelease": "24.6.0",
+      "architecture": "arm64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.55.0",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "cell": "readiness-ubuntu-24.04-1.141.2",
+      "result": "passed",
+      "os": "linux",
+      "osRelease": "6.17.0-1022-azure",
+      "architecture": "x64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.55.0",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "cell": "readiness-ubuntu-24.04-stable",
+      "result": "passed",
+      "os": "linux",
+      "osRelease": "6.17.0-1022-azure",
+      "architecture": "x64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.55.0",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "cell": "readiness-windows-2025-1.141.2",
+      "result": "passed",
+      "os": "win32",
+      "osRelease": "10.0.26100",
+      "architecture": "x64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.56.0.windows.2",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "cell": "readiness-windows-2025-stable",
+      "result": "passed",
+      "os": "win32",
+      "osRelease": "10.0.26100",
+      "architecture": "x64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "chromium": "150.0.7871.250",
+      "sqlite": "3.53.4",
+      "git": "git version 2.56.0.windows.2",
+      "hostTests": [
+        {
+          "name": "loads compiled UI and SQLite worker outside the source tree without changing the repository",
+          "result": "passed"
+        },
+        {
+          "name": "reinvoking during loading cancels the old attachment without a false installation failure",
+          "result": "passed"
+        }
+      ]
+    }
+  ]
+}
