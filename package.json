@@ -51,7 +51,7 @@
     "build:native": "node scripts/build-native.mjs",
     "test:host": "node scripts/test-host.mjs",
     "build": "node scripts/build.mjs",
-    "package": "pnpm run build && pnpm exec vsce package --no-dependencies --allow-missing-repository --skip-license --out dist/code-review-workbench.vsix"
+    "package": "pnpm run build && node scripts/package.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
