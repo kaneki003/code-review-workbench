@@ -1,74 +1,67 @@
-# Shared-state ownership gate (#18)
+# Shared private-store checkpoint (#18)
 
-Status: owner approved the native helper on 17 October 2026 in the implementation conversation. The helper's OS lock, process identity and filesystem checks are implemented. This is a working checkpoint for [Protect shared review state across windows](https://github.com/kaneki003/code-review-workbench/issues/18); durable recovery files and the shared store remain unfinished.
+Status: canonical store ownership is implemented. This is a working checkpoint for [Protect shared review state across windows](https://github.com/kaneki003/code-review-workbench/issues/18), not completed #18. The owner approved the native helper on 17 October 2026. Review entry, review-content writes and repository mutations remain unavailable.
 
-Readiness reports the **Packaged ownership helper** separately from **Review ownership · Blocked**. Review entry and private-state writes remain unavailable. Only a disposable guard folder is used; no canonical registry, private database or recovery record is created.
+## Try it
+
+Build with Node 24.15–24.x, pnpm 12.11.2, Python and a C++ toolchain:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm validate
+pnpm package
+pnpm test:host
+```
+
+Install the VSIX built for your OS/CPU. In a trusted local Git repository, run **Code Review Workbench: Open Private Store**. Another window reports the owner's location. **Release Private Store** lets a later window open the same store. **Check Readiness** only inspects ownership; it does not claim or initialize storage.
+
+The first explicit open creates private app-owned files. It does not start a review or change Git. Closing the extension attempts release; an interrupted or uncertain outcome remains blocked.
+
+## Walk me through the diff
+
+1. `src/application/private-store.ts`: public request/reply types. A lease is proof for one ownership turn. Its token is random; its fence is an increasing number that rejects requests from an older owner. The incarnation identifies the current store lineage independently of database copies.
+2. `src/application/review-manager.ts`: queues host-owned requests, checks workspace/trust/runtime, creates request IDs and retains the current lease. Readiness, open, renew, release and handoff use this interface.
+3. `src/connections/store-location.ts` and `shared-store.ts`: resolve the OS account's real home and candidate data directory; communicate with the packaged worker. HOME/USERPROFILE do not choose the rendezvous. Relative data directories are rejected.
+4. `src/connections/store-worker.ts`: owns the OS guard, canonical registration and ownership transitions. It never executes a Git mutation. `recordRepositoryIntent` is a host-only test seam, absent from the command palette. It records a pending recovery barrier; it does not authorize external execution and has no completion/clear API.
+5. `store-records.ts` and `store-database.ts`: validate independent records and the worker-only SQLite database. Metadata uses owner/account scopes, expected revisions, deduplication and fencing. Unknown/newer formats and damaged files are preserved and refused.
+6. `native/guard.cc`: permanent OS lock, verified process-start identity, local-directory checks, private permissions and atomic record publication. `scripts/build*.mjs`, `scripts/package.mjs` and `.vscodeignore` ship the matching binary and workers.
+7. `tests/shared-store.test.ts`, native tests and `tests/host/readiness.ts`: real processes/filesystems and the installed production worker. [Validation and remaining work](shared-store-validation.md).
+
+One Open action flows through the VS Code command → manager queue → worker → permanent OS guard → fixed registry/control files → SQLite claim transaction → durable owned record → reply. A second window never opens account content; its busy response contains only status, explanation and owning location.
+
+## Ownership protocol
+
+The fixed rendezvous is `<os.userInfo().homedir>/.code-review-workbench/store-location.json`. A permanent sibling guard, `.code-review-workbench.guard`, is locked **before** creating the rendezvous directory. This closes the mkdir/lock registration race. Release closes the exact handle; it never deletes or replaces the guard pathname.
+
+POSIX uses nonblocking `flock`; Windows uses `LockFileEx`. Handles do not propagate to ordinary children. The worker rechecks the live handle/path identity before publication and mutations. A heartbeat is diagnostic only. A free OS lock does not by itself allow takeover: a matching live prior host, interrupted phase, pending intent or mismatched database/control identity requires recovery.
+
+First registration chooses one root and stable store/local-scope IDs. Later processes honor that root despite different data-directory variables. An existing unregistered folder or orphan guard is recovery. Roots must be private, canonical, supported local filesystems outside repositories. Initial allowlist: APFS, NTFS, ext4, XFS, Btrfs. Network/redirected/unsupported storage stops writes without relocation.
+
+Normal claim publishes `claiming`, commits the next fence/owner/revision, then publishes `owned`. Release publishes `releasing`, commits its receipt, publishes `released`, closes SQLite, then releases the OS guard. Incomplete transitions refuse recovery guesses. Handoff durably reserves the next claim for one named window and random offer token; a third window or failed transfer cannot use a timeout to take over.
+
+SQLite uses the embedded `node:sqlite` driver only in the worker. WAL, FULL synchronization, foreign keys, secure deletion and a bounded busy timeout are set and checked. SQL transactions never wait for external work. Replies follow the commit and required independent publication. Missing, newer or damaged databases do not become empty replacements.
+
+The reservation-only seam records canonical worktree/common-Git-directory identities in sorted order. The global store guard supplies exclusion at this checkpoint. Independent pending intent is published before its SQLite projection; acknowledgment waits for both. Once pending, renew/release/handoff/further reservations/reclaim are blocked. A fixture can then leave a child running and kill its host: the pending record continues blocking takeover before and after that child exits. This proves a conservative barrier, not safe dispatch or child settlement.
+
+## Independent record durability
+
+Records are bounded JSON recovery metadata, separate from authoritative SQLite and any future restorable backup. Publication creates a unique private temporary file, writes the whole record, flushes it, atomically replaces the destination and waits for the platform durability steps before acknowledgment.
+
+- POSIX: private 0600 files, file sync (`F_FULLFSYNC` on macOS), rename, parent-directory fsync; macOS also performs full synchronization after publication. Creating app directories also syncs the parent.
+- Windows: protected current-user DACL, write-through temporary file, `FlushFileBuffers`, replacement with `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`, then reopen/flush the published file. Private directory creation uses a write-through move from a unique private directory.
+
+See Microsoft's [MoveFileEx](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw), [FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers), and SQLite's [atomic-commit discussion](https://sqlite.org/atomiccommit.html). The protocol uses the combined sequence; a rename flag alone is not the durability claim. Tests exercise real publication and process crashes, not a simulated hardware power cut. Full publication/flush/commit fault injection remains an acceptance gate.
 
 ## Approved packaging change
 
-The [technical design](../design/technical-design.md#processes-modules-and-public-boundaries) requires a concrete, proven guard before mutations. The [storage contract](../design/private-state-storage.md#one-active-review-and-operation-ownership) also requires independent recovery files with validated atomic publication and platform-specific durability. The initial readiness package used only JavaScript and Node built-ins; the approved helper extends that package.
+The approved bridge amends the earlier JavaScript-only [packaging boundary](../design/extension-architecture.md#build-package-management-and-tests). `node-gyp` 13.1.0 builds against Electron 43.7.7 headers with Node-API 8. The VSIX declares `darwin-arm64`, `win32-x64` or `linux-x64`; no user install hook or compiler is required.
 
-The owner approved a small worker-loaded native bridge for Windows x64, Linux x64 and macOS arm64. It provides OS file locking, process-start identity and local-filesystem validation. Durable recovery-file publication is the next part to implement. Authoritative review data will remain in the selected built-in SQLite worker. There is no independent background service or end-user compiler/install step.
+Developers need Xcode Command Line Tools on macOS, C++/make on Linux or Visual Studio C++ Build Tools on Windows, plus Python. Gyp headers use a private temporary cache because Unix include paths containing spaces fail. Source checkout paths may contain spaces. [Node-API](https://nodejs.org/download/release/v24.21.0/docs/api/n-api.html), [node-gyp prerequisites](https://github.com/nodejs/node-gyp/blob/v13.1.0/README.md), [Electron Windows delay loading](https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules#a-note-about-win_delay_load_hook).
 
-This amends the [packaging boundary](../design/extension-architecture.md#build-package-management-and-tests): `node-gyp` 13.1.0 builds the helper against Electron 43.7.7 headers with Node-API 8. The VSIX includes the compiled helper and a worker probe. Packaging declares the actual OS/CPU target instead of advertising one binary as universal. No installation hook runs on users' machines. Approval authorizes this implementation; it does not establish the complete ownership protocol as safe or enable writes by itself.
+## Still required before #18 is complete
 
-Developers now need Python and a C++ compiler: Xcode Command Line Tools on macOS, a C++ toolchain/make on Linux, or Visual Studio C++ Build Tools on Windows. `pnpm build:native` builds only the helper; `pnpm test` and `pnpm build` build it automatically. Development headers are cached in a private OS-user temporary directory because gyp's Unix Makefiles cannot handle spaces in header include paths. Source checkout paths can contain spaces.
+- Action-specific expected HEAD/index/file facts and a Git target boundary that cannot redirect to another repository.
+- Verified descendant settlement/containment, independent observed-outcome receipts, completion and explicit recovery before dispatch is enabled. Top-level Git exit is insufficient.
+- Failure injection across each intent, publication, commit, dispatch and receipt boundary; broader filesystem/durability proof. No automatic recovery or replay is implemented.
 
-The build uses the [Node-API C interface](https://nodejs.org/download/release/v24.21.0/docs/api/n-api.html), with the [native build prerequisites](https://github.com/nodejs/node-gyp/blob/v13.1.0/README.md) and Electron's [Windows delay-load hook](https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules#a-note-about-win_delay_load_hook). That hook lets the compiled helper resolve Node functions from the embedded host executable.
-
-## Walk through the helper
-
-1. `native/guard.cc`: `tryAcquire` validates a canonical local folder, opens a permanent guard file and asks the OS for a nonblocking exclusive lock. `release` closes only that handle; repeated release cannot affect a successor. Worker cleanup also closes outstanding handles. The guard pathname is never deleted as release/reclaim.
-2. `processIdentity` reads Windows creation time, macOS `proc_pidinfo` recorded start time plus the fixed boot-session UUID, or Linux `/proc` start ticks plus boot ID. Missing processes and unknown/denied inspection remain distinct outcomes. `assertLocalDirectory` rejects redirects and limits initial filesystems to NTFS, APFS, ext4, XFS and Btrfs; this allowlist is a prerequisite, not durability proof for every filesystem.
-3. `scripts/build-native.mjs`, `scripts/build.mjs`, `scripts/package.mjs`: compile, copy the binary/worker and create the OS/CPU-specific installer. The native API is used only in workers in production; real-process tests also load it directly to prove OS behavior.
-4. `src/connections/native-probe-worker.ts` checks the helper in a temporary folder. `native-readiness.ts` reports failure without opening private data. `ReviewManager.checkReadiness` exposes the result while keeping full ownership blocked.
-5. `tests/native-guard.test.ts` launches real competing processes and terminates processes/workers. `tests/native-readiness.test.ts` crosses the public manager boundary with the production worker/helper, including missing-binary refusal. Installed-host tests require the helper probe to pass from the actual VSIX outside the source tree.
-
-## Evidence and alternatives
-
-Inspected against the selected embedded Node 24.21.0 API/source on 17 October:
-
-| Candidate                                                   | What it establishes                                       | Gap for this contract                                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Atomic `mkdir` / exclusive file creation                    | One initial pathname creator                              | No proven token-safe release/reclaim. A reclaimer can inspect A, pause, then delete B's replacement guard. An orphan publication is uncertain.                                                                                                                                       |
-| Heartbeat / PID existence                                   | A recent callback or a currently existing PID             | A delayed owner can still run. PID reuse needs OS process-start evidence; host death does not settle a child.                                                                                                                                                                        |
-| SQLite ownership row                                        | Transactional row updates                                 | Not exclusion across a later external Git effect.                                                                                                                                                                                                                                    |
-| Separate SQLite connection holding an exclusive transaction | Real SQLite filesystem locking while the connection lives | A viable candidate for exclusion, but connection death releases protection while an external child may survive. It still needs durable outstanding-operation records and identity/reconciliation. It does not implement the accepted independent recovery-file publication protocol. |
-| Native bridge in the worker                                 | Direct OS access; lock/process primitives implemented     | Full owner/recovery protocol and supported-platform proof remain outstanding.                                                                                                                                                                                                        |
-
-Node's [filesystem API](https://nodejs.org/download/release/v24.21.0/docs/api/fs.html) exposes exclusive creation, rename and synchronization, but no direct `flock`/`LockFileEx` interface. Its [process API](https://nodejs.org/download/release/v24.21.0/docs/api/process.html#processkillpid-signal) documents signal zero as an existence check, not start identity. This is an API inventory, not a claim that every possible built-in-only protocol is impossible.
-
-The pinned [Windows libuv implementation](https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/win/fs.c) uses `MoveFileExW` with replacement for rename and `FlushFileBuffers` for file sync. Node rename has no write-through option. Microsoft's [MoveFileEx flags](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw) distinguish write-through behavior. These facts do not prove that adding a flag alone durably publishes a same-volume rename; the Windows file/directory durability protocol still needs validation. A successful temporary-file flush followed by rename is insufficient evidence by itself.
-
-On macOS, the pinned [Unix libuv implementation](https://github.com/nodejs/node/blob/v24.21.0/deps/uv/src/unix/fs.c) already attempts full synchronization with fallback. That is useful evidence, but it does not prove every filesystem or the complete recovery-file publication protocol.
-
-[SQLite locking](https://sqlite.org/lockingv3.html) protects database access; it does not make database transactions atomic with Git effects. Moving control records into another SQLite database would change the accepted file protocol and still require crash/child/identity proof. It is an alternative decision, not an implemented fallback. Unbundled OS commands would introduce their own availability and packaging prerequisites.
-
-## Full ownership protocol still to prove
-
-1. Resolve the fixed rendezvous from `os.userInfo().homedir`. Validate the rendezvous and registered root as supported local filesystems. Acquire an OS lock on a permanent guard file there before registration or maintenance. Never unlink/replace the guard file as release or reclaim. Missing/malformed existing control records require recovery.
-2. Under that lock, discover/register exactly one store. Publish a versioned control record durably before acknowledging a claim: random owner token, OS-verified host process/start identity, store identity/incarnation, increasing fencing generation and window location. Account changes cannot create a second owner. Readers see location and status only.
-3. The helper uses nonblocking exclusive `flock` on POSIX and `LockFileEx` on Windows. [Linux lock lifetime](https://man7.org/linux/man-pages/man2/flock.2.html) and [Windows lock lifetime](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex) differ; test each platform. Windows [GetProcessTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes) supplies creation-time evidence. Combine these primitives with durable owner metadata before treating them as application ownership.
-4. Serialize canonical worktree/common-Git-directory scopes in a stable order. Revalidate token/incarnation/fence and expected repository facts before external effects. Commit both database intent and independent recovery facts before dispatch. Transactional fencing, expected revisions and request deduplication stay in the worker.
-5. Treat every interrupted dispatch as unresolved until actual process/repository outcomes are established. OS lock release is permission to inspect recovery, not permission to start a conflicting review. A dead host with a live/unknown child blocks mutations. Do not infer child lock inheritance: Windows explicitly distinguishes inherited handles from access to the parent's locked region.
-6. Release only after queued work settles and external outcomes are known, then durably publish release before unlocking. Handoff needs the acknowledged token protocol. Stale callbacks cannot release another token. Two reclaimers serialize on the permanent guard; neither may advance the fence while earlier work remains uncertain.
-
-The primitive is implemented; this full protocol remains a proof plan. Initialization, publication failure, process death and handoff need explicit failure boundaries. In particular, an OS lock becoming available after death does not prove a Git child stopped. No normal mutation path is enabled by the helper probe.
-
-## Remaining acceptance gates
-
-All of #18's store/ownership acceptance criteria remain open. The checkpoint proves only the public readiness blocker and preserves the existing read-only package.
-
-- Real simultaneous claims/first registration across profiles/copies and differing environment roots; one store or explicit recovery.
-- Two reclaimers, orphan publication, delayed heartbeat, stale callbacks, handoff failure, PID reuse and dead host/live child; no overlapping effects or guard deletion.
-- Independent control-file publication/flush failures, corruption, unsupported/newer protocols, network/redirected roots and store incarnation surviving database restore.
-- Worker-only disk SQLite with verified WAL/FULL/foreign keys/secure deletion/busy bounds, durable acknowledgments, scoped identities, expected revisions, deduplication and fencing.
-- Installed public readiness/open/release actions with production storage and real processes on all six minimum/current VS Code platform cells. No mock ownership flag counts as guard evidence.
-
-## Run this checkpoint
-
-`pnpm validate` checks formatting, types and all fast tests. `pnpm test:host` packages/installs the VSIX and checks the real public command, React handshake, worker and unchanged disposable repository. Use `CRW_VSCODE_VERSION=1.141.2 pnpm test:host` for the minimum host.
-
-Install `dist/code-review-workbench.vsix`, open a trusted local repository and run **Code Review Workbench: Check Readiness**. Git/SQLite can pass while **Review ownership · Blocked** explains that an extension update is required. This is not evidence of cross-window exclusion or disk-store durability.
-
-See the [native helper's test evidence and automated review](native-helper-validation.md). The [earlier blocker checkpoint](shared-state-validation.md) is retained as historical evidence.
+Review/content/normal Git mutations stay disabled. No migration, backup restore, deletion or full review schema is introduced here. The [earlier helper evidence](native-helper-validation.md) and [initial blocker evidence](shared-state-validation.md) are historical checkpoints.

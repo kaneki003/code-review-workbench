@@ -1,6 +1,6 @@
-# Native helper checkpoint (#18)
+# Historical native helper checkpoint (#18)
 
-The owner approved the native helper on 17 October 2026. This checkpoint implements the OS lock, process identity, local-directory checks and packaged worker probe. The [helper walkthrough](shared-state-ownership.md#walk-through-the-helper) gives the reading order and build requirements. The canonical store, independent recovery files and safe application-owner transfer remain unfinished. Review writes stay disabled.
+The owner approved the native helper on 17 October 2026. This checkpoint implements the OS lock, process identity, local-directory checks and packaged worker probe. The [helper walkthrough](shared-state-ownership.md#walk-through-the-helper) gives the reading order and build requirements. At this earlier checkpoint the canonical store and recovery files were unfinished. See the [current store checkpoint](shared-store-validation.md); review writes remain disabled.
 
 ## Tests
 
