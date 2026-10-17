@@ -59,9 +59,10 @@ export class ReviewManager {
   offerStoreHandoff(targetWindowId: string): Promise<StoreReply> {
     return this.storeRequest('handoff', { targetWindowId });
   }
-  // Host-only mutation entry point. No command arguments come from a webview.
-  runGitOperation(args: string[]): Promise<StoreReply> {
-    return this.storeRequest('git', { args });
+  // Host-only checkpoint seam. This records a recovery barrier; it never
+  // authorizes external execution and has no completion/clear API yet.
+  recordRepositoryIntent(): Promise<StoreReply> {
+    return this.storeRequest('recordIntent');
   }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
@@ -70,7 +71,7 @@ export class ReviewManager {
 
   private storeRequest(
     action: StoreRequest['action'],
-    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'args'> = {},
+    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId'> = {},
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
       const host = this.connections.environment();

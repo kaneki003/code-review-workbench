@@ -72,8 +72,7 @@ export function initializeDatabase(path: string, registry: StoreRegistry): Datab
           action TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL,
           FOREIGN KEY(owner_token,scope_id) REFERENCES ownership(token,scope_id)) STRICT;
         CREATE TABLE operations (operation_id TEXT PRIMARY KEY, owner_token TEXT NOT NULL, scope_id TEXT NOT NULL,
-          scopes TEXT NOT NULL, phase TEXT NOT NULL CHECK(phase IN ('pending','complete')),
-          pid INTEGER, process_start TEXT, exit_code INTEGER,
+          scopes TEXT NOT NULL,
           FOREIGN KEY(owner_token,scope_id) REFERENCES ownership(token,scope_id)) STRICT;
         PRAGMA user_version=1;
         PRAGMA application_id=${APPLICATION_ID};

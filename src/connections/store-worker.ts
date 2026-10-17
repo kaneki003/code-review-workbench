@@ -1,9 +1,9 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   StoreConfiguration,
@@ -316,8 +316,11 @@ class SharedStore {
     if (!this.registry || !this.control?.owner || !this.lease)
       recovery('The owner projection is unavailable.');
     const view: StoreView = {
-      status: 'owned',
-      detail: 'This window owns the shared private store.',
+      status: this.control.pending ? 'recovery' : 'owned',
+      detail: this.control.pending
+        ? 'Repository intent remains pending. This checkpoint cannot execute, complete or clear it; preserve the recovery records.'
+        : 'This window owns the shared private store.',
+      ...(this.control.pending ? { code: 'OPERATION_PENDING' } : {}),
       root: this.registry.root,
       storeId: this.registry.storeId,
       incarnation: this.registry.incarnation,
@@ -354,6 +357,8 @@ class SharedStore {
       );
     }
     native.assertHeld(this.guard);
+    native.assertPrivateDirectory(this.rendezvous);
+    native.assertPrivateDirectory(this.registry.root);
     const registry = readRegistry(this.registryPath());
     if (
       !registry ||
@@ -453,23 +458,15 @@ class SharedStore {
     return reply;
   }
 
-  private async git(request: StoreRequest): Promise<StoreReply> {
+  private recordIntent(request: StoreRequest): StoreReply {
     this.validate(request.lease, false);
     const previous = previousReply(this.database!, request);
     if (previous) return previous;
     this.validate(request.lease, true);
     if (this.control!.pending)
-      recovery('A previous Git operation needs reconciliation before another can run.');
-    if (
-      !Array.isArray(request.args) ||
-      request.args.length === 0 ||
-      request.args.length > 128 ||
-      !request.args.every(
-        (arg) => typeof arg === 'string' && arg.length <= 32768 && !arg.includes('\0'),
-      )
-    ) {
-      throw new StoreError('INVALID_REQUEST', 'Git needs bounded host-owned arguments.');
-    }
+      recovery(
+        'A repository operation is already pending; completion and recovery are not available in this checkpoint.',
+      );
     native.assertLocalDirectory(this.config.location);
     this.validate(request.lease, true);
     const paths = execFileSync(
@@ -482,10 +479,17 @@ class SharedStore {
         '--show-toplevel',
         '--git-common-dir',
       ],
-      { encoding: 'utf8', timeout: 3000, maxBuffer: 65536, windowsHide: true },
+      {
+        encoding: 'utf8',
+        timeout: 3000,
+        maxBuffer: 65536,
+        windowsHide: true,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+      },
     )
       .trimEnd()
-      .split(/\r?\n/);
+      .split(/\r?\n/)
+      .map((path) => normalize(path));
     if (paths.length !== 2 || paths[0] !== this.config.location)
       recovery('The repository location changed or is unsupported.');
     const scopes = paths
@@ -495,106 +499,42 @@ class SharedStore {
         return `${identity.dev}:${identity.ino}:${path}`;
       })
       .sort();
+    this.validate(request.lease, true);
+    // Independent intent precedes its SQLite projection. A crash at either
+    // boundary leaves the store blocked, never permission to dispatch or replay.
     const pending: NonNullable<StoreControl['pending']> = {
       id: request.id,
       scopeId: this.lease!.scopeId,
       scopes,
       child: null,
     };
-    const advance = (write: () => void) => {
-      transaction(this.database!, () => {
-        this.validate(this.lease, true);
-        write();
-        this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
-      });
-      this.lease = { ...this.lease!, revision: this.lease!.revision + 1 };
-    };
-    advance(() =>
-      this.database!.prepare(
-        "INSERT INTO operations VALUES (?,?,?,?,'pending',NULL,NULL,NULL)",
-      ).run(request.id, this.lease!.token, this.lease!.scopeId, JSON.stringify(scopes)),
-    );
-    this.saveControl({ ...this.control!, revision: this.lease!.revision, pending });
-    // All operations use this one ordered worker queue. The two canonical
-    // scopes are sorted before reserving them; linked worktrees share the
-    // common-Git-directory scope. Never hold a SQL transaction across Git.
-    this.validate(this.lease, true);
-    paths.forEach((path, index) => {
-      native.assertLocalDirectory(path);
-      const identity = statSync(path, { bigint: true });
-      if (!scopes.includes(`${identity.dev}:${identity.ino}:${path}`))
-        recovery(`Repository scope ${index} was replaced.`);
-    });
-    this.validate(this.lease, true);
-    const child = spawn('git', ['-C', this.config.location, ...request.args], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    const exitCode = await new Promise<number>((resolveExit, reject) => {
-      const timeout = setTimeout(() => {
-        // A stop request is not evidence that a child/descendant stopped.
-        child.kill();
-        reject(
-          new StoreError(
-            'OPERATION_UNKNOWN',
-            'Git timed out. Its outcome and child lifetime need reconciliation; ownership is retained.',
-          ),
-        );
-      }, 8000);
-      child.once('error', (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.once('close', (code, signal) => {
-        clearTimeout(timeout);
-        if (code === null || signal)
-          reject(
-            new StoreError(
-              'OPERATION_UNKNOWN',
-              'Git stopped without a known result; recovery remains required.',
-            ),
-          );
-        else resolveExit(code);
-      });
-      child.once('spawn', () => {
-        try {
-          const identity = native.processIdentity(child.pid!);
-          if (identity) {
-            advance(() =>
-              this.database!.prepare(
-                'UPDATE operations SET pid=?,process_start=? WHERE operation_id=? AND owner_token=? AND scope_id=?',
-              ).run(
-                identity.pid,
-                identity.start,
-                request.id,
-                this.lease!.token,
-                this.lease!.scopeId,
-              ),
-            );
-            pending.child = identity;
-            this.saveControl({ ...this.control!, revision: this.lease!.revision, pending });
-          }
-        } catch (error) {
-          clearTimeout(timeout);
-          reject(error);
-        }
-      });
-    });
-    const finalLease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    this.saveControl({ ...this.control!, pending });
+    const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
     const reply: StoreReply = {
-      ...this.owned(),
-      lease: finalLease,
-      view: { ...this.owned().view, revision: finalLease.revision },
-      git: { exitCode },
+      view: {
+        ...this.owned().view,
+        status: 'recovery',
+        code: 'OPERATION_PENDING',
+        detail:
+          'Repository intent is durably recorded. This checkpoint cannot execute, complete or clear it. Preserve the recovery records.',
+        revision: lease.revision,
+      },
+      lease,
+      reservation: { id: request.id, scopes },
     };
-    advance(() => {
-      this.database!.prepare(
-        "UPDATE operations SET phase='complete',exit_code=? WHERE operation_id=? AND owner_token=? AND scope_id=?",
-      ).run(exitCode, request.id, this.lease!.token, this.lease!.scopeId);
-      saveReply(this.database!, request, finalLease, reply);
+    transaction(this.database!, () => {
+      this.validate(request.lease, true);
+      this.database!.prepare('INSERT INTO operations VALUES (?,?,?,?)').run(
+        request.id,
+        lease.token,
+        lease.scopeId,
+        JSON.stringify(scopes),
+      );
+      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      saveReply(this.database!, request, lease, reply);
     });
-    const { pending: _pending, ...completed } = this.control!;
-    this.saveControl({ ...completed, revision: finalLease.revision });
+    this.lease = lease;
+    this.saveControl({ ...this.control!, revision: lease.revision });
     return reply;
   }
 
@@ -603,14 +543,16 @@ class SharedStore {
       !object(message) ||
       message.protocol !== 1 ||
       !uuid(message.id) ||
-      !['open', 'inspect', 'release', 'renew', 'handoff', 'git'].includes(String(message.action))
+      !['open', 'inspect', 'release', 'renew', 'handoff', 'recordIntent'].includes(
+        String(message.action),
+      )
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
     const request = message as unknown as StoreRequest;
     try {
       if (request.action === 'inspect') return this.inspect();
       if (request.action === 'open') return this.open(request);
-      if (request.action === 'git') return await this.git(request);
+      if (request.action === 'recordIntent') return this.recordIntent(request);
       if (this.terminal?.id === request.id) {
         if (this.terminal.digest !== requestDigest(request))
           throw new StoreError(

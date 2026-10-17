@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { ReviewManager } from '../../src/application/review-manager';
 import { createStoreConnection } from '../../src/connections/shared-store';
 import type { StoreConfiguration } from '../../src/application/private-store';
@@ -41,15 +42,26 @@ process.on(
   'message',
   async (message: {
     id: number;
-    action: 'open' | 'release' | 'renew' | 'inspect' | 'git';
-    args?: string[];
+    action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child';
   }) => {
     const actions = {
       open: () => manager.openPrivateStore(),
       release: () => manager.releasePrivateStore(),
       renew: () => manager.renewOwnership(),
       inspect: () => manager.inspectPrivateStore(),
-      git: async () => (await manager.runGitOperation(message.args!)).view,
+      'reserve-child': async () => {
+        const receipt = await manager.recordRepositoryIntent();
+        if (receipt.reservation) {
+          // Test fixture only: deliberately leave a child outside production's
+          // checkpoint. The saved barrier must survive this host dying.
+          spawn(process.execPath, ['child.cjs'], {
+            cwd: configuration.location,
+            detached: true,
+            stdio: 'ignore',
+          }).unref();
+        }
+        return receipt.view;
+      },
     };
     process.send!({ id: message.id, view: await actions[message.action]() });
   },

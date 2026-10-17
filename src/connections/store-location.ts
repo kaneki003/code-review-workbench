@@ -24,6 +24,11 @@ export function resolveStoreConfiguration(location: string): StoreConfiguration 
     }
     default: {
       const data = process.env.XDG_DATA_HOME;
+      if (data && !isAbsolute(data))
+        throw new StoreError(
+          'UNSUPPORTED_ROOT',
+          'XDG_DATA_HOME must be an absolute local directory.',
+        );
       candidateRoot = join(
         data && isAbsolute(data) ? data : join(osHome, '.local', 'share'),
         'code-review-workbench',

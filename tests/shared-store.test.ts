@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { build } from 'esbuild';
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ReviewManager } from '../src/application/review-manager';
 import { createStoreConnection } from '../src/connections/shared-store';
@@ -73,7 +73,7 @@ async function fixture() {
     return {
       child,
       async send(
-        action: 'open' | 'release' | 'renew' | 'inspect' | 'git',
+        action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child',
         args?: string[],
       ): Promise<StoreView> {
         const response = once(child, 'message');
@@ -157,6 +157,36 @@ test('one manager opens the durable store; a second sees only its location and l
   expect(await second.releasePrivateStore()).toMatchObject({ status: 'closed' });
 });
 
+test('host configuration uses OS account home despite process home overrides and rejects relative data roots', async () => {
+  const context = await fixture();
+  const resolver = join(context.directory, 'location.cjs');
+  await build({
+    entryPoints: ['src/connections/store-location.ts'],
+    outfile: resolver,
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+  });
+  const run = (extra: NodeJS.ProcessEnv = {}) =>
+    execFileSync(
+      process.execPath,
+      [
+        '-e',
+        'console.log(JSON.stringify(require(process.argv[1]).resolveStoreConfiguration(process.argv[2])))',
+        resolver,
+        context.directory,
+      ],
+      {
+        encoding: 'utf8',
+        stdio: 'pipe',
+        env: { ...process.env, HOME: context.home, USERPROFILE: context.home, ...extra },
+      },
+    );
+  expect(JSON.parse(run()).osHome).toBe(userInfo().homedir);
+  if (process.platform === 'linux') expect(() => run({ XDG_DATA_HOME: 'relative/data' })).toThrow();
+  if (process.platform === 'win32') expect(() => run({ LOCALAPPDATA: 'relative/data' })).toThrow();
+});
+
 test('real processes with different home and data variables never register a second store', async () => {
   const context = await fixture();
   const first = await context.contender('first');
@@ -225,27 +255,44 @@ test('handoff opens only the named window, and a failed handoff stays closed to 
   expect(await second.releasePrivateStore()).toMatchObject({ status: 'closed' });
 });
 
-test('repository operations are ordered and ownership is checked immediately before Git', async () => {
+test('repository intent records sorted linked-worktree scopes and blocks every further mutation', async () => {
   const context = await fixture();
   const repository = join(context.directory, 'repository');
+  const linked = join(context.directory, 'linked');
   await mkdir(repository);
   execFileSync('git', ['init', repository]);
-  const manager = context.manager('repository');
-  expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
-  const results = await Promise.all([
-    manager.runGitOperation(['config', '--local', 'crw.test', 'first']),
-    manager.runGitOperation(['config', '--local', 'crw.test', 'second']),
+  execFileSync('git', [
+    '-C',
+    repository,
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.test',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'fixture',
   ]);
-  expect(results.map((reply) => reply.git?.exitCode)).toEqual([0, 0]);
+  execFileSync('git', ['-C', repository, 'worktree', 'add', '-b', 'linked', linked]);
+  const manager = context.manager('linked');
+  expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
+  const [first, second] = await Promise.all([
+    manager.recordRepositoryIntent(),
+    manager.recordRepositoryIntent(),
+  ]);
+  expect(first.reservation?.scopes).toHaveLength(2);
+  expect(first.reservation!.scopes).toEqual([...first.reservation!.scopes].sort());
   expect(
-    execFileSync('git', ['-C', repository, 'config', '--local', 'crw.test'], {
-      encoding: 'utf8',
-    }).trim(),
-  ).toBe('second');
-  expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
+    first.reservation!.scopes.some((scope) => scope.endsWith(':' + join(repository, '.git'))),
+  ).toBe(true);
+  expect(first.reservation!.scopes.some((scope) => scope.endsWith(':' + linked))).toBe(true);
+  expect(second.view.status).toBe('recovery');
+  expect(second.reservation).toBeUndefined();
+  expect(await manager.releasePrivateStore()).toMatchObject({ status: 'recovery' });
+  expect((await manager.offerStoreHandoff('second')).view.status).toBe('recovery');
 });
 
-test('a changed store identity fences a queued Git effect before it touches the repository', async () => {
+test('a changed store identity fences queued repository intent before acknowledging it', async () => {
   const context = await fixture();
   const repository = join(context.directory, 'repository');
   await mkdir(repository);
@@ -253,7 +300,7 @@ test('a changed store identity fences a queued Git effect before it touches the 
   const manager = context.manager('repository', 'data-A', undefined, (connection) => ({
     ...connection,
     async request(request) {
-      if (request.action === 'git') {
+      if (request.action === 'recordIntent') {
         const path = join(context.home, '.code-review-workbench', 'store-location.json');
         const record = JSON.parse(await readFile(path, 'utf8'));
         await writeFile(path, JSON.stringify({ ...record, incarnation: randomUUID() }));
@@ -262,9 +309,7 @@ test('a changed store identity fences a queued Git effect before it touches the 
     },
   }));
   expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
-  expect(
-    (await manager.runGitOperation(['config', '--local', 'crw.test', 'forbidden'])).view,
-  ).toMatchObject({ status: 'recovery' });
+  expect((await manager.recordRepositoryIntent()).view).toMatchObject({ status: 'recovery' });
   expect(() => execFileSync('git', ['-C', repository, 'config', '--local', 'crw.test'])).toThrow();
 });
 
@@ -300,7 +345,7 @@ async function waitForFile(path: string) {
   throw new Error(`Timed out waiting for ${path}`);
 }
 
-test('a host dying with a live Git child leaves a durable barrier even after the child finishes', async () => {
+test('an acknowledged intent survives host death and a live fixture child; no takeover after it finishes', async () => {
   const context = await fixture();
   const repository = join(context.directory, 'repository');
   await mkdir(repository);
@@ -318,7 +363,10 @@ test('a host dying with a live Git child leaves a durable barrier even after the
   );
   const owner = await context.contender('repository');
   expect(await owner.send('open')).toMatchObject({ status: 'owned' });
-  void owner.send('git', ['-c', 'alias.block=!node child.cjs', 'block']);
+  expect(await owner.send('reserve-child')).toMatchObject({
+    status: 'recovery',
+    code: 'OPERATION_PENDING',
+  });
   await waitForFile(join(repository, 'child-started'));
   const exited = once(owner.child, 'exit');
   owner.child.kill('SIGKILL');

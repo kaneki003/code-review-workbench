@@ -37,11 +37,10 @@ export interface StoreConfiguration {
 export interface StoreRequest {
   protocol: 1;
   id: string;
-  action: 'open' | 'inspect' | 'release' | 'renew' | 'handoff' | 'git';
+  action: 'open' | 'inspect' | 'release' | 'renew' | 'handoff' | 'recordIntent';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
-  args?: string[];
 }
 
 export interface StoreHandoff {
@@ -55,7 +54,7 @@ export interface StoreReply {
   view: StoreView;
   lease?: StoreLease;
   handoff?: StoreHandoff;
-  git?: { exitCode: number };
+  reservation?: { id: string; scopes: string[] };
 }
 
 export interface StoreConnection {
