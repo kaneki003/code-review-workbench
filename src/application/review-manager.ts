@@ -17,6 +17,7 @@ export interface ReadinessConnections {
   environment(): HostEnvironment;
   git(folder: string): Promise<Capability>;
   sqlite(): Promise<Capability>;
+  native(): Promise<Capability>;
 }
 
 // This public action only inspects capabilities. It never acquires review ownership.
@@ -36,14 +37,16 @@ export class ReviewManager {
     if (canRunLocalProbes) {
       // checkWorkspace has established that exactly one local folder exists.
       const repositoryFolder = host.folders[0]!;
-      const [gitResult, sqliteResult] = await Promise.allSettled([
+      const [gitResult, sqliteResult, nativeResult] = await Promise.allSettled([
         this.connections.git(repositoryFolder.path),
         this.connections.sqlite(),
+        this.connections.native(),
       ]);
 
       checks.push(
         readProbeResult(gitResult, 'git', 'Git'),
         readProbeResult(sqliteResult, 'sqlite', 'Packaged SQLite worker'),
+        readProbeResult(nativeResult, 'guard', 'Packaged ownership helper'),
       );
     } else {
       checks.push({

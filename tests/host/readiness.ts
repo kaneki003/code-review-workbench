@@ -84,7 +84,16 @@ suite('Installed readiness VSIX', () => {
     evidence.report = report;
     await saveEvidence();
     assert.ok(report);
-    for (const id of ['workspace', 'trust', 'runtime', 'platform', 'git', 'sqlite', 'renderer']) {
+    for (const id of [
+      'workspace',
+      'trust',
+      'runtime',
+      'platform',
+      'git',
+      'sqlite',
+      'guard',
+      'renderer',
+    ]) {
       assert.equal(
         report.checks.find((check) => check.id === id)?.status,
         'passed',

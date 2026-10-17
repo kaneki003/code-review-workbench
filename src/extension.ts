@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ReviewManager, type HostEnvironment } from './application/review-manager';
 import { probeGit } from './connections/git-readiness';
 import { probeSqlite } from './connections/sqlite-readiness';
+import { probeNativeGuard } from './connections/native-readiness';
 import { createReadinessPanel } from './vscode/readiness-panel';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -14,6 +15,10 @@ export function activate(context: vscode.ExtensionContext) {
     environment: readHostEnvironment,
     git: probeGit,
     sqlite: () => probeSqlite(workerPath),
+    native: () =>
+      probeNativeGuard(
+        vscode.Uri.joinPath(context.extensionUri, 'dist', 'native-probe-worker.cjs').fsPath,
+      ),
   });
   const panel = createReadinessPanel(context.extensionUri, () => manager.checkReadiness());
   context.subscriptions.push(

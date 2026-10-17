@@ -1,13 +1,16 @@
 import { build, context } from 'esbuild';
 import { spawnPnpm } from './pnpm.mjs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, copyFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
+import { buildNative } from './build-native.mjs';
 
 const watchMode = process.argv.includes('--watch');
 if (!watchMode) {
   await rm('dist', { recursive: true, force: true });
 }
 await mkdir('dist', { recursive: true });
+await buildNative();
+await copyFile('native/build/Release/crw_guard.node', 'dist/native-guard.node');
 const nodeBundleOptions = {
   bundle: true,
   platform: 'node',
@@ -21,6 +24,11 @@ const bundles = [
     ...nodeBundleOptions,
     entryPoints: ['src/connections/readiness-worker.ts'],
     outfile: 'dist/readiness-worker.cjs',
+  },
+  {
+    ...nodeBundleOptions,
+    entryPoints: ['src/connections/native-probe-worker.ts'],
+    outfile: 'dist/native-probe-worker.cjs',
   },
   {
     bundle: true,

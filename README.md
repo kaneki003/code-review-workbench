@@ -6,7 +6,7 @@ This repository contains the accepted planning baseline and the first production
 
 ## Run the readiness slice
 
-Use Node >=24.15.0 <25 and pnpm 12.11.2:
+Use Node >=24.15.0 <25 and pnpm 12.11.2. Building the native helper also needs Python and a C++ toolchain; see the [helper build requirements and walkthrough](docs/development/shared-state-ownership.md#approved-packaging-change).
 
 ```sh
 pnpm install --frozen-lockfile
@@ -18,7 +18,7 @@ Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install f
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
-Shared-state ownership is blocked pending the [guard and recovery-file packaging decision for #18](docs/development/shared-state-ownership.md). Passing readiness probes does not enable review writes.
+The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Shared-store ownership and durable recovery remain unfinished; passing the helper probe does not enable review writes. Install the VSIX built for your OS and CPU.
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 

@@ -35,6 +35,12 @@ test('passing Git and real SQLite probes still block review ownership without op
         folders: [{ scheme: 'file', path: directory }],
       }),
       git: probeGit,
+      native: async () => ({
+        id: 'guard',
+        label: 'Helper',
+        status: 'blocked',
+        detail: 'Separate probe',
+      }),
       sqlite: () => probeSqlite(worker),
     });
     const report = await manager.checkReadiness();

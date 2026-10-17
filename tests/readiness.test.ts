@@ -23,6 +23,9 @@ const supportedHost: HostEnvironment = {
 test('a remote workspace explains the limitation before executing local probes', async () => {
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, remote: 'ssh-remote' }),
+    native: async () => {
+      throw new Error('Native helper must not execute');
+    },
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -62,6 +65,9 @@ const unsupportedHosts: { name: string; changes: Partial<HostEnvironment> }[] = 
 test.each(unsupportedHosts)('$name skips all local probes', async ({ changes }) => {
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, ...changes }),
+    native: async () => {
+      throw new Error('Native helper must not execute');
+    },
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -88,6 +94,12 @@ test('a missing repository is explained without cloning or starting a review', a
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
+    native: async () => ({
+      id: 'guard',
+      label: 'Helper',
+      status: 'blocked',
+      detail: 'Separate probe',
+    }),
     sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: 'Available' }),
   });
   const report = await manager.checkReadiness();
@@ -119,6 +131,12 @@ test('checking a dirty repository retains the files, index and refs while owners
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
+    native: async () => ({
+      id: 'guard',
+      label: 'Helper',
+      status: 'blocked',
+      detail: 'Separate probe',
+    }),
     sqlite: () => probeSqlite(join(folder, 'missing-worker.cjs')),
   });
   const report = await manager.checkReadiness();
