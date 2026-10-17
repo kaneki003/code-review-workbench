@@ -17,6 +17,7 @@ const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) a
 const directory = realpathSync(mkdtempSync(join(tmpdir(), 'crw-guard-probe-')));
 let guard: object | null = null;
 let successor: object | null = null;
+let start: string;
 try {
   native.assertLocalDirectory(directory);
   const path = join(directory, 'guard');
@@ -31,10 +32,13 @@ try {
     throw new Error('Stale release affected successor');
   }
   if (!native.release(successor)) throw new Error('OS release unconfirmed');
-  parentPort?.postMessage({ ok: true, start: identity.start });
+  start = identity.start;
 } finally {
   if (successor) native.release(successor);
   if (guard) native.release(guard);
   rmSync(directory, { recursive: true, force: true });
-  parentPort?.close();
 }
+// The host can terminate the worker as soon as it receives a result.
+// Acknowledge only after the disposable guard and directory are cleaned up.
+parentPort?.postMessage({ ok: true, start });
+parentPort?.close();

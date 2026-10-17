@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { fork, type ChildProcess } from 'node:child_process';
+import { execFileSync, fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, symlink, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -128,3 +128,13 @@ test('local-directory validation refuses a redirected directory before guard cre
   expect(() => native.assertLocalDirectory(link)).toThrow();
   expect(() => native.assertLocalDirectory('relative/path')).toThrow();
 });
+
+test.runIf(process.platform === 'darwin')(
+  'macOS process identity uses the invariant boot session identifier',
+  () => {
+    const bootSession = execFileSync('/usr/sbin/sysctl', ['-n', 'kern.bootsessionuuid'], {
+      encoding: 'utf8',
+    }).trim();
+    expect(native.processIdentity(process.pid)!.start).toContain(bootSession);
+  },
+);

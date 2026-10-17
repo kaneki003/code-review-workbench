@@ -41,6 +41,7 @@ test('a remote workspace explains the limitation before executing local probes',
   expect(report.reviewAvailable).toBe(false);
   expect(report.checks.map((check) => check.id)).not.toContain('git');
   expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
+  expect(report.checks.map((check) => check.id)).not.toContain('guard');
 });
 
 const unsupportedHosts: { name: string; changes: Partial<HostEnvironment> }[] = [
@@ -78,6 +79,7 @@ test.each(unsupportedHosts)('$name skips all local probes', async ({ changes }) 
   const report = await manager.checkReadiness();
   expect(report.checks.map((check) => check.id)).not.toContain('git');
   expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
+  expect(report.checks.map((check) => check.id)).not.toContain('guard');
   expect(report.checks.find((check) => check.id === 'probes')?.status).toBe('blocked');
 });
 

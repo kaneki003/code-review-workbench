@@ -216,7 +216,7 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
   if (!GetFileInformationByHandle(guard->file, &metadata) ||
       (metadata.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) ||
       metadata.nNumberOfLinks != 1) {
-    return Fail(env, "UNSAFE_GUARD", "The guard must be a regular, unlinked local file.");
+    return Fail(env, "UNSAFE_GUARD", "The guard must be a regular local file with one link.");
   }
   OVERLAPPED offset = {};
   if (!LockFileEx(guard->file, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &offset)) {
@@ -304,11 +304,14 @@ napi_value ProcessIdentity(napi_env env, napi_callback_info info) {
   int bytes = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &process, sizeof(process));
   if (bytes == 0 && errno == ESRCH) return Null(env);
   if (bytes != sizeof(process)) return Fail(env, "PROCESS_IDENTITY_UNKNOWN", "Cannot read OS process-start identity.");
-  struct timeval boot;
-  int key[] = {CTL_KERN, KERN_BOOTTIME};
+  // kern.boottime changes when the wall clock is corrected. Use the immutable
+  // boot-session UUID with the process's recorded start metadata instead.
+  char boot[128] = {};
   size_t size = sizeof(boot);
-  if (sysctl(key, 2, &boot, &size, nullptr, 0) != 0) return Fail(env, "PROCESS_IDENTITY_UNKNOWN", "Cannot read OS boot identity.");
-  start = std::to_string(boot.tv_sec) + ":" + std::to_string(process.pbi_start_tvsec) + ":" + std::to_string(process.pbi_start_tvusec);
+  if (sysctlbyname("kern.bootsessionuuid", boot, &size, nullptr, 0) != 0 || size == 0 || size >= sizeof(boot) || boot[0] == '\0') {
+    return Fail(env, "PROCESS_IDENTITY_UNKNOWN", "Cannot read OS boot-session identity.");
+  }
+  start = std::string(boot) + ":" + std::to_string(process.pbi_start_tvsec) + ":" + std::to_string(process.pbi_start_tvusec);
 #else
   std::ifstream file("/proc/" + std::to_string(pid) + "/stat");
   if (!file) {
