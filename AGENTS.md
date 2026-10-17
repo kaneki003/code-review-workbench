@@ -10,8 +10,16 @@ Before product or architecture planning, read `README.md`, `docs/product/PRD.md`
 - Before coding, briefly explain the plan and any new framework concepts. Use `$teach` for deeper lessons when useful.
 - Make small, coherent commits. If the change grows large, pause at a working checkpoint for a walkthrough.
 - Run the tests and automated code review, then open a draft PR.
-- Keep the PR description short and direct. Include “Walk me through the diff”: reading order, one action's flow through the code, key decisions, and how to run and test it.
+- Keep the PR description short and direct. Follow the PR-Desc Style below for “Walk me through the diff” and how to try it.
 - Stop for the owner's review. Do not merge, enable auto-merge, close the issue, or start another ticket until the owner explicitly approves.
+
+## PR-Desc Style
+
+1. **Layers of changes.** Number small layers that can be understood quickly. Each layer builds on earlier ones; say when it reuses an earlier command, pipeline or module.
+   - Add a user story where useful: what the user does and what happens next.
+   - Index and link the relevant files, diffs or functions in their runtime order. Give each step a one-line explanation.
+   - Add a brief technical overview where needed. Explain the concept and its purpose in plain words, such as a JavaScript worker running blocking work on another thread, or a database transaction making related writes succeed or fail together.
+2. **How to try this feature.** Give exact commands/actions and expected outcomes. Explain how the feature supports a current app user story or will fit a future one.
 
 ## Agent skills
 
