@@ -16,3 +16,4 @@ node_modules/
 *.log
 .vscode-test/
 .host-test/
+native/build/
