@@ -1,8 +1,9 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createRequire } from 'node:module';
-import { existsSync, readdirSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { spawn, execFileSync } from 'node:child_process';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   StoreConfiguration,
@@ -95,6 +96,8 @@ class SharedStore {
     return join(this.rendezvous, 'control.json');
   }
   private saveControl(control: StoreControl) {
+    if (!this.guard) recovery('Independent publication requires the live OS guard.');
+    native.assertHeld(this.guard);
     publish(native, this.rendezvous, 'control.json', control);
     this.control = control;
   }
@@ -104,6 +107,14 @@ class SharedStore {
     if (!registry) recovery('Canonical registration is incomplete.');
     const control = readControl(this.controlPath(), registry);
     if (!control.owner) recovery('Store release or registration is incomplete.');
+    if (
+      control.pending &&
+      native.processIdentity(control.owner.process.pid)?.start !== control.owner.process.start
+    ) {
+      recovery(
+        'An interrupted Git operation remains unconfirmed. The prior child may still run; preserve its recovery record.',
+      );
+    }
     return {
       view: {
         status: 'busy',
@@ -126,7 +137,7 @@ class SharedStore {
             'The shared private store has not been opened. Use Open Private Store when ready.',
         },
       };
-    native.assertLocalDirectory(this.rendezvous);
+    native.assertPrivateDirectory(this.rendezvous);
     const registry = readRegistry(this.registryPath());
     if (!registry) recovery('Canonical registration is incomplete.');
     const control = readControl(this.controlPath(), registry);
@@ -143,6 +154,7 @@ class SharedStore {
 
   private initialize(): StoreRegistry {
     const root = this.config.candidateRoot;
+    this.assertOutsideRepository(root);
     // A root left by another initialization is recovery, even when it looks
     // empty. The fixed rendezvous must never silently register a second store.
     if (existsSync(root)) recovery('Storage already exists without a canonical registration.');
@@ -181,6 +193,17 @@ class SharedStore {
     return registry;
   }
 
+  private assertOutsideRepository(root: string) {
+    const inside = relative(this.config.location, root);
+    if (inside === '' || (!inside.startsWith('..') && !isAbsolute(inside)))
+      throw new StoreError('UNSUPPORTED_ROOT', 'The private store must be outside the repository.');
+    for (let current = root; ; current = dirname(current)) {
+      if (existsSync(join(current, '.git')))
+        throw new StoreError('UNSUPPORTED_ROOT', 'The private store must be outside repositories.');
+      if (current === dirname(current)) break;
+    }
+  }
+
   open(request: StoreRequest): StoreReply {
     if (this.poisoned)
       recovery('An earlier storage outcome is uncertain; close this window before recovery.');
@@ -204,16 +227,24 @@ class SharedStore {
       registry = this.initialize();
     }
     this.registry = registry;
+    this.assertOutsideRepository(registry.root);
     if (!existsSync(registry.root)) recovery('The registered private store is missing.');
     native.assertLocalDirectory(registry.root);
     native.ensurePrivateDirectory(registry.root);
     const control = readControl(this.controlPath(), registry);
+    if (control.pending)
+      recovery(
+        'A previous Git operation has an unconfirmed outcome. Its child may still run. Reconcile the repository before explicit recovery.',
+      );
     if (!['owned', 'released', 'handoff'].includes(control.phase))
       recovery('An interrupted ownership transition needs explicit recovery.');
     if (
       control.phase === 'handoff' &&
       (!request.handoff ||
-        JSON.stringify(request.handoff) !== JSON.stringify(control.handoff) ||
+        request.handoff.token !== control.handoff?.token ||
+        request.handoff.storeId !== registry.storeId ||
+        request.handoff.incarnation !== registry.incarnation ||
+        request.handoff.fence !== control.fence ||
         control.handoff?.targetWindowId !== this.config.windowId)
     ) {
       native.release(this.guard);
@@ -244,7 +275,31 @@ class SharedStore {
     };
     const { handoff: _handoff, ...nextControl } = control;
     this.saveControl({ ...nextControl, phase: 'claiming', owner, fence: control.fence + 1 });
-    const revision = claimDatabase(this.database, registry, owner, this.config, control.fence + 1);
+    const revision = claimDatabase(
+      this.database,
+      registry,
+      owner,
+      this.config,
+      control.fence + 1,
+      () => {
+        native.assertHeld(this.guard!);
+        const registered = readRegistry(this.registryPath());
+        if (
+          !registered ||
+          registered.storeId !== registry.storeId ||
+          registered.incarnation !== registry.incarnation ||
+          registered.root !== registry.root
+        )
+          recovery('The canonical registration changed during claim.');
+        const claiming = readControl(this.controlPath(), registered);
+        if (
+          claiming.phase !== 'claiming' ||
+          claiming.owner?.token !== owner.token ||
+          claiming.fence !== control.fence + 1
+        )
+          recovery('The ownership claim changed before commit.');
+      },
+    );
     this.saveControl({ ...this.control!, phase: 'owned', revision });
     this.lease = {
       token: owner.token,
@@ -339,6 +394,10 @@ class SharedStore {
     const previous = previousReply(this.database!, request);
     if (previous) return previous;
     this.validate(request.lease, true);
+    if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
+      recovery('The metadata sequence is exhausted.');
+    if (this.control!.pending)
+      recovery('A Git operation remains unconfirmed; release and other writes are unavailable.');
     const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
     const releasing = request.action === 'release' || request.action === 'handoff';
     if (request.action === 'handoff' && !text(request.targetWindowId, 128))
@@ -394,18 +453,164 @@ class SharedStore {
     return reply;
   }
 
-  dispatch(message: unknown): StoreReply {
+  private async git(request: StoreRequest): Promise<StoreReply> {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      recovery('A previous Git operation needs reconciliation before another can run.');
+    if (
+      !Array.isArray(request.args) ||
+      request.args.length === 0 ||
+      request.args.length > 128 ||
+      !request.args.every(
+        (arg) => typeof arg === 'string' && arg.length <= 32768 && !arg.includes('\0'),
+      )
+    ) {
+      throw new StoreError('INVALID_REQUEST', 'Git needs bounded host-owned arguments.');
+    }
+    native.assertLocalDirectory(this.config.location);
+    this.validate(request.lease, true);
+    const paths = execFileSync(
+      'git',
+      [
+        '-C',
+        this.config.location,
+        'rev-parse',
+        '--path-format=absolute',
+        '--show-toplevel',
+        '--git-common-dir',
+      ],
+      { encoding: 'utf8', timeout: 3000, maxBuffer: 65536, windowsHide: true },
+    )
+      .trimEnd()
+      .split(/\r?\n/);
+    if (paths.length !== 2 || paths[0] !== this.config.location)
+      recovery('The repository location changed or is unsupported.');
+    const scopes = paths
+      .map((path) => {
+        native.assertLocalDirectory(path);
+        const identity = statSync(path, { bigint: true });
+        return `${identity.dev}:${identity.ino}:${path}`;
+      })
+      .sort();
+    const pending: NonNullable<StoreControl['pending']> = {
+      id: request.id,
+      scopeId: this.lease!.scopeId,
+      scopes,
+      child: null,
+    };
+    const advance = (write: () => void) => {
+      transaction(this.database!, () => {
+        this.validate(this.lease, true);
+        write();
+        this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      });
+      this.lease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    };
+    advance(() =>
+      this.database!.prepare(
+        "INSERT INTO operations VALUES (?,?,?,?,'pending',NULL,NULL,NULL)",
+      ).run(request.id, this.lease!.token, this.lease!.scopeId, JSON.stringify(scopes)),
+    );
+    this.saveControl({ ...this.control!, revision: this.lease!.revision, pending });
+    // All operations use this one ordered worker queue. The two canonical
+    // scopes are sorted before reserving them; linked worktrees share the
+    // common-Git-directory scope. Never hold a SQL transaction across Git.
+    this.validate(this.lease, true);
+    paths.forEach((path, index) => {
+      native.assertLocalDirectory(path);
+      const identity = statSync(path, { bigint: true });
+      if (!scopes.includes(`${identity.dev}:${identity.ino}:${path}`))
+        recovery(`Repository scope ${index} was replaced.`);
+    });
+    this.validate(this.lease, true);
+    const child = spawn('git', ['-C', this.config.location, ...request.args], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    const exitCode = await new Promise<number>((resolveExit, reject) => {
+      const timeout = setTimeout(() => {
+        // A stop request is not evidence that a child/descendant stopped.
+        child.kill();
+        reject(
+          new StoreError(
+            'OPERATION_UNKNOWN',
+            'Git timed out. Its outcome and child lifetime need reconciliation; ownership is retained.',
+          ),
+        );
+      }, 8000);
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once('close', (code, signal) => {
+        clearTimeout(timeout);
+        if (code === null || signal)
+          reject(
+            new StoreError(
+              'OPERATION_UNKNOWN',
+              'Git stopped without a known result; recovery remains required.',
+            ),
+          );
+        else resolveExit(code);
+      });
+      child.once('spawn', () => {
+        try {
+          const identity = native.processIdentity(child.pid!);
+          if (identity) {
+            advance(() =>
+              this.database!.prepare(
+                'UPDATE operations SET pid=?,process_start=? WHERE operation_id=? AND owner_token=? AND scope_id=?',
+              ).run(
+                identity.pid,
+                identity.start,
+                request.id,
+                this.lease!.token,
+                this.lease!.scopeId,
+              ),
+            );
+            pending.child = identity;
+            this.saveControl({ ...this.control!, revision: this.lease!.revision, pending });
+          }
+        } catch (error) {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      });
+    });
+    const finalLease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    const reply: StoreReply = {
+      ...this.owned(),
+      lease: finalLease,
+      view: { ...this.owned().view, revision: finalLease.revision },
+      git: { exitCode },
+    };
+    advance(() => {
+      this.database!.prepare(
+        "UPDATE operations SET phase='complete',exit_code=? WHERE operation_id=? AND owner_token=? AND scope_id=?",
+      ).run(exitCode, request.id, this.lease!.token, this.lease!.scopeId);
+      saveReply(this.database!, request, finalLease, reply);
+    });
+    const { pending: _pending, ...completed } = this.control!;
+    this.saveControl({ ...completed, revision: finalLease.revision });
+    return reply;
+  }
+
+  async dispatch(message: unknown): Promise<StoreReply> {
     if (
       !object(message) ||
       message.protocol !== 1 ||
       !uuid(message.id) ||
-      !['open', 'inspect', 'release', 'renew', 'handoff'].includes(String(message.action))
+      !['open', 'inspect', 'release', 'renew', 'handoff', 'git'].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
     const request = message as unknown as StoreRequest;
     try {
       if (request.action === 'inspect') return this.inspect();
       if (request.action === 'open') return this.open(request);
+      if (request.action === 'git') return await this.git(request);
       if (this.terminal?.id === request.id) {
         if (this.terminal.digest !== requestDigest(request))
           throw new StoreError(
@@ -429,20 +634,23 @@ class SharedStore {
 }
 
 const store = new SharedStore(configuration(workerData));
+let queue = Promise.resolve();
 parentPort!.on('message', (message: unknown) => {
-  const id = object(message) && typeof message.id === 'string' ? message.id : '';
-  try {
-    parentPort!.postMessage({ id, reply: store.dispatch(message) });
-  } catch (error) {
-    const known = error instanceof StoreError;
-    parentPort!.postMessage({
-      id,
-      error: {
-        code: known ? error.code : 'STORE_UNAVAILABLE',
-        message: known
-          ? error.message
-          : 'The private store could not complete this action. Preserve the store and recovery records; no replacement was created.',
-      },
-    });
-  }
+  queue = queue.then(async () => {
+    const id = object(message) && typeof message.id === 'string' ? message.id : '';
+    try {
+      parentPort!.postMessage({ id, reply: await store.dispatch(message) });
+    } catch (error) {
+      const known = error instanceof StoreError;
+      parentPort!.postMessage({
+        id,
+        error: {
+          code: known ? error.code : 'STORE_UNAVAILABLE',
+          message: known
+            ? error.message
+            : 'The private store could not complete this action. Preserve the store and recovery records; no replacement was created.',
+        },
+      });
+    }
+  });
 });

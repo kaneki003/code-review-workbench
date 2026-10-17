@@ -8,6 +8,7 @@ export interface NativeStore {
   release(handle: object): boolean;
   assertHeld(handle: object): void;
   assertLocalDirectory(path: string): void;
+  assertPrivateDirectory(path: string): void;
   ensurePrivateDirectory(path: string): boolean;
   publishRecord(path: string, text: string): void;
   processIdentity(pid: number): StoreProcess | null;
@@ -39,6 +40,7 @@ export interface StoreControl {
   phase: 'initializing' | 'claiming' | 'owned' | 'releasing' | 'released' | 'handoff';
   owner: OwnerRecord | null;
   handoff?: StoreHandoff;
+  pending?: { id: string; scopeId: string; scopes: string[]; child: StoreProcess | null };
 }
 
 export function object(value: unknown): value is Record<string, unknown> {
@@ -156,6 +158,26 @@ export function readControl(path: string, registry: StoreRegistry): StoreControl
       recovery('The handoff record is malformed.');
   } else if (value.handoff !== undefined)
     recovery('A handoff is attached to an incompatible phase.');
+  if (value.pending !== undefined) {
+    const pending = value.pending;
+    if (
+      !object(pending) ||
+      !uuid(pending.id) ||
+      !uuid(pending.scopeId) ||
+      !Array.isArray(pending.scopes) ||
+      pending.scopes.length !== 2 ||
+      !pending.scopes.every((scope) => text(scope, 1024)) ||
+      (pending.child !== null &&
+        (!object(pending.child) ||
+          !sequence(pending.child.pid) ||
+          pending.child.pid < 1 ||
+          !text(pending.child.start, 128))) ||
+      value.phase !== 'owned' ||
+      !object(value.owner) ||
+      pending.scopeId !== value.owner.scopeId
+    )
+      recovery('Pending operation metadata is malformed.');
+  }
   return value as unknown as StoreControl;
 }
 

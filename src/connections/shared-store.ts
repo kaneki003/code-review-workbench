@@ -103,9 +103,14 @@ export function createStoreConnection(
               'The worker did not acknowledge the request. No save or release is confirmed; close this window and check ownership again.',
             ),
           );
+          fail();
         }, 10_000);
         pending.set(message.id, { resolve, reject, timer });
-        active.postMessage(message);
+        try {
+          active.postMessage(message);
+        } catch {
+          fail();
+        }
       });
     },
     async dispose() {

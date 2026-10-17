@@ -268,6 +268,13 @@ bool SyncDirectory(const std::string& path) {
 }
 #endif
 
+napi_value AssertPrivateDirectory(napi_env env, napi_callback_info info) {
+  std::string path;
+  if (!ReadPath(env, info, path) || !CheckLocalDirectory(env, path)) return nullptr;
+  if (!IsPrivate(path, true)) return Fail(env, "DIRECTORY_PERMISSIONS", "The application directory must be private to this OS user.");
+  return Boolean(env, true);
+}
+
 napi_value EnsurePrivateDirectory(napi_env env, napi_callback_info info) {
   std::string path;
   if (!ReadPath(env, info, path) || !CheckLocalDirectory(env, ParentPath(path))) return nullptr;
@@ -443,15 +450,17 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
 #ifdef _WIN32
   std::wstring wide = WidePath(path);
   if (wide.empty()) return Fail(env, "INVALID_PATH", "File path is not valid UTF-8.");
+  PrivateSecurity security;
+  if (!security.Initialize(false)) return Fail(env, "GUARD_PERMISSIONS", "Cannot establish private guard permissions.");
   guard->file = CreateFileW(wide.c_str(), GENERIC_READ | GENERIC_WRITE,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, &security.attributes, OPEN_ALWAYS,
       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
   created = guard->file != INVALID_HANDLE_VALUE && GetLastError() != ERROR_ALREADY_EXISTS;
   if (guard->file == INVALID_HANDLE_VALUE) return Fail(env, "GUARD_OPEN", "Cannot open the guard file.");
   BY_HANDLE_FILE_INFORMATION metadata;
   if (!GetFileInformationByHandle(guard->file, &metadata) ||
       (metadata.dwFileAttributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DIRECTORY)) ||
-      metadata.nNumberOfLinks != 1) {
+      metadata.nNumberOfLinks != 1 || !IsPrivate(path, false)) {
     return Fail(env, "UNSAFE_GUARD", "The guard must be a regular local file with one link.");
   }
   OVERLAPPED offset = {};
@@ -478,6 +487,13 @@ napi_value TryAcquire(napi_env env, napi_callback_info info) {
 #endif
   if (busy) {
     return Null(env);
+  }
+  if (created) {
+#ifdef _WIN32
+    if (!FlushFileBuffers(guard->file)) return Fail(env, "GUARD_DURABILITY", "Cannot flush the new guard file.");
+#else
+    if (!SyncFile(guard->file) || !SyncDirectory(ParentPath(path))) return Fail(env, "GUARD_DURABILITY", "Cannot flush the new guard file and parent directory.");
+#endif
   }
   Environment* state;
   if (napi_get_cb_info(env, info, nullptr, nullptr, nullptr, reinterpret_cast<void**>(&state)) != napi_ok) return nullptr;
@@ -620,6 +636,7 @@ napi_value Initialize(napi_env env, napi_value exports) {
   napi_property_descriptor methods[] = {
       {"tryAcquire", nullptr, TryAcquire, nullptr, nullptr, nullptr, napi_default, state},
       {"assertHeld", nullptr, AssertHeld, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"assertPrivateDirectory", nullptr, AssertPrivateDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"processIdentity", nullptr, ProcessIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"assertLocalDirectory", nullptr, AssertLocalDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"ensurePrivateDirectory", nullptr, EnsurePrivateDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},

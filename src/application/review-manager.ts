@@ -36,6 +36,13 @@ export class ReviewManager {
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
   constructor(private readonly connections: ReadinessConnections) {}
+  async dispose(): Promise<void> {
+    try {
+      if (this.storeLease) await this.releasePrivateStore();
+    } finally {
+      await this.connections.store?.dispose();
+    }
+  }
 
   openPrivateStore(handoff?: StoreHandoff): Promise<StoreView> {
     return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
@@ -52,6 +59,10 @@ export class ReviewManager {
   offerStoreHandoff(targetWindowId: string): Promise<StoreReply> {
     return this.storeRequest('handoff', { targetWindowId });
   }
+  // Host-only mutation entry point. No command arguments come from a webview.
+  runGitOperation(args: string[]): Promise<StoreReply> {
+    return this.storeRequest('git', { args });
+  }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
     return this.storeRequest(action).then((reply) => reply.view);
@@ -59,7 +70,7 @@ export class ReviewManager {
 
   private storeRequest(
     action: StoreRequest['action'],
-    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId'> = {},
+    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'args'> = {},
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
       const host = this.connections.environment();
@@ -156,11 +167,14 @@ export class ReviewManager {
       });
     }
 
+    const ownership =
+      this.connections.store && canRunLocalProbes ? await this.inspectPrivateStore() : undefined;
     checks.push({
       id: 'ownership',
       label: 'Review ownership',
-      status: 'blocked',
+      status: ownership?.status === 'owned' ? 'passed' : 'blocked',
       detail:
+        ownership?.detail ??
         'Safe cross-window ownership is unavailable (#18). Starting a review and private-state writes remain disabled. Continue using the editor; ownership requires an extension update.',
     });
 

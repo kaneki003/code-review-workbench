@@ -39,12 +39,17 @@ const manager = new ReviewManager({
 });
 process.on(
   'message',
-  async (message: { id: number; action: 'open' | 'release' | 'renew' | 'inspect' }) => {
+  async (message: {
+    id: number;
+    action: 'open' | 'release' | 'renew' | 'inspect' | 'git';
+    args?: string[];
+  }) => {
     const actions = {
       open: () => manager.openPrivateStore(),
       release: () => manager.releasePrivateStore(),
       renew: () => manager.renewOwnership(),
       inspect: () => manager.inspectPrivateStore(),
+      git: async () => (await manager.runGitOperation(message.args!)).view,
     };
     process.send!({ id: message.id, view: await actions[message.action]() });
   },

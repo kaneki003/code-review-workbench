@@ -11,8 +11,9 @@ import type {
   StoreRequest,
 } from '../src/application/private-store';
 import type { StoreView } from '../src/application/private-store';
-import { fork } from 'node:child_process';
+import { fork, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -71,9 +72,12 @@ async function fixture() {
     let sequence = 0;
     return {
       child,
-      async send(action: 'open' | 'release' | 'renew' | 'inspect'): Promise<StoreView> {
+      async send(
+        action: 'open' | 'release' | 'renew' | 'inspect' | 'git',
+        args?: string[],
+      ): Promise<StoreView> {
         const response = once(child, 'message');
-        child.send({ id: ++sequence, action });
+        child.send({ id: ++sequence, action, args });
         return (await response)[0].view as StoreView;
       },
     };
@@ -219,6 +223,118 @@ test('handoff opens only the named window, and a failed handoff stays closed to 
   });
   expect(await first.renewOwnership()).toMatchObject({ status: 'recovery', code: 'STALE_LEASE' });
   expect(await second.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('repository operations are ordered and ownership is checked immediately before Git', async () => {
+  const context = await fixture();
+  const repository = join(context.directory, 'repository');
+  await mkdir(repository);
+  execFileSync('git', ['init', repository]);
+  const manager = context.manager('repository');
+  expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
+  const results = await Promise.all([
+    manager.runGitOperation(['config', '--local', 'crw.test', 'first']),
+    manager.runGitOperation(['config', '--local', 'crw.test', 'second']),
+  ]);
+  expect(results.map((reply) => reply.git?.exitCode)).toEqual([0, 0]);
+  expect(
+    execFileSync('git', ['-C', repository, 'config', '--local', 'crw.test'], {
+      encoding: 'utf8',
+    }).trim(),
+  ).toBe('second');
+  expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('a changed store identity fences a queued Git effect before it touches the repository', async () => {
+  const context = await fixture();
+  const repository = join(context.directory, 'repository');
+  await mkdir(repository);
+  execFileSync('git', ['init', repository]);
+  const manager = context.manager('repository', 'data-A', undefined, (connection) => ({
+    ...connection,
+    async request(request) {
+      if (request.action === 'git') {
+        const path = join(context.home, '.code-review-workbench', 'store-location.json');
+        const record = JSON.parse(await readFile(path, 'utf8'));
+        await writeFile(path, JSON.stringify({ ...record, incarnation: randomUUID() }));
+      }
+      return connection.request(request);
+    },
+  }));
+  expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
+  expect(
+    (await manager.runGitOperation(['config', '--local', 'crw.test', 'forbidden'])).view,
+  ).toMatchObject({ status: 'recovery' });
+  expect(() => execFileSync('git', ['-C', repository, 'config', '--local', 'crw.test'])).toThrow();
+});
+
+test('GitHub accounts have stable separate scopes and share the same OS-user exclusion', async () => {
+  const context = await fixture();
+  const first = context.manager('first', 'data-A', { host: 'github.com', userId: '1001' });
+  const second = context.manager('second', 'data-B', { host: 'github.com', userId: '1002' });
+  const owned = await first.openPrivateStore();
+  const busy = await second.openPrivateStore();
+  expect(Object.keys(busy).sort()).toEqual(['detail', 'ownerLocation', 'status']);
+  expect(await first.releasePrivateStore()).toMatchObject({ status: 'closed' });
+  const other = await second.openPrivateStore();
+  expect(other.scopeId).not.toBe(owned.scopeId);
+  expect(other.storeId).toBe(owned.storeId);
+  expect(await second.releasePrivateStore()).toMatchObject({ status: 'closed' });
+  expect(await first.openPrivateStore()).toMatchObject({
+    status: 'owned',
+    scopeId: owned.scopeId,
+    fence: 3,
+  });
+  expect(await first.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+async function waitForFile(path: string) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      return await readFile(path, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
+test('a host dying with a live Git child leaves a durable barrier even after the child finishes', async () => {
+  const context = await fixture();
+  const repository = join(context.directory, 'repository');
+  await mkdir(repository);
+  execFileSync('git', ['init', repository]);
+  await writeFile(
+    join(repository, 'child.cjs'),
+    `
+    const fs = require('node:fs');
+    fs.writeFileSync('child-started', String(process.pid));
+    setTimeout(() => {
+      require('node:child_process').execFileSync('git', ['config', '--local', 'crw.child', 'survived']);
+      fs.writeFileSync('child-done', 'done');
+    }, 1500);
+  `,
+  );
+  const owner = await context.contender('repository');
+  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+  void owner.send('git', ['-c', 'alias.block=!node child.cjs', 'block']);
+  await waitForFile(join(repository, 'child-started'));
+  const exited = once(owner.child, 'exit');
+  owner.child.kill('SIGKILL');
+  await exited;
+  const next = context.manager('second');
+  expect(await next.openPrivateStore()).toMatchObject({
+    status: 'recovery',
+    code: 'RECOVERY_REQUIRED',
+  });
+  await waitForFile(join(repository, 'child-done'));
+  expect(
+    execFileSync('git', ['-C', repository, 'config', '--local', 'crw.child'], {
+      encoding: 'utf8',
+    }).trim(),
+  ).toBe('survived');
+  expect(await context.manager('third').openPrivateStore()).toMatchObject({ status: 'recovery' });
 });
 
 test('orphan registration, corrupt database and newer protocol are preserved for recovery', async () => {

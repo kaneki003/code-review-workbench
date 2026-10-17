@@ -71,6 +71,10 @@ export function initializeDatabase(path: string, registry: StoreRegistry): Datab
         CREATE TABLE requests (request_id TEXT PRIMARY KEY, owner_token TEXT NOT NULL, scope_id TEXT NOT NULL,
           action TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL,
           FOREIGN KEY(owner_token,scope_id) REFERENCES ownership(token,scope_id)) STRICT;
+        CREATE TABLE operations (operation_id TEXT PRIMARY KEY, owner_token TEXT NOT NULL, scope_id TEXT NOT NULL,
+          scopes TEXT NOT NULL, phase TEXT NOT NULL CHECK(phase IN ('pending','complete')),
+          pid INTEGER, process_start TEXT, exit_code INTEGER,
+          FOREIGN KEY(owner_token,scope_id) REFERENCES ownership(token,scope_id)) STRICT;
         PRAGMA user_version=1;
         PRAGMA application_id=${APPLICATION_ID};
       `);
@@ -172,8 +176,10 @@ export function claimDatabase(
   owner: OwnerRecord,
   configuration: StoreConfiguration,
   fence: number,
+  verifyClaim: () => void,
 ): number {
   return transaction(database, () => {
+    verifyClaim();
     const previous = metadata(database);
     if (previous.fence + 1 !== fence || previous.revision === Number.MAX_SAFE_INTEGER)
       recovery('The next ownership generation cannot be established.');
