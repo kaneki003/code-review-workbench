@@ -36,6 +36,13 @@ import {
   type StoreControl,
   type StoreRegistry,
 } from './store-records';
+import {
+  RepositoryOperation,
+  assertOperationOwner,
+  readOperation,
+  operationFile,
+  type OperationRecord,
+} from './repository-operation';
 
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
 
@@ -83,6 +90,7 @@ class SharedStore {
   private database: DatabaseSync | undefined;
   private lease: StoreLease | undefined;
   private poisoned = false;
+  private recoveryOwner = false;
   private terminal: { id: string; digest: string; reply: StoreReply } | undefined;
 
   constructor(private readonly config: StoreConfiguration) {
@@ -382,7 +390,11 @@ class SharedStore {
         'The independent record or database has fenced this owner.',
       );
     }
-    if (native.processIdentity(process.pid)?.start !== control.owner.process.start)
+    if (
+      this.recoveryOwner
+        ? native.processIdentity(control.owner.process.pid)?.start === control.owner.process.start
+        : native.processIdentity(process.pid)?.start !== control.owner.process.start
+    )
       recovery('The owner process identity changed.');
     if (meta.revision !== control.revision)
       recovery('The database and independent revision disagree.');
@@ -394,17 +406,19 @@ class SharedStore {
     this.control = control;
   }
 
-  private mutate(request: StoreRequest): StoreReply {
-    this.validate(request.lease, false);
-    const previous = previousReply(this.database!, request);
+  private mutate(request: StoreRequest, operation?: StoreReply['operation']): StoreReply {
+    const authorization = this.recoveryOwner ? this.lease : request.lease;
+    this.validate(authorization, false);
+    const previous = previousReply(this.database!, request, authorization);
     if (previous) return previous;
-    this.validate(request.lease, true);
+    this.validate(authorization, true);
     if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
       recovery('The metadata sequence is exhausted.');
     if (this.control!.pending)
       recovery('A Git operation remains unconfirmed; release and other writes are unavailable.');
     const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
-    const releasing = request.action === 'release' || request.action === 'handoff';
+    const releasing =
+      request.action === 'release' || request.action === 'handoff' || request.action === 'recover';
     if (request.action === 'handoff' && !text(request.targetWindowId, 128))
       throw new StoreError(
         'INVALID_REQUEST',
@@ -424,10 +438,11 @@ class SharedStore {
       ? { view: { status: 'closed', detail: 'The shared private store was durably released.' } }
       : { ...this.owned(), lease, view: { ...this.owned().view, revision: lease.revision } };
     if (handoff) reply.handoff = handoff;
+    if (operation) reply.operation = operation;
     if (releasing) this.saveControl({ ...this.control!, phase: 'releasing' });
     transaction(this.database!, () => {
       // Revalidate canonical identity/fence inside every mutation transaction.
-      this.validate(request.lease, true, releasing ? 'releasing' : 'owned');
+      this.validate(authorization, true, releasing ? 'releasing' : 'owned');
       this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
       this.database!.prepare(
         'UPDATE ownership SET heartbeat=?,active=? WHERE token=? AND scope_id=?',
@@ -538,21 +553,312 @@ class SharedStore {
     return reply;
   }
 
+  private repository(location = this.config.location) {
+    const hooks = join(this.rendezvous, 'no-hooks');
+    native.ensurePrivateDirectory(hooks);
+    if (readdirSync(hooks).length !== 0) recovery('The protected no-hooks directory is not empty.');
+    return new RepositoryOperation(location, hooks, native);
+  }
+
+  private projectOperation(record: OperationRecord, request?: StoreRequest): StoreReply {
+    this.validate(this.lease, true);
+    assertOperationOwner(record, this.lease!);
+    // Receipt/intent first; SQLite is its projection, never evidence that an
+    // external effect completed. The independent receipt is retained.
+    native.publishRecord(operationFile(this.rendezvous, record.id), JSON.stringify(record));
+    const pending = {
+      id: record.id,
+      scopeId: record.scopeId,
+      scopes: record.facts.scopes,
+      child: record.child,
+    };
+    this.saveControl({ ...this.control!, pending });
+    const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    const observed = record.phase === 'observed';
+    const reply: StoreReply = {
+      lease,
+      view: {
+        ...this.owned().view,
+        status: observed ? 'owned' : 'recovery',
+        detail: observed
+          ? 'Repository outcome was verified and durably recorded.'
+          : 'Repository operation is pending; release and handoff are blocked.',
+        revision: lease.revision,
+        ...(observed ? {} : { code: 'OPERATION_PENDING' }),
+      },
+      operation: {
+        id: record.id,
+        phase: record.phase,
+        ...(record.outcome ? { outcome: record.outcome } : {}),
+      },
+    };
+    if (observed) delete reply.view.code;
+    transaction(this.database!, () => {
+      this.validate(this.lease, true);
+      this.database!.exec(
+        'CREATE TABLE IF NOT EXISTS operation_records (operation_id TEXT PRIMARY KEY REFERENCES operations(operation_id), record TEXT NOT NULL) STRICT',
+      );
+      this.database!.prepare('INSERT OR IGNORE INTO operations VALUES (?,?,?,?)').run(
+        record.id,
+        record.ownerToken,
+        record.scopeId,
+        JSON.stringify(record.facts.scopes),
+      );
+      this.database!.prepare(
+        'INSERT INTO operation_records VALUES (?,?) ON CONFLICT(operation_id) DO UPDATE SET record=excluded.record',
+      ).run(record.id, JSON.stringify(record));
+      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      if (request) saveReply(this.database!, request, lease, reply);
+    });
+    this.lease = lease;
+    const { pending: _pending, ...control } = this.control!;
+    this.saveControl({ ...control, revision: lease.revision, ...(observed ? {} : { pending }) });
+    return reply;
+  }
+
+  private prepareReference(request: StoreRequest) {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      recovery('Reconcile the pending repository operation before preparing another.');
+    const repository = this.repository();
+    const update = request.refUpdate;
+    repository.validateUpdate(update?.ref, update?.newOid);
+    const ref = update!.ref,
+      newOid = update!.newOid;
+    const facts = repository.facts();
+    const record: OperationRecord = {
+      protocol: 1,
+      id: request.id,
+      kind: 'update-ref',
+      phase: 'prepared',
+      storeId: this.lease!.storeId,
+      incarnation: this.lease!.incarnation,
+      fence: this.lease!.fence,
+      ownerToken: this.lease!.token,
+      scopeId: this.lease!.scopeId,
+      ref,
+      newOid,
+      beforeOid: repository.refOid(ref),
+      facts,
+      child: null,
+    };
+    return this.projectOperation(record, request);
+  }
+
+  private async executeOperation(request: StoreRequest) {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    if (!uuid(request.operationId) || this.control!.pending?.id !== request.operationId)
+      throw new StoreError(
+        'INVALID_OPERATION',
+        'This request does not identify the pending operation.',
+      );
+    let record = readOperation(this.rendezvous, request.operationId);
+    assertOperationOwner(record, this.lease!);
+    if (record.phase !== 'prepared')
+      recovery('This operation may already have run. Use recovery; execution is never replayed.');
+    const repository = this.repository(record.facts.worktree);
+    if (!repository.sameFacts(record.facts) || repository.refOid(record.ref) !== record.beforeOid) {
+      return this.projectOperation({ ...record, phase: 'observed', outcome: 'refused' }, request);
+    }
+    const child = repository.prepare(record);
+    try {
+      const identity = native.processIdentity(child.pid);
+      if (!identity) recovery('The paused Git child has no verified process identity.');
+      record = { ...record, phase: 'armed', child: identity };
+      this.projectOperation(record);
+      this.validate(this.lease, true);
+      if (
+        !repository.sameFacts(record.facts) ||
+        repository.refOid(record.ref) !== record.beforeOid
+      ) {
+        native.cancelPreparedChild(child);
+        await this.waitForChild(child);
+        return this.projectOperation({ ...record, phase: 'observed', outcome: 'refused' }, request);
+      }
+      this.validate(this.lease, true);
+      native.startChild(child);
+      const status = await this.waitForChild(child);
+      this.validate(this.lease, true);
+      const actual = repository.refOid(record.ref);
+      if (
+        !repository.sameFacts(record.facts) ||
+        (actual !== record.newOid && actual !== record.beforeOid)
+      )
+        recovery(
+          'Repository state changed during Git. Preserve the operation and reconcile its actual outcome.',
+        );
+      if (status.exitCode !== 0 && actual === record.newOid)
+        recovery('Git exit and observed reference disagree; explicit reconciliation is required.');
+      return this.projectOperation(
+        {
+          ...record,
+          phase: 'observed',
+          outcome: actual === record.newOid ? 'applied' : 'not-applied',
+        },
+        request,
+      );
+    } finally {
+      native.closeChild(child);
+    }
+  }
+
+  private async waitForChild(child: object) {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      const status = native.pollChild(child);
+      if (status.settled) return status;
+      if (Date.now() >= deadline)
+        recovery(
+          'Git or its process group has not settled. Its recorded identity remains protected; use recovery after it stops.',
+        );
+      await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+    }
+  }
+
+  private recoverOperation(request: StoreRequest): StoreReply {
+    native.assertLocalDirectory(this.config.osHome);
+    if (!this.guard)
+      this.guard = native.tryAcquire(join(this.config.osHome, '.code-review-workbench.guard'));
+    if (!this.guard) return this.busy();
+    native.assertHeld(this.guard);
+    native.assertPrivateDirectory(this.rendezvous);
+    const registry = readRegistry(this.registryPath());
+    if (!registry) recovery('Canonical registration is incomplete; no replacement can be created.');
+    native.assertPrivateDirectory(registry.root);
+    this.registry = registry;
+    const control = readControl(this.controlPath(), registry);
+    if (control.phase === 'released' && !control.pending) {
+      native.release(this.guard);
+      this.guard = null;
+      return {
+        view: {
+          status: 'closed',
+          detail: 'The store is already released; no operation was replayed.',
+        },
+      };
+    }
+    if (control.phase !== 'owned' || !control.owner || !control.pending)
+      recovery(
+        'Ownership publication is incomplete. Preserve the files; no repository operation can be inferred or replayed.',
+      );
+    // Another worker in a still-live host is never permission to take over.
+    const priorAlive =
+      native.processIdentity(control.owner.process.pid)?.start === control.owner.process.start;
+    const currentOwner =
+      !this.poisoned &&
+      this.lease?.token === control.owner.token &&
+      control.owner.process.pid === process.pid;
+    if (priorAlive && !currentOwner)
+      recovery(
+        `The prior host at ${control.owner.location} is still alive. Close it before recovery.`,
+      );
+    const record = readOperation(this.rendezvous, control.pending.id);
+    const lease: StoreLease = {
+      token: control.owner.token,
+      scopeId: control.owner.scopeId,
+      storeId: registry.storeId,
+      incarnation: registry.incarnation,
+      fence: control.fence,
+      revision: control.revision,
+    };
+    assertOperationOwner(record, lease);
+    if (JSON.stringify(record.facts.scopes) !== JSON.stringify(control.pending.scopes))
+      recovery('Operation and control scopes disagree.');
+    if (
+      control.pending.child &&
+      (!record.child ||
+        control.pending.child.pid !== record.child.pid ||
+        control.pending.child.start !== record.child.start)
+    )
+      recovery('Control and operation process identities disagree.');
+    if (
+      record.child &&
+      (native.processIdentity(record.child.pid)?.start === record.child.start ||
+        !native.childGroupSettled(record.child.pid, record.id))
+    )
+      recovery(
+        'The recorded Git process or its descendants may still run. Retry recovery only after they have stopped.',
+      );
+    this.database ??= openDatabase(join(registry.root, 'review.sqlite'), registry, control, true);
+    if (accountScope(this.database, registry, this.config.actor) !== lease.scopeId)
+      throw new StoreError(
+        'WRONG_ACCOUNT',
+        'Return to the original account or local owner scope before recovering this operation.',
+      );
+    const repository = this.repository(record.facts.worktree);
+    repository.validateUpdate(record.ref, record.newOid);
+    if (!repository.sameFacts(record.facts))
+      recovery(
+        'HEAD, index or worktree files changed. Preserve that work and reconcile it before recovery; no Git command was repeated.',
+      );
+    const actual = repository.refOid(record.ref);
+    if (actual !== record.beforeOid && actual !== record.newOid)
+      recovery(
+        'The reference has an unexpected value. Preserve it for manual Git recovery; no command was repeated.',
+      );
+    if (
+      record.phase === 'observed' &&
+      ((record.outcome === 'applied' && actual !== record.newOid) ||
+        (record.outcome === 'not-applied' && actual !== record.beforeOid))
+    )
+      recovery('The independent receipt and actual reference disagree.');
+    this.poisoned = false;
+    this.recoveryOwner = !currentOwner;
+    this.control = control;
+    this.lease = { ...lease, revision: metadata(this.database).revision };
+    // A single unacknowledged projection commit can be ahead of control.
+    // Lower/otherwise different revisions were already refused by openDatabase.
+    if (this.lease.revision !== control.revision)
+      this.saveControl({ ...control, revision: this.lease.revision });
+    const outcome =
+      record.phase === 'observed'
+        ? record.outcome!
+        : actual === record.newOid
+          ? 'applied'
+          : 'not-applied';
+    this.projectOperation({ ...record, phase: 'observed', outcome });
+    const reply = this.mutate(request, { id: record.id, phase: 'observed', outcome });
+    this.recoveryOwner = false;
+    return reply;
+  }
+
   async dispatch(message: unknown): Promise<StoreReply> {
     if (
       !object(message) ||
       message.protocol !== 1 ||
       !uuid(message.id) ||
-      !['open', 'inspect', 'release', 'renew', 'handoff', 'recordIntent'].includes(
-        String(message.action),
-      )
+      ![
+        'open',
+        'inspect',
+        'release',
+        'renew',
+        'handoff',
+        'recordIntent',
+        'prepareRef',
+        'executeOperation',
+        'recover',
+      ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
     const request = message as unknown as StoreRequest;
     try {
       if (request.action === 'inspect') return this.inspect();
       if (request.action === 'open') return this.open(request);
+      if (this.terminal?.id === request.id) {
+        if (this.terminal.digest !== requestDigest(request))
+          throw new StoreError('REQUEST_COLLISION', 'A completed request ID was reused.');
+        return this.terminal.reply;
+      }
+      if (request.action === 'recover') return this.recoverOperation(request);
       if (request.action === 'recordIntent') return this.recordIntent(request);
+      if (request.action === 'prepareRef') return this.prepareReference(request);
+      if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (this.terminal?.id === request.id) {
         if (this.terminal.digest !== requestDigest(request))
           throw new StoreError(

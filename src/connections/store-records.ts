@@ -10,8 +10,20 @@ export interface NativeStore {
   assertLocalDirectory(path: string): void;
   assertPrivateDirectory(path: string): void;
   ensurePrivateDirectory(path: string): boolean;
-  publishRecord(path: string, text: string): void;
+  publishRecord(path: string, text: string, failure?: string): void;
   processIdentity(pid: number): StoreProcess | null;
+  prepareChild(
+    executable: string,
+    args: string[],
+    directory: string,
+    environment: Record<string, string>,
+    operationId: string,
+  ): { pid: number };
+  startChild(handle: object): number;
+  pollChild(handle: object): { settled: boolean; exitCode?: number };
+  closeChild(handle: object): void;
+  cancelPreparedChild(handle: object): void;
+  childGroupSettled(pid: number, operationId: string): boolean;
 }
 
 export interface StoreRegistry {

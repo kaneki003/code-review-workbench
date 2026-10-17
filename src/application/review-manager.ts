@@ -64,6 +64,15 @@ export class ReviewManager {
   recordRepositoryIntent(): Promise<StoreReply> {
     return this.storeRequest('recordIntent');
   }
+  prepareReferenceUpdate(ref: string, newOid: string): Promise<StoreReply> {
+    return this.storeRequest('prepareRef', { refUpdate: { ref, newOid } });
+  }
+  executeRepositoryOperation(operationId: string): Promise<StoreReply> {
+    return this.storeRequest('executeOperation', { operationId });
+  }
+  recoverPrivateStore(): Promise<StoreReply> {
+    return this.storeRequest('recover');
+  }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
     return this.storeRequest(action).then((reply) => reply.view);
@@ -71,7 +80,7 @@ export class ReviewManager {
 
   private storeRequest(
     action: StoreRequest['action'],
-    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId'> = {},
+    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId'> = {},
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
       const host = this.connections.environment();

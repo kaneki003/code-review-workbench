@@ -73,11 +73,12 @@ async function fixture() {
     return {
       child,
       async send(
-        action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child',
+        action:
+          'open' | 'release' | 'renew' | 'inspect' | 'reserve-child' | 'prepare-ref' | 'recover',
         args?: string[],
       ): Promise<StoreView> {
         const response = once(child, 'message');
-        child.send({ id: ++sequence, action, args });
+        child.send({ id: ++sequence, action, args, ref: args?.[0], oid: args?.[1] });
         return (await response)[0].view as StoreView;
       },
     };
@@ -185,6 +186,94 @@ test('host configuration uses OS account home despite process home overrides and
   expect(JSON.parse(run()).osHome).toBe(userInfo().homedir);
   if (process.platform === 'linux') expect(() => run({ XDG_DATA_HOME: 'relative/data' })).toThrow();
   if (process.platform === 'win32') expect(() => run({ LOCALAPPDATA: 'relative/data' })).toThrow();
+});
+
+test('a typed reference update checks repository facts, records its outcome and permits release', async () => {
+  const context = await fixture();
+  const repository = join(context.directory, 'repository');
+  await mkdir(repository);
+  execFileSync('git', ['init', repository]);
+  execFileSync('git', [
+    '-C',
+    repository,
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.test',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'fixture',
+  ]);
+  const oid = execFileSync('git', ['-C', repository, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+  const manager = context.manager('repository');
+  expect(await manager.openPrivateStore()).toMatchObject({ status: 'owned' });
+  const plan = await manager.prepareReferenceUpdate('refs/code-review-workbench/test', oid);
+  expect(plan.operation, JSON.stringify(plan)).toMatchObject({ phase: 'prepared' });
+  expect(() =>
+    execFileSync(
+      'git',
+      ['-C', repository, 'rev-parse', '--verify', 'refs/code-review-workbench/test'],
+      { stdio: 'pipe' },
+    ),
+  ).toThrow();
+  const result = await manager.executeRepositoryOperation(plan.operation!.id);
+  expect(result.operation, JSON.stringify(result)).toMatchObject({
+    phase: 'observed',
+    outcome: 'applied',
+  });
+  expect(
+    execFileSync('git', ['-C', repository, 'rev-parse', 'refs/code-review-workbench/test'], {
+      encoding: 'utf8',
+    }).trim(),
+  ).toBe(oid);
+  expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('recovery cancels an undispatched operation after its host dies without replaying it', async () => {
+  const context = await fixture();
+  const repository = join(context.directory, 'repository');
+  await mkdir(repository);
+  execFileSync('git', ['init', repository]);
+  execFileSync('git', [
+    '-C',
+    repository,
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.test',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'fixture',
+  ]);
+  const oid = execFileSync('git', ['-C', repository, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+  const owner = await context.contender('repository');
+  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+  expect(
+    await owner.send('prepare-ref', ['refs/code-review-workbench/recovery', oid]),
+  ).toMatchObject({ status: 'recovery' });
+  const exited = once(owner.child, 'exit');
+  owner.child.kill('SIGKILL');
+  await exited;
+  const next = context.manager('repository', 'data-B');
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'recovery' });
+  const reconciled = await next.recoverPrivateStore();
+  expect(reconciled.view, JSON.stringify(reconciled)).toMatchObject({ status: 'closed' });
+  expect(reconciled.operation).toMatchObject({ phase: 'observed', outcome: 'not-applied' });
+  expect(() =>
+    execFileSync(
+      'git',
+      ['-C', repository, 'rev-parse', '--verify', 'refs/code-review-workbench/recovery'],
+      { stdio: 'pipe' },
+    ),
+  ).toThrow();
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'owned', fence: 2 });
+  expect(await next.releasePrivateStore()).toMatchObject({ status: 'closed' });
 });
 
 test('real processes with different home and data variables never register a second store', async () => {

@@ -42,13 +42,18 @@ process.on(
   'message',
   async (message: {
     id: number;
-    action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child';
+    action: 'open' | 'release' | 'renew' | 'inspect' | 'reserve-child' | 'prepare-ref' | 'recover';
+    ref?: string;
+    oid?: string;
   }) => {
     const actions = {
       open: () => manager.openPrivateStore(),
       release: () => manager.releasePrivateStore(),
       renew: () => manager.renewOwnership(),
       inspect: () => manager.inspectPrivateStore(),
+      'prepare-ref': async () =>
+        (await manager.prepareReferenceUpdate(message.ref!, message.oid!)).view,
+      recover: async () => (await manager.recoverPrivateStore()).view,
       'reserve-child': async () => {
         const receipt = await manager.recordRepositoryIntent();
         if (receipt.reservation) {

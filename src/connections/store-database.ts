@@ -113,6 +113,7 @@ export function openDatabase(
   path: string,
   registry: StoreRegistry,
   control: StoreControl,
+  recoveryRead = false,
 ): DatabaseSync {
   const file = lstatSync(path);
   if (
@@ -141,7 +142,8 @@ export function openDatabase(
       meta.storeId !== registry.storeId ||
       meta.incarnation !== registry.incarnation ||
       meta.fence !== control.fence ||
-      meta.revision !== control.revision
+      (meta.revision !== control.revision &&
+        !(recoveryRead && meta.revision === control.revision + 1))
     )
       recovery('Database and independent ownership identities disagree.');
   } finally {
@@ -211,12 +213,13 @@ export function requestDigest(request: StoreRequest) {
 export function previousReply(
   database: DatabaseSync,
   request: StoreRequest,
+  authorization = request.lease,
 ): StoreReply | undefined {
   const row = database.prepare('SELECT * FROM requests WHERE request_id=?').get(request.id);
   if (!row) return undefined;
   if (
-    row.owner_token !== request.lease?.token ||
-    row.scope_id !== request.lease?.scopeId ||
+    row.owner_token !== authorization?.token ||
+    row.scope_id !== authorization?.scopeId ||
     row.digest !== requestDigest(request)
   ) {
     throw new StoreError(

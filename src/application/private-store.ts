@@ -37,10 +37,21 @@ export interface StoreConfiguration {
 export interface StoreRequest {
   protocol: 1;
   id: string;
-  action: 'open' | 'inspect' | 'release' | 'renew' | 'handoff' | 'recordIntent';
+  action:
+    | 'open'
+    | 'inspect'
+    | 'release'
+    | 'renew'
+    | 'handoff'
+    | 'recordIntent'
+    | 'prepareRef'
+    | 'executeOperation'
+    | 'recover';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
+  refUpdate?: { ref: string; newOid: string };
+  operationId?: string;
 }
 
 export interface StoreHandoff {
@@ -55,6 +66,11 @@ export interface StoreReply {
   lease?: StoreLease;
   handoff?: StoreHandoff;
   reservation?: { id: string; scopes: string[] };
+  operation?: {
+    id: string;
+    phase: 'prepared' | 'armed' | 'observed';
+    outcome?: 'applied' | 'not-applied' | 'refused';
+  };
 }
 
 export interface StoreConnection {
