@@ -515,6 +515,37 @@ test('host configuration uses OS account home despite process home overrides and
   if (process.platform === 'win32') expect(() => run({ LOCALAPPDATA: 'relative/data' })).toThrow();
 });
 
+test('workspace aliases identify the same actual folder while a different folder is refused', async () => {
+  const context = await fixture();
+  const original = join(context.directory, 'original');
+  const other = join(context.directory, 'other');
+  await mkdir(original);
+  await mkdir(other);
+  const alias = join(context.directory, 'alias');
+  await symlink(original, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  let selected =
+    process.platform === 'win32'
+      ? original[0] === original[0]!.toLowerCase()
+        ? original[0]!.toUpperCase() + original.slice(1)
+        : original[0]!.toLowerCase() + original.slice(1)
+      : alias;
+  const owner = context.manager('original', 'data-A', undefined, (connection) => ({
+    ...connection,
+    request: (request) => connection.request({ ...request, workspacePath: selected }),
+  }));
+  const opened = await owner.openPrivateStore();
+  expect(opened.status, JSON.stringify(opened)).toBe('owned');
+  selected = alias;
+  expect(await owner.renewOwnership()).toMatchObject({ status: 'owned' });
+  selected = other;
+  expect(await owner.renewOwnership()).toMatchObject({
+    status: 'recovery',
+    code: 'WORKSPACE_CHANGED',
+  });
+  selected = original;
+  expect(await owner.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
 test('a typed reference update checks repository facts, records its outcome and permits release', async () => {
   const context = await fixture();
   const repository = join(context.directory, 'repository');

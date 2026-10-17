@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createRequire } from 'node:module';
-import { existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -917,7 +917,14 @@ class SharedStore {
     let sameWorkspace = request.workspacePath === this.config.location;
     if (!sameWorkspace && typeof request.workspacePath === 'string') {
       try {
-        sameWorkspace = realpathSync(request.workspacePath) === realpathSync(this.config.location);
+        const requested = statSync(request.workspacePath, { bigint: true });
+        const configured = statSync(this.config.location, { bigint: true });
+        sameWorkspace =
+          requested.isDirectory() &&
+          configured.isDirectory() &&
+          requested.dev === configured.dev &&
+          requested.ino > 0n &&
+          requested.ino === configured.ino;
       } catch {
         /* changed/unavailable workspace */
       }

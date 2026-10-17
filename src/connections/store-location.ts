@@ -36,5 +36,5 @@ export function resolveStoreConfiguration(location: string): StoreConfiguration 
       );
     }
   }
-  return { osHome, candidateRoot, windowId: randomUUID(), location: realpathSync(location) };
+  return { osHome, candidateRoot, windowId: randomUUID(), location: realpathSync.native(location) };
 }
