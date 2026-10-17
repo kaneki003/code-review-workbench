@@ -1,5 +1,7 @@
 #include <node_api.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -12,6 +14,8 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <aclapi.h>
+#include <sddl.h>
 #else
 #include <cerrno>
 #include <fcntl.h>
@@ -46,12 +50,12 @@ napi_value Null(napi_env env) {
   return result;
 }
 
-bool ReadPath(napi_env env, napi_callback_info info, std::string& path) {
-  size_t argc = 2;
-  napi_value args[2];
+bool ReadPath(napi_env env, napi_callback_info info, std::string& path, size_t expected = 1, napi_value* second = nullptr) {
+  size_t argc = 3;
+  napi_value args[3];
   napi_valuetype type;
   if (napi_get_cb_info(env, info, &argc, args, nullptr, nullptr) != napi_ok ||
-      argc != 1 || napi_typeof(env, args[0], &type) != napi_ok || type != napi_string) {
+      argc != expected || napi_typeof(env, args[0], &type) != napi_ok || type != napi_string) {
     Fail(env, "INVALID_PATH", "One absolute file path is required.");
     return false;
   }
@@ -73,6 +77,7 @@ bool ReadPath(napi_env env, napi_callback_info info, std::string& path) {
     Fail(env, "INVALID_PATH", "Use an absolute local file path without NUL characters.");
     return false;
   }
+  if (second) *second = args[1];
   return true;
 }
 
@@ -148,6 +153,233 @@ bool CheckLocalDirectory(napi_env env, const std::string& path) {
 napi_value AssertLocalDirectory(napi_env env, napi_callback_info info) {
   std::string path;
   if (!ReadPath(env, info, path) || !CheckLocalDirectory(env, path)) return nullptr;
+  napi_value result;
+  if (napi_get_undefined(env, &result) != napi_ok) return nullptr;
+  return result;
+}
+
+std::string ParentPath(const std::string& path) {
+#ifdef _WIN32
+  size_t separator = path.find_last_of("/\\");
+  return separator == 2 ? path.substr(0, 3) : path.substr(0, separator);
+#else
+  size_t separator = path.find_last_of('/');
+  return separator == 0 ? "/" : path.substr(0, separator);
+#endif
+}
+
+std::string TemporaryPath(const std::string& path) {
+  static std::atomic<uint64_t> sequence{0};
+#ifdef _WIN32
+  auto pid = GetCurrentProcessId();
+#else
+  auto pid = getpid();
+#endif
+  return path + ".tmp-" + std::to_string(pid) + "-" +
+      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
+      std::to_string(sequence.fetch_add(1));
+}
+
+#ifdef _WIN32
+struct PrivateSecurity {
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  SECURITY_ATTRIBUTES attributes = {sizeof(SECURITY_ATTRIBUTES), nullptr, FALSE};
+  bool Initialize(bool directory) {
+    HANDLE token;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
+    DWORD size = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+    std::vector<BYTE> data(size);
+    bool read = GetTokenInformation(token, TokenUser, data.data(), size, &size);
+    CloseHandle(token);
+    if (!read) return false;
+    LPWSTR sid = nullptr;
+    if (!ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid)) return false;
+    std::wstring rule = std::wstring(directory ? L"D:P(A;OICI;FA;;;" : L"D:P(A;;FA;;;") + sid + L")";
+    LocalFree(sid);
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(rule.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) return false;
+    attributes.lpSecurityDescriptor = descriptor;
+    return true;
+  }
+  ~PrivateSecurity() { if (descriptor) LocalFree(descriptor); }
+};
+
+bool IsPrivate(const std::string& path, bool directory) {
+  HANDLE file = CreateFileW(WidePath(path).c_str(), READ_CONTROL | FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+      FILE_FLAG_OPEN_REPARSE_POINT | (directory ? FILE_FLAG_BACKUP_SEMANTICS : 0), nullptr);
+  if (file == INVALID_HANDLE_VALUE) return false;
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  PSID owner = nullptr;
+  PACL acl = nullptr;
+  BY_HANDLE_FILE_INFORMATION metadata;
+  bool valid = GetFileInformationByHandle(file, &metadata) &&
+      !(metadata.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+      (directory ? (metadata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 :
+      (!(metadata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && metadata.nNumberOfLinks == 1)) &&
+      GetSecurityInfo(file, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+      &owner, nullptr, &acl, nullptr, &descriptor) == ERROR_SUCCESS;
+  HANDLE token;
+  if (valid && OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+    DWORD size = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+    std::vector<BYTE> data(size);
+    valid = GetTokenInformation(token, TokenUser, data.data(), size, &size);
+    CloseHandle(token);
+    PSID user = valid ? reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid : nullptr;
+    valid = valid && owner && EqualSid(owner, user) && acl && acl->AceCount == 1;
+    void* rawAce = nullptr;
+    if (valid) valid = GetAce(acl, 0, &rawAce);
+    if (valid) {
+      auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(rawAce);
+      valid = ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE && EqualSid(&ace->SidStart, user);
+    }
+  } else valid = false;
+  if (descriptor) LocalFree(descriptor);
+  CloseHandle(file);
+  return valid;
+}
+#else
+bool IsPrivate(const std::string& path, bool directory) {
+  struct stat metadata;
+  return lstat(path.c_str(), &metadata) == 0 && metadata.st_uid == geteuid() &&
+      !(metadata.st_mode & 0077) && (directory ? S_ISDIR(metadata.st_mode) :
+      (S_ISREG(metadata.st_mode) && metadata.st_nlink == 1));
+}
+
+bool SyncFile(int file) {
+#ifdef __APPLE__
+  int result;
+  do { result = fcntl(file, F_FULLFSYNC); } while (result == -1 && errno == EINTR);
+#else
+  int result;
+  do { result = fsync(file); } while (result == -1 && errno == EINTR);
+#endif
+  return result == 0;
+}
+
+bool SyncDirectory(const std::string& path) {
+  int directory = open(path.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (directory == -1) return false;
+  int result;
+  do { result = fsync(directory); } while (result == -1 && errno == EINTR);
+  close(directory);
+  return result == 0;
+}
+#endif
+
+napi_value EnsurePrivateDirectory(napi_env env, napi_callback_info info) {
+  std::string path;
+  if (!ReadPath(env, info, path) || !CheckLocalDirectory(env, ParentPath(path))) return nullptr;
+#ifdef _WIN32
+  if (GetFileAttributesW(WidePath(path).c_str()) != INVALID_FILE_ATTRIBUTES) {
+#else
+  struct stat metadata;
+  if (lstat(path.c_str(), &metadata) == 0) {
+#endif
+    if (!CheckLocalDirectory(env, path) || !IsPrivate(path, true)) {
+      return Fail(env, "UNSAFE_PERMISSIONS", "Existing storage directory is not private to this OS user.");
+    }
+    return Boolean(env, false);
+  }
+  std::string temporary = TemporaryPath(path);
+#ifdef _WIN32
+  PrivateSecurity security;
+  if (!security.Initialize(true) || !CreateDirectoryW(WidePath(temporary).c_str(), &security.attributes)) {
+    return Fail(env, "DIRECTORY_CREATE", "Cannot create a private storage directory.");
+  }
+  bool published = MoveFileExW(WidePath(temporary).c_str(), WidePath(path).c_str(), MOVEFILE_WRITE_THROUGH);
+  DWORD error = published ? ERROR_SUCCESS : GetLastError();
+  if (!published) RemoveDirectoryW(WidePath(temporary).c_str());
+  if (!published && (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS) &&
+      CheckLocalDirectory(env, path) && IsPrivate(path, true)) return Boolean(env, false);
+  if (!published) return Fail(env, "DIRECTORY_PUBLICATION", "Storage directory publication was not confirmed.");
+#else
+  // mkdir is atomic and never replaces an existing directory. Flush its name
+  // before initialization can put authoritative records inside it.
+  if (mkdir(path.c_str(), 0700) != 0) {
+    if (errno == EEXIST && CheckLocalDirectory(env, path) && IsPrivate(path, true)) return Boolean(env, false);
+    return Fail(env, "DIRECTORY_CREATE", "Cannot create a private storage directory.");
+  }
+  if (!SyncDirectory(ParentPath(path))) return Fail(env, "DIRECTORY_PUBLICATION", "Storage directory publication was not confirmed.");
+#endif
+  return Boolean(env, true);
+}
+
+napi_value PublishRecord(napi_env env, napi_callback_info info) {
+  std::string path;
+  napi_value value;
+  if (!ReadPath(env, info, path, 2, &value) || !CheckLocalDirectory(env, ParentPath(path))) return nullptr;
+  if (!IsPrivate(ParentPath(path), true)) return Fail(env, "UNSAFE_PERMISSIONS", "Recovery records need a private OS-user directory.");
+  size_t size;
+  napi_valuetype type;
+  if (napi_typeof(env, value, &type) != napi_ok || type != napi_string ||
+      napi_get_value_string_utf8(env, value, nullptr, 0, &size) != napi_ok || size > 65536) {
+    return Fail(env, "INVALID_RECORD", "Recovery records must be complete UTF-8 text up to 64 KiB.");
+  }
+  std::vector<char> content(size + 1);
+  if (napi_get_value_string_utf8(env, value, content.data(), content.size(), &size) != napi_ok) return nullptr;
+  std::string temporary = TemporaryPath(path);
+#ifdef _WIN32
+  if (GetFileAttributesW(WidePath(path).c_str()) != INVALID_FILE_ATTRIBUTES && !IsPrivate(path, false)) {
+    return Fail(env, "UNSAFE_RECORD", "The existing recovery record is not a private regular file.");
+  }
+  PrivateSecurity security;
+  if (!security.Initialize(false)) return Fail(env, "RECORD_PERMISSIONS", "Cannot establish private record permissions.");
+  HANDLE file = CreateFileW(WidePath(temporary).c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+      &security.attributes, CREATE_NEW, FILE_FLAG_WRITE_THROUGH, nullptr);
+  if (file == INVALID_HANDLE_VALUE) return Fail(env, "RECORD_CREATE", "Cannot create a recovery record candidate.");
+  DWORD written = 0;
+  bool flushed = WriteFile(file, content.data(), static_cast<DWORD>(size), &written, nullptr) &&
+      written == size && FlushFileBuffers(file);
+  bool closed = CloseHandle(file);
+  if (!flushed || !closed) {
+    DeleteFileW(WidePath(temporary).c_str());
+    return Fail(env, "RECORD_FLUSH", "The recovery candidate was not durably flushed.");
+  }
+  if (!MoveFileExW(WidePath(temporary).c_str(), WidePath(path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    DeleteFileW(WidePath(temporary).c_str());
+    return Fail(env, "RECORD_PUBLICATION", "Recovery record publication was not confirmed.");
+  }
+  file = CreateFileW(WidePath(path).c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      nullptr, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+  if (file == INVALID_HANDLE_VALUE) return Fail(env, "RECORD_PUBLICATION", "Cannot confirm the published recovery record.");
+  bool complete = FlushFileBuffers(file);
+  bool finalClosed = CloseHandle(file);
+  if (!complete || !finalClosed) return Fail(env, "RECORD_PUBLICATION", "Published recovery durability is uncertain.");
+#else
+  struct stat existing;
+  if (lstat(path.c_str(), &existing) == 0 && !IsPrivate(path, false)) {
+    return Fail(env, "UNSAFE_RECORD", "The existing recovery record is not a private regular file.");
+  }
+  int file = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+  if (file == -1) return Fail(env, "RECORD_CREATE", "Cannot create a recovery record candidate.");
+  size_t offset = 0;
+  while (offset < size) {
+    ssize_t written = write(file, content.data() + offset, size - offset);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) break;
+    offset += static_cast<size_t>(written);
+  }
+  bool flushed = offset == size && SyncFile(file);
+  bool closed = close(file) == 0;
+  if (!flushed || !closed) {
+    unlink(temporary.c_str());
+    return Fail(env, "RECORD_FLUSH", "The recovery candidate was not durably flushed.");
+  }
+  if (rename(temporary.c_str(), path.c_str()) != 0) {
+    unlink(temporary.c_str());
+    return Fail(env, "RECORD_PUBLICATION", "Recovery record publication was not confirmed.");
+  }
+  bool directoryFlushed = SyncDirectory(ParentPath(path));
+#ifdef __APPLE__
+  file = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  bool barrier = file != -1 && SyncFile(file);
+  if (file != -1) close(file);
+  directoryFlushed = directoryFlushed && barrier;
+#endif
+  if (!directoryFlushed) return Fail(env, "RECORD_PUBLICATION", "Published recovery directory durability is uncertain.");
+#endif
   napi_value result;
   if (napi_get_undefined(env, &result) != napi_ok) return nullptr;
   return result;
@@ -351,6 +583,8 @@ napi_value Initialize(napi_env env, napi_value exports) {
       {"tryAcquire", nullptr, TryAcquire, nullptr, nullptr, nullptr, napi_default, state},
       {"processIdentity", nullptr, ProcessIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"assertLocalDirectory", nullptr, AssertLocalDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ensurePrivateDirectory", nullptr, EnsurePrivateDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"publishRecord", nullptr, PublishRecord, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"release", nullptr, Release, nullptr, nullptr, nullptr, napi_default, nullptr}};
   if (napi_define_properties(env, exports, sizeof(methods) / sizeof(methods[0]), methods) != napi_ok) return nullptr;
   return exports;

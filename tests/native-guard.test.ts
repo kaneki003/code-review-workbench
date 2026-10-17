@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { execFileSync, fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, symlink, realpath } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, realpath, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
@@ -11,6 +11,8 @@ const binary = resolve('native/build/Release/crw_guard.node');
 const native = createRequire(import.meta.url)(binary) as {
   processIdentity(pid: number): { pid: number; start: string } | null;
   assertLocalDirectory(path: string): void;
+  ensurePrivateDirectory(path: string): boolean;
+  publishRecord(path: string, text: string): void;
 };
 const directories: string[] = [];
 const children: ChildProcess[] = [];
@@ -30,6 +32,20 @@ afterEach(async () => {
   await Promise.all(
     directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
+});
+
+test('independent recovery records publish complete replacement files in a private directory', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-record-')));
+  directories.push(directory);
+  const recovery = join(directory, 'recovery');
+  expect(native.ensurePrivateDirectory(recovery)).toBe(true);
+  expect(native.ensurePrivateDirectory(recovery)).toBe(false);
+  const record = join(recovery, 'control.json');
+  native.publishRecord(record, '{"phase":"owned","fence":1}');
+  expect(await readFile(record, 'utf8')).toBe('{"phase":"owned","fence":1}');
+  native.publishRecord(record, '{"phase":"released","fence":1}');
+  expect(await readFile(record, 'utf8')).toBe('{"phase":"released","fence":1}');
+  expect(await readdir(recovery)).toEqual(['control.json']);
 });
 
 test('killing an owner lets exactly one of two competing processes obtain the OS guard', async () => {

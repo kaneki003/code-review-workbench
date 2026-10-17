@@ -6,6 +6,7 @@
     'cflags_cc': ['-std=c++17'],
     'xcode_settings': { 'CLANG_CXX_LANGUAGE_STANDARD': 'c++17' },
     'msvs_settings': { 'VCCLCompilerTool': { 'AdditionalOptions': ['/std:c++17'] } },
-    'win_delay_load_hook': 'true'
+    'win_delay_load_hook': 'true',
+    'conditions': [['OS=="win"', { 'libraries': ['advapi32.lib'] }]]
   }]
 }
