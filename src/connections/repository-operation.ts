@@ -14,6 +14,12 @@ import { delimiter, isAbsolute, join, normalize, relative } from 'node:path';
 import type { StoreLease, StoreProcess } from '../application/private-store';
 import { StoreError } from '../application/private-store';
 import {
+  inspectReferenceStorage,
+  sameReferenceStorage,
+  referencePaths,
+  type ReferencePath,
+} from './reference-storage';
+import {
   object,
   readRecord,
   recovery,
@@ -45,6 +51,7 @@ export interface OperationRecord {
   newOid: string;
   beforeOid: string | null;
   facts: RepositoryFacts;
+  storage: ReferencePath[];
   child: StoreProcess | null;
   outcome?: 'applied' | 'not-applied' | 'refused';
 }
@@ -71,6 +78,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !text(value.ref, 512) ||
     !oid(value.newOid) ||
     (value.beforeOid !== null && !oid(value.beforeOid)) ||
+    value.beforeOid === value.newOid ||
     !object(value.facts) ||
     !text(value.facts.worktree) ||
     !text(value.facts.commonGitDir) ||
@@ -80,6 +88,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     value.facts.scopes.length !== 2 ||
     !value.facts.scopes.every((scope) => text(scope, 32768)) ||
     !text(value.facts.digest, 64) ||
+    !referencePaths(value.storage) ||
     (value.child !== null &&
       (!object(value.child) ||
         !sequence(value.child.pid) ||
@@ -206,6 +215,22 @@ export class RepositoryOperation {
       );
     this.git(['check-ref-format', ref]);
     this.git(['cat-file', '-e', `${newOid}^{commit}`]);
+    const backend = this.git(['config', '--get', 'extensions.refStorage'], true)?.toString().trim();
+    if (backend && backend !== 'files')
+      throw new StoreError(
+        'UNSUPPORTED_GIT',
+        'This operation currently requires Git file-based reference storage.',
+      );
+  }
+  referenceStorage(ref: string, facts: RepositoryFacts) {
+    return inspectReferenceStorage(facts.commonGitDir, ref, this.native);
+  }
+  sameReferenceStorage(record: OperationRecord, settled = false) {
+    return sameReferenceStorage(
+      record.storage,
+      this.referenceStorage(record.ref, record.facts),
+      settled,
+    );
   }
   facts(): RepositoryFacts {
     const paths = this.git([

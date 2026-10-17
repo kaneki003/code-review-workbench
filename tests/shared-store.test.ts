@@ -1,6 +1,16 @@
 import { afterEach, expect, test } from 'vitest';
 import { build } from 'esbuild';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/promises';
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  writeFile,
+  readFile,
+  symlink,
+  link,
+} from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 import { ReviewManager } from '../src/application/review-manager';
@@ -219,6 +229,46 @@ test.each(['HEAD', 'index', 'files'])(
     expect(await manager.releasePrivateStore()).toMatchObject({ status: 'closed' });
   },
 );
+
+test.each(
+  ['refs', 'logs', 'hardlinked-log'].flatMap((target) =>
+    ['before prepare', 'after prepare'].map((stage) => [target, stage] as const),
+  ),
+)('redirected %s %s cannot write outside the recorded Git directory', async (target, stage) => {
+  const context = await fixture();
+  const { repository, git, oid } = await repositoryFixture(context.directory);
+  const external = join(context.directory, 'external');
+  await mkdir(external);
+  const marker = join(external, 'marker');
+  await writeFile(marker, 'preserve');
+  const ref = 'refs/code-review-workbench/redirected';
+  const owner = context.manager('repository');
+  await owner.openPrivateStore();
+  const earlier =
+    stage === 'after prepare' ? await owner.prepareReferenceUpdate(ref, oid) : undefined;
+  if (earlier) expect(earlier.operation?.phase).toBe('prepared');
+  if (target === 'hardlinked-log') {
+    await mkdir(join(repository, '.git', 'logs', 'refs', 'code-review-workbench'), {
+      recursive: true,
+    });
+    await link(marker, join(repository, '.git', 'logs', ref));
+  } else {
+    const parent = join(repository, '.git', ...(target === 'logs' ? ['logs', 'refs'] : ['refs']));
+    await mkdir(parent, { recursive: true });
+    await symlink(
+      external,
+      join(parent, 'code-review-workbench'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+  }
+  const prepared = earlier
+    ? await owner.executeRepositoryOperation(earlier.operation!.id)
+    : await owner.prepareReferenceUpdate(ref, oid);
+  expect(prepared.operation, JSON.stringify(prepared)).toBeUndefined();
+  expect(prepared.view.status).toBe('recovery');
+  expect(await readFile(marker, 'utf8')).toBe('preserve');
+  expect(() => git('rev-parse', '--verify', ref)).toThrow();
+});
 
 test('Git hooks and arbitrary reference targets cannot start hidden child processes', async () => {
   const context = await fixture();
@@ -553,6 +603,98 @@ test('recovery cancels an undispatched operation after its host dies without rep
   expect(await next.releasePrivateStore()).toMatchObject({ status: 'closed' });
 });
 
+test('the current owner can recover a prepared operation and release without replay', async () => {
+  const context = await fixture();
+  const { git, oid } = await repositoryFixture(context.directory);
+  const owner = context.manager('repository');
+  expect(await owner.openPrivateStore()).toMatchObject({ status: 'owned' });
+  const prepared = await owner.prepareReferenceUpdate('refs/code-review-workbench/cancel', oid);
+  expect(prepared.operation?.phase).toBe('prepared');
+  const recovered = await owner.recoverPrivateStore();
+  expect(recovered.view, JSON.stringify(recovered)).toMatchObject({ status: 'closed' });
+  expect(recovered.operation).toMatchObject({ phase: 'observed', outcome: 'not-applied' });
+  expect(() => git('rev-parse', '--verify', 'refs/code-review-workbench/cancel')).toThrow();
+  expect(await owner.openPrivateStore()).toMatchObject({ status: 'owned', fence: 2 });
+  expect((await owner.inspectRepositoryOperation(prepared.operation!.id)).operation).toEqual(
+    recovered.operation,
+  );
+  expect(await owner.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('another account cannot inspect a retained operation receipt', async () => {
+  const context = await fixture();
+  const { oid } = await repositoryFixture(context.directory);
+  const first = context.manager('repository', 'data-A', { host: 'github.com', userId: '1001' });
+  await first.openPrivateStore();
+  const prepared = await first.prepareReferenceUpdate('refs/code-review-workbench/private', oid);
+  expect((await first.executeRepositoryOperation(prepared.operation!.id)).operation?.outcome).toBe(
+    'applied',
+  );
+  await first.releasePrivateStore();
+  const second = context.manager('repository', 'data-B', { host: 'github.com', userId: '1002' });
+  expect(await second.openPrivateStore()).toMatchObject({ status: 'owned' });
+  const response = await second.inspectRepositoryOperation(prepared.operation!.id);
+  expect(response.view).toMatchObject({ status: 'recovery', code: 'OPERATION_UNAVAILABLE' });
+  expect(response.operation).toBeUndefined();
+  expect(await second.releasePrivateStore()).toMatchObject({ status: 'closed' });
+});
+
+test('an unchanged reference is refused before creating an ambiguous recovery intent', async () => {
+  const context = await fixture();
+  const { git, oid } = await repositoryFixture(context.directory);
+  const ref = 'refs/code-review-workbench/unchanged';
+  git('update-ref', ref, oid);
+  const owner = context.manager('repository');
+  await owner.openPrivateStore();
+  const prepared = await owner.prepareReferenceUpdate(ref, oid);
+  expect(prepared.view, JSON.stringify(prepared)).toMatchObject({
+    status: 'recovery',
+    code: 'INVALID_OPERATION',
+  });
+  expect(prepared.operation).toBeUndefined();
+  expect(await owner.releasePrivateStore()).toMatchObject({ status: 'closed' });
+  expect(git('rev-parse', '--verify', ref).trim()).toBe(oid);
+});
+
+test('restoring an older database cannot roll back the independent ownership generation', async () => {
+  const context = await fixture();
+  const first = context.manager('first');
+  const opened = await first.openPrivateStore();
+  await first.releasePrivateStore();
+  const database = join(opened.root!, 'review.sqlite');
+  const snapshot = join(context.directory, 'older.sqlite');
+  await cp(database, snapshot);
+  const next = context.manager('next');
+  expect(await next.openPrivateStore()).toMatchObject({ status: 'owned', fence: 2 });
+  await next.releasePrivateStore();
+  await cp(snapshot, database);
+  const restored = await readFile(database);
+  expect(await context.manager('after-restore').openPrivateStore()).toMatchObject({
+    status: 'recovery',
+    code: 'RECOVERY_REQUIRED',
+  });
+  expect(await readFile(database)).toEqual(restored);
+});
+
+test('an older writer refuses a newer SQLite schema without replacing it', async () => {
+  const context = await fixture();
+  const owner = context.manager('owner');
+  const opened = await owner.openPrivateStore();
+  await owner.releasePrivateStore();
+  const database = join(opened.root!, 'review.sqlite');
+  execFileSync(process.execPath, [
+    '-e',
+    "const db = new (require('node:sqlite').DatabaseSync)(process.argv[1]); db.exec('PRAGMA user_version=2'); db.close();",
+    database,
+  ]);
+  const newer = await readFile(database);
+  expect(await context.manager('older-writer').openPrivateStore()).toMatchObject({
+    status: 'recovery',
+    code: 'NEWER_SCHEMA',
+  });
+  expect(await readFile(database)).toEqual(newer);
+});
+
 test('real processes with different home and data variables never register a second store', async () => {
   const context = await fixture();
   const first = await context.contender('first');
@@ -560,11 +702,23 @@ test('real processes with different home and data variables never register a sec
   const results = await Promise.all([first.send('open'), second.send('open')]);
   expect(results.filter((view) => view.status === 'owned').length).toBeLessThanOrEqual(1);
   expect(results.every((view) => ['owned', 'busy', 'recovery'].includes(view.status))).toBe(true);
+  const winner = results.findIndex((view) => view.status === 'owned');
+  if (winner === -1) {
+    // Creating a permanent guard and acquiring its OS lock are separate OS
+    // calls. A contender can win the lock first; explicit recovery is allowed,
+    // but neither process may invent a store after that uncertain publication.
+    expect(results.every((view) => view.status === 'recovery')).toBe(true);
+    for (const path of [
+      '.code-review-workbench/store-location.json',
+      'data-A/review.sqlite',
+      'data-B/review.sqlite',
+    ])
+      await expect(readFile(join(context.home, path))).rejects.toMatchObject({ code: 'ENOENT' });
+    return;
+  }
   const registered = JSON.parse(
     await readFile(join(context.home, '.code-review-workbench', 'store-location.json'), 'utf8'),
   );
-  const winner = results.findIndex((view) => view.status === 'owned');
-  expect(winner).toBeGreaterThanOrEqual(0);
   expect(results[winner]!.root).toBe(registered.root);
   expect(await [first, second][winner]!.send('release')).toMatchObject({ status: 'closed' });
 });

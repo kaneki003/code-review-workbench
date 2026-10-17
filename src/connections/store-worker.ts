@@ -331,7 +331,7 @@ class SharedStore {
     const view: StoreView = {
       status: this.control.pending ? 'recovery' : 'owned',
       detail: this.control.pending
-        ? 'Repository intent remains pending. This checkpoint cannot execute, complete or clear it; preserve the recovery records.'
+        ? 'A repository operation is pending. Use recovery to check its process and actual outcome before release.'
         : 'This window owns the shared private store.',
       ...(this.control.pending ? { code: 'OPERATION_PENDING' } : {}),
       root: this.registry.root,
@@ -412,7 +412,10 @@ class SharedStore {
   }
 
   private mutate(request: StoreRequest, operation?: StoreReply['operation']): StoreReply {
-    const authorization = this.recoveryOwner ? this.lease : request.lease;
+    // Recovery already validated the caller and reconciled one operation. Its
+    // internal receipt publication advanced the lease before this release.
+    const authorization =
+      this.recoveryOwner || request.action === 'recover' ? this.lease : request.lease;
     this.validate(authorization, false);
     const previous = previousReply(this.database!, request, authorization);
     if (previous) return previous;
@@ -485,7 +488,7 @@ class SharedStore {
     this.validate(request.lease, true);
     if (this.control!.pending)
       recovery(
-        'A repository operation is already pending; completion and recovery are not available in this checkpoint.',
+        'A repository operation is already pending. Reconcile it before recording another intent.',
       );
     native.assertLocalDirectory(this.config.location);
     this.validate(request.lease, true);
@@ -536,7 +539,7 @@ class SharedStore {
         status: 'recovery',
         code: 'OPERATION_PENDING',
         detail:
-          'Repository intent is durably recorded. This checkpoint cannot execute, complete or clear it. Preserve the recovery records.',
+          'Untyped repository intent is recorded. It cannot authorize execution or automatic recovery; preserve its recovery records.',
         revision: lease.revision,
       },
       lease,
@@ -653,6 +656,12 @@ class SharedStore {
     const ref = update!.ref,
       newOid = update!.newOid;
     const facts = repository.facts();
+    const beforeOid = repository.refOid(ref);
+    if (beforeOid === newOid)
+      throw new StoreError(
+        'INVALID_OPERATION',
+        'The reference already has this value. No operation or recovery intent was created.',
+      );
     const record: OperationRecord = {
       protocol: 1,
       id: request.id,
@@ -665,8 +674,9 @@ class SharedStore {
       scopeId: this.lease!.scopeId,
       ref,
       newOid,
-      beforeOid: repository.refOid(ref),
+      beforeOid,
       facts,
+      storage: repository.referenceStorage(ref, facts),
       child: null,
     };
     return this.projectOperation(record, request);
@@ -696,7 +706,11 @@ class SharedStore {
         'Independent intent and database projection disagree. Use recovery; do not dispatch.',
       );
     const repository = this.repository(record.facts.worktree);
-    if (!repository.sameFacts(record.facts) || repository.refOid(record.ref) !== record.beforeOid) {
+    if (
+      !repository.sameFacts(record.facts) ||
+      !repository.sameReferenceStorage(record) ||
+      repository.refOid(record.ref) !== record.beforeOid
+    ) {
       return this.projectOperation({ ...record, phase: 'observed', outcome: 'refused' }, request);
     }
     const child = repository.prepare(record);
@@ -708,6 +722,7 @@ class SharedStore {
       this.validate(this.lease, true);
       if (
         !repository.sameFacts(record.facts) ||
+        !repository.sameReferenceStorage(record) ||
         repository.refOid(record.ref) !== record.beforeOid
       ) {
         native.cancelPreparedChild(child);
@@ -723,6 +738,7 @@ class SharedStore {
       const actual = repository.refOid(record.ref);
       if (
         !repository.sameFacts(record.facts) ||
+        !repository.sameReferenceStorage(record, true) ||
         (actual !== record.newOid && actual !== record.beforeOid)
       )
         recovery(
@@ -793,6 +809,7 @@ class SharedStore {
       recovery(
         `The prior host at ${control.owner.location} is still alive. Close it before recovery.`,
       );
+    if (currentOwner) this.validate(request.lease, true);
     if (!existsSync(operationFile(this.rendezvous, control.pending.id)))
       recovery(
         'Pending external work has no typed execution receipt or verified child identity. Keep the store blocked for manual recovery; host death or elapsed time cannot clear it.',
@@ -835,6 +852,10 @@ class SharedStore {
     if (!repository.sameFacts(record.facts))
       recovery(
         'HEAD, index or worktree files changed. Preserve that work and reconcile it before recovery; no Git command was repeated.',
+      );
+    if (!repository.sameReferenceStorage(record, true))
+      recovery(
+        'Reference storage changed. Preserve its recovery records; no Git command was repeated.',
       );
     const actual = repository.refOid(record.ref);
     if (actual !== record.beforeOid && actual !== record.newOid)

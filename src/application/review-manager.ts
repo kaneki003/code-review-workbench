@@ -59,8 +59,8 @@ export class ReviewManager {
   offerStoreHandoff(targetWindowId: string): Promise<StoreReply> {
     return this.storeRequest('handoff', { targetWindowId });
   }
-  // Host-only checkpoint seam. This records a recovery barrier; it never
-  // authorizes external execution and has no completion/clear API yet.
+  // Untyped legacy intent never authorizes execution or automatic recovery.
+  // New operations must use the typed prepare/execute API below.
   recordRepositoryIntent(): Promise<StoreReply> {
     return this.storeRequest('recordIntent');
   }
