@@ -72,6 +72,7 @@ export interface StoreReply {
     id: string;
     phase: 'prepared' | 'armed' | 'observed';
     outcome?: 'applied' | 'not-applied' | 'refused';
+    exitCode?: number;
   };
 }
 

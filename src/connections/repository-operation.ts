@@ -54,6 +54,7 @@ export interface OperationRecord {
   storage: ReferencePath[];
   child: StoreProcess | null;
   outcome?: 'applied' | 'not-applied' | 'refused';
+  exitCode?: number;
 }
 export function oid(value: unknown): value is string {
   return typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
@@ -89,6 +90,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !value.facts.scopes.every((scope) => text(scope, 32768)) ||
     !text(value.facts.digest, 64) ||
     !referencePaths(value.storage) ||
+    (value.exitCode !== undefined && !Number.isSafeInteger(value.exitCode)) ||
     (value.child !== null &&
       (!object(value.child) ||
         !sequence(value.child.pid) ||

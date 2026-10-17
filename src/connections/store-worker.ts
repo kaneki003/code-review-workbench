@@ -593,7 +593,7 @@ class SharedStore {
         ...this.owned().view,
         status: observed ? 'owned' : 'recovery',
         detail: observed
-          ? 'Repository outcome was verified and durably recorded.'
+          ? `Repository outcome was verified and durably recorded.${record.exitCode !== undefined ? ` Git exited with code ${record.exitCode}.` : ''}`
           : 'Repository operation is pending; release and handoff are blocked.',
         revision: lease.revision,
         ...(observed ? {} : { code: 'OPERATION_PENDING' }),
@@ -602,6 +602,7 @@ class SharedStore {
         id: record.id,
         phase: record.phase,
         ...(record.outcome ? { outcome: record.outcome } : {}),
+        ...(record.exitCode !== undefined ? { exitCode: record.exitCode } : {}),
       },
     };
     if (observed) delete reply.view.code;
@@ -751,6 +752,7 @@ class SharedStore {
           ...record,
           phase: 'observed',
           outcome: actual === record.newOid ? 'applied' : 'not-applied',
+          exitCode: status.exitCode,
         },
         request,
       );
@@ -763,7 +765,11 @@ class SharedStore {
     const deadline = Date.now() + 5000;
     for (;;) {
       const status = native.pollChild(child);
-      if (status.settled) return status;
+      if (status.settled) {
+        if (typeof status.exitCode !== 'number' || !Number.isSafeInteger(status.exitCode))
+          recovery('The settled Git child has no verified exit status.');
+        return { settled: true, exitCode: status.exitCode };
+      }
       if (Date.now() >= deadline)
         recovery(
           'Git or its process group has not settled. Its recorded identity remains protected; use recovery after it stops.',
@@ -960,6 +966,7 @@ class SharedStore {
             id: record.id,
             phase: record.phase,
             ...(record.outcome ? { outcome: record.outcome } : {}),
+            ...(record.exitCode !== undefined ? { exitCode: record.exitCode } : {}),
           },
         };
       }
