@@ -422,9 +422,9 @@ test('a recorded Git child outliving its host blocks recovery until its process 
   });
   expect(await owner.send('open')).toMatchObject({ status: 'owned' });
   const ref = 'refs/code-review-workbench/survivor';
+  await mkdir(join(repository, '.git', 'refs', 'code-review-workbench'), { recursive: true });
   const plan = await owner.reply('prepare-ref', [ref, oid]);
   const lock = join(repository, '.git', 'refs', 'code-review-workbench', 'survivor.lock');
-  await mkdir(join(repository, '.git', 'refs', 'code-review-workbench'), { recursive: true });
   await writeFile(lock, 'fixture-owned lock');
   expect((await owner.reply('execute-ref')).view).toMatchObject({
     status: 'recovery',
