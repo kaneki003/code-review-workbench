@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { build } from 'esbuild';
 import {
   cp,
@@ -28,6 +28,12 @@ import { randomUUID } from 'node:crypto';
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import { createRequire } from 'node:module';
 import type { NativeStore } from '../src/connections/store-records';
+
+// One integration case builds its fixture, starts real hosts/workers and runs
+// several Git/durable-file actions. Windows can exceed Vitest's 5s default.
+// This bounds the whole case; production request/Git/SQLite deadlines stay intact.
+const integrationTimeout = process.platform === 'win32' ? 30_000 : 15_000;
+if (process.platform === 'win32') vi.setConfig({ testTimeout: integrationTimeout });
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -407,58 +413,62 @@ test.each(operationFailures)(
     expect(await readFile(join(repository, 'tracked.txt'), 'utf8')).toBe('original\n');
     expect(await next.releasePrivateStore()).toMatchObject({ status: 'closed' });
   },
-  15000,
+  integrationTimeout,
 );
 
-test('a recorded Git child outliving its host blocks recovery until its process group settles', async () => {
-  const context = await fixture();
-  const { repository, git, oid } = await repositoryFixture(context.directory);
-  const native = createRequire(import.meta.url)(
-    resolve('native/build/Release/crw_guard.node'),
-  ) as NativeStore;
-  const owner = await context.contender('repository', 'data-A', {
-    boundary: 'dispatch.after',
-    mode: 'error',
-  });
-  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
-  const ref = 'refs/code-review-workbench/survivor';
-  await mkdir(join(repository, '.git', 'refs', 'code-review-workbench'), { recursive: true });
-  const plan = await owner.reply('prepare-ref', [ref, oid]);
-  const lock = join(repository, '.git', 'refs', 'code-review-workbench', 'survivor.lock');
-  await writeFile(lock, 'fixture-owned lock');
-  expect((await owner.reply('execute-ref')).view).toMatchObject({
-    status: 'recovery',
-    code: 'INJECTED_IO',
-  });
-  const record = JSON.parse(
-    await readFile(
-      join(context.home, '.code-review-workbench', `operation-${plan.operation!.id}.json`),
-      'utf8',
-    ),
-  );
-  const exited = once(owner.child, 'exit');
-  owner.child.kill('SIGKILL');
-  await exited;
-  const next = context.manager('repository', 'data-B');
-  expect(await next.openPrivateStore()).toMatchObject({ status: 'recovery' });
-  if (process.platform !== 'win32') {
-    expect(native.processIdentity(record.child.pid)).toEqual(record.child);
-    expect((await next.recoverPrivateStore()).view).toMatchObject({ status: 'recovery' });
-  }
-  // Only remove the lock created by this fixture, never a Git-owned lock.
-  await rm(lock);
-  let receipt = await next.recoverPrivateStore();
-  for (let attempt = 0; receipt.view.status === 'recovery' && attempt < 160; attempt++) {
-    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-    receipt = await next.recoverPrivateStore();
-  }
-  expect(receipt.view, JSON.stringify(receipt)).toMatchObject({ status: 'closed' });
-  expect(native.childGroupSettled(record.child.pid, record.id)).toBe(true);
-  if (process.platform !== 'win32') {
-    expect(receipt.operation?.outcome).toBe('applied');
-    expect(git('reflog', 'show', '--format=%H', ref).trim().split('\n')).toEqual([oid]);
-  } else expect(receipt.operation?.outcome).toBe('not-applied');
-}, 15000);
+test(
+  'a recorded Git child outliving its host blocks recovery until its process group settles',
+  async () => {
+    const context = await fixture();
+    const { repository, git, oid } = await repositoryFixture(context.directory);
+    const native = createRequire(import.meta.url)(
+      resolve('native/build/Release/crw_guard.node'),
+    ) as NativeStore;
+    const owner = await context.contender('repository', 'data-A', {
+      boundary: 'dispatch.after',
+      mode: 'error',
+    });
+    expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+    const ref = 'refs/code-review-workbench/survivor';
+    await mkdir(join(repository, '.git', 'refs', 'code-review-workbench'), { recursive: true });
+    const plan = await owner.reply('prepare-ref', [ref, oid]);
+    const lock = join(repository, '.git', 'refs', 'code-review-workbench', 'survivor.lock');
+    await writeFile(lock, 'fixture-owned lock');
+    expect((await owner.reply('execute-ref')).view).toMatchObject({
+      status: 'recovery',
+      code: 'INJECTED_IO',
+    });
+    const record = JSON.parse(
+      await readFile(
+        join(context.home, '.code-review-workbench', `operation-${plan.operation!.id}.json`),
+        'utf8',
+      ),
+    );
+    const exited = once(owner.child, 'exit');
+    owner.child.kill('SIGKILL');
+    await exited;
+    const next = context.manager('repository', 'data-B');
+    expect(await next.openPrivateStore()).toMatchObject({ status: 'recovery' });
+    if (process.platform !== 'win32') {
+      expect(native.processIdentity(record.child.pid)).toEqual(record.child);
+      expect((await next.recoverPrivateStore()).view).toMatchObject({ status: 'recovery' });
+    }
+    // Only remove the lock created by this fixture, never a Git-owned lock.
+    await rm(lock);
+    let receipt = await next.recoverPrivateStore();
+    for (let attempt = 0; receipt.view.status === 'recovery' && attempt < 160; attempt++) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+      receipt = await next.recoverPrivateStore();
+    }
+    expect(receipt.view, JSON.stringify(receipt)).toMatchObject({ status: 'closed' });
+    expect(native.childGroupSettled(record.child.pid, record.id)).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(receipt.operation?.outcome).toBe('applied');
+      expect(git('reflog', 'show', '--format=%H', ref).trim().split('\n')).toEqual([oid]);
+    } else expect(receipt.operation?.outcome).toBe('not-applied');
+  },
+  integrationTimeout,
+);
 
 test('one manager opens the durable store; a second sees only its location and later claims the same store', async () => {
   const context = await fixture();
