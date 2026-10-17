@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { createRequire } from 'node:module';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, normalize } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -887,7 +887,15 @@ class SharedStore {
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
     const request = message as unknown as StoreRequest;
-    if (request.workspacePath !== this.config.location)
+    let sameWorkspace = request.workspacePath === this.config.location;
+    if (!sameWorkspace && typeof request.workspacePath === 'string') {
+      try {
+        sameWorkspace = realpathSync(request.workspacePath) === realpathSync(this.config.location);
+      } catch {
+        /* changed/unavailable workspace */
+      }
+    }
+    if (!sameWorkspace)
       throw new StoreError(
         'WORKSPACE_CHANGED',
         'The window repository changed. Reopen the store before using a prepared operation.',

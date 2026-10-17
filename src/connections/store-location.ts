@@ -1,6 +1,7 @@
 import { userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { StoreError, type StoreConfiguration } from '../application/private-store';
 
 // HOME and USERPROFILE can differ between VS Code profiles/copies. The fixed
@@ -35,5 +36,5 @@ export function resolveStoreConfiguration(location: string): StoreConfiguration 
       );
     }
   }
-  return { osHome, candidateRoot, windowId: randomUUID(), location };
+  return { osHome, candidateRoot, windowId: randomUUID(), location: realpathSync(location) };
 }

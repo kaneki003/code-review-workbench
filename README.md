@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline and the first production extension slice: installable readiness and shared private-store ownership commands. Review entry, review-content writes and repository mutations remain unavailable.
+This repository contains the accepted planning baseline and the first production extension slice: installable readiness and shared private-store ownership commands. Shared-store ownership, guarded workbench-reference updates and explicit recovery are implemented. Review entry and review-content features remain unavailable until later tickets.
 
 ## Run the readiness slice
 
@@ -18,7 +18,7 @@ Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install f
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
-The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands now coordinate one owner across windows. This is a working checkpoint; safe Git dispatch and recovery remain unfinished. Install the VSIX built for your OS and CPU.
+The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands now coordinate one owner across windows. Recover Private Store reconciles interrupted typed operations without replaying Git. The guarded Git interface updates only workbench-owned references; it is not an arbitrary command runner. Install the VSIX built for your OS and CPU.
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 
