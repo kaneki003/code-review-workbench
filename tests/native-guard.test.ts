@@ -1,25 +1,100 @@
 import { afterEach, expect, test } from 'vitest';
 import { execFileSync, fork, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, symlink, realpath, readFile, readdir, rename } from 'node:fs/promises';
+import {
+  mkdtemp,
+  rm,
+  symlink,
+  realpath,
+  readFile,
+  readdir,
+  rename,
+  access,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { Worker } from 'node:worker_threads';
+import { randomUUID } from 'node:crypto';
 
 const binary = resolve('native/build/Release/crw_guard.node');
 const native = createRequire(import.meta.url)(binary) as {
   processIdentity(pid: number): { pid: number; start: string } | null;
   assertLocalDirectory(path: string): void;
   ensurePrivateDirectory(path: string): boolean;
-  publishRecord(path: string, text: string): void;
+  publishRecord(path: string, text: string, failure?: string): void;
   tryAcquire(path: string): object | null;
   assertHeld(handle: object): void;
   release(handle: object): boolean;
+  prepareChild(
+    executable: string,
+    args: string[],
+    directory: string,
+    environment: Record<string, string>,
+    operationId: string,
+  ): { pid: number };
+  startChild(handle: object): number;
+  pollChild(handle: object): { settled: boolean; exitCode?: number };
+  closeChild(handle: object): void;
 };
 const directories: string[] = [];
 const children: ChildProcess[] = [];
 const workers: Worker[] = [];
+
+test.each(['write', 'file-flush', 'rename', 'directory-flush'])(
+  'record %s failure never acknowledges publication or leaves a partial record',
+  async (failure) => {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-record-fault-')));
+    directories.push(directory);
+    const record = join(directory, 'control.json');
+    native.publishRecord(record, '{"version":1}');
+    expect(() => native.publishRecord(record, '{"version":2}', failure)).toThrowError(
+      expect.objectContaining({
+        code: ['write', 'file-flush'].includes(failure) ? 'RECORD_FLUSH' : 'RECORD_PUBLICATION',
+      }),
+    );
+    expect(await readFile(record, 'utf8')).toBe(
+      failure === 'directory-flush' ? '{"version":2}' : '{"version":1}',
+    );
+    expect(await readdir(directory)).toEqual(['control.json']);
+  },
+);
+
+test('a prepared child has a verified identity and cannot act until its exact handle is started', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-child-gate-')));
+  directories.push(directory);
+  const marker = join(directory, 'effect');
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
+  );
+  const child = native.prepareChild(
+    process.execPath,
+    ['-e', "require('node:fs').writeFileSync(process.argv[1], 'done')", marker],
+    directory,
+    environment,
+    randomUUID(),
+  );
+  try {
+    expect(native.processIdentity(child.pid)).toMatchObject({
+      pid: child.pid,
+      start: expect.any(String),
+    });
+    await expect(access(marker)).rejects.toThrow();
+    native.startChild(child);
+    expect(() => native.startChild(child)).toThrow();
+    let result = native.pollChild(child);
+    for (let attempt = 0; !result.settled && attempt < 200; attempt++) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+      result = native.pollChild(child);
+    }
+    expect(result).toEqual({ settled: true, exitCode: 0 });
+    expect(await readFile(marker, 'utf8')).toBe('done');
+  } finally {
+    native.closeChild(child);
+  }
+});
 
 test('a replaced guard pathname invalidates the original handle before another write', async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-guard-replaced-')));

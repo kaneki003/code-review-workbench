@@ -1,7 +1,7 @@
 {
   'targets': [{
     'target_name': 'crw_guard',
-    'sources': ['guard.cc'],
+    'sources': ['guard.cc', 'child.cc'],
     'defines': ['NAPI_VERSION=8'],
     'cflags_cc': ['-std=c++17'],
     'xcode_settings': { 'CLANG_CXX_LANGUAGE_STANDARD': 'c++17' },

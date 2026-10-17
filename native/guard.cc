@@ -31,6 +31,7 @@
 #endif
 #endif
 
+bool InitializeChildren(napi_env env, napi_value exports);
 namespace {
 
 napi_value Fail(napi_env env, const char* code, const char* message) {
@@ -319,7 +320,17 @@ napi_value EnsurePrivateDirectory(napi_env env, napi_callback_info info) {
 napi_value PublishRecord(napi_env env, napi_callback_info info) {
   std::string path;
   napi_value value;
-  if (!ReadPath(env, info, path, 2, &value) || !CheckLocalDirectory(env, ParentPath(path))) return nullptr;
+  // Optional fault stage is host-only diagnostics. It exercises the actual
+  // cleanup/uncertain-publication paths; no repository or webview supplies it.
+  size_t argc = 4; napi_value args[4]; std::string fault;
+  if (napi_get_cb_info(env,info,&argc,args,nullptr,nullptr) != napi_ok || (argc != 2 && argc != 3)) return Fail(env,"INVALID_RECORD","Record publication arguments are invalid.");
+  if (argc == 3) {
+    char stage[32]; size_t length;
+    if (napi_get_value_string_utf8(env,args[2],stage,sizeof(stage),&length) != napi_ok || length >= sizeof(stage)) return Fail(env,"INVALID_RECORD","Publication failure stage is invalid.");
+    fault.assign(stage,length);
+    if (fault != "write" && fault != "file-flush" && fault != "rename" && fault != "directory-flush") return Fail(env,"INVALID_RECORD","Publication failure stage is unsupported.");
+  }
+  if (!ReadPath(env, info, path, argc, &value) || !CheckLocalDirectory(env, ParentPath(path))) return nullptr;
   if (!IsPrivate(ParentPath(path), true)) return Fail(env, "UNSAFE_PERMISSIONS", "Recovery records need a private OS-user directory.");
   size_t size;
   napi_valuetype type;
@@ -340,21 +351,21 @@ napi_value PublishRecord(napi_env env, napi_callback_info info) {
       &security.attributes, CREATE_NEW, FILE_FLAG_WRITE_THROUGH, nullptr);
   if (file == INVALID_HANDLE_VALUE) return Fail(env, "RECORD_CREATE", "Cannot create a recovery record candidate.");
   DWORD written = 0;
-  bool flushed = WriteFile(file, content.data(), static_cast<DWORD>(size), &written, nullptr) &&
-      written == size && FlushFileBuffers(file);
+  bool flushed = fault != "write" && WriteFile(file, content.data(), static_cast<DWORD>(size), &written, nullptr) &&
+      written == size && fault != "file-flush" && FlushFileBuffers(file);
   bool closed = CloseHandle(file);
   if (!flushed || !closed) {
     DeleteFileW(WidePath(temporary).c_str());
     return Fail(env, "RECORD_FLUSH", "The recovery candidate was not durably flushed.");
   }
-  if (!MoveFileExW(WidePath(temporary).c_str(), WidePath(path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+  if (fault == "rename" || !MoveFileExW(WidePath(temporary).c_str(), WidePath(path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
     DeleteFileW(WidePath(temporary).c_str());
     return Fail(env, "RECORD_PUBLICATION", "Recovery record publication was not confirmed.");
   }
   file = CreateFileW(WidePath(path).c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       nullptr, OPEN_EXISTING, FILE_FLAG_WRITE_THROUGH | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
   if (file == INVALID_HANDLE_VALUE) return Fail(env, "RECORD_PUBLICATION", "Cannot confirm the published recovery record.");
-  bool complete = FlushFileBuffers(file);
+  bool complete = fault != "directory-flush" && FlushFileBuffers(file);
   bool finalClosed = CloseHandle(file);
   if (!complete || !finalClosed) return Fail(env, "RECORD_PUBLICATION", "Published recovery durability is uncertain.");
 #else
@@ -365,23 +376,23 @@ napi_value PublishRecord(napi_env env, napi_callback_info info) {
   int file = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
   if (file == -1) return Fail(env, "RECORD_CREATE", "Cannot create a recovery record candidate.");
   size_t offset = 0;
-  while (offset < size) {
+  while (offset < size && fault != "write") {
     ssize_t written = write(file, content.data() + offset, size - offset);
     if (written < 0 && errno == EINTR) continue;
     if (written <= 0) break;
     offset += static_cast<size_t>(written);
   }
-  bool flushed = offset == size && SyncFile(file);
+  bool flushed = offset == size && fault != "file-flush" && SyncFile(file);
   bool closed = close(file) == 0;
   if (!flushed || !closed) {
     unlink(temporary.c_str());
     return Fail(env, "RECORD_FLUSH", "The recovery candidate was not durably flushed.");
   }
-  if (rename(temporary.c_str(), path.c_str()) != 0) {
+  if (fault == "rename" || rename(temporary.c_str(), path.c_str()) != 0) {
     unlink(temporary.c_str());
     return Fail(env, "RECORD_PUBLICATION", "Recovery record publication was not confirmed.");
   }
-  bool directoryFlushed = SyncDirectory(ParentPath(path));
+  bool directoryFlushed = fault != "directory-flush" && SyncDirectory(ParentPath(path));
 #ifdef __APPLE__
   file = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
   bool barrier = file != -1 && SyncFile(file);
@@ -631,6 +642,7 @@ napi_value ProcessIdentity(napi_env env, napi_callback_info info) {
 }
 
 napi_value Initialize(napi_env env, napi_value exports) {
+  if (!InitializeChildren(env, exports)) return nullptr;
   auto* state = new Environment();
   if (napi_add_env_cleanup_hook(env, FinalizeEnvironment, state) != napi_ok) {
     delete state;
