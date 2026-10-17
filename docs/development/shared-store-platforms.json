@@ -1,0 +1,90 @@
+{
+  "commit": "fabd17e0b0e0c0b2c3d8a7d1e8014234a2daa716",
+  "run": "https://github.com/kaneki003/code-review-workbench/actions/runs/39027907486",
+  "cells": [
+    {
+      "artifact": "readiness-macos-15-1.141.2",
+      "os": "darwin",
+      "osRelease": "24.6.0",
+      "arch": "arm64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "darwin-arm64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    },
+    {
+      "artifact": "readiness-macos-15-stable",
+      "os": "darwin",
+      "osRelease": "24.6.0",
+      "arch": "arm64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "darwin-arm64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    },
+    {
+      "artifact": "readiness-ubuntu-24.04-1.141.2",
+      "os": "linux",
+      "osRelease": "6.17.0-1022-azure",
+      "arch": "x64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "linux-x64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    },
+    {
+      "artifact": "readiness-ubuntu-24.04-stable",
+      "os": "linux",
+      "osRelease": "6.17.0-1022-azure",
+      "arch": "x64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "linux-x64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    },
+    {
+      "artifact": "readiness-windows-2025-1.141.2",
+      "os": "win32",
+      "osRelease": "10.0.26100",
+      "arch": "x64",
+      "vscode": "1.141.2",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "win32-x64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    },
+    {
+      "artifact": "readiness-windows-2025-stable",
+      "os": "win32",
+      "osRelease": "10.0.26100",
+      "arch": "x64",
+      "vscode": "1.142.0",
+      "node": "24.21.0",
+      "electron": "43.7.7",
+      "sqlite": "3.53.4",
+      "packageTarget": "win32-x64",
+      "installedTestsPassed": 3,
+      "storeActions": "passed",
+      "reviewAvailable": false
+    }
+  ]
+}

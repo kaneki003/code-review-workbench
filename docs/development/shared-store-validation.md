@@ -17,14 +17,24 @@ The accepted seams are the public manager, real native/process/filesystem adapte
 - Native tests cover atomic complete record replacement, real exclusion/release, process-start lookup, worker cleanup, directory redirect refusal and replaced-handle refusal.
 - Installed-host tests open, renew, hand off, release and reopen the actual worker SQLite store through the packaged manager. Fixtures use an isolated OS-user home; no real user store is opened by tests. Readiness preserves all disposable repository files/index/refs.
 
-`pnpm validate` and `pnpm test:host` are the local gates. CI runs Windows x64, Linux x64 and macOS arm64 at VS Code 1.141.2/current; results are recorded below after completion. A passing helper probe alone does not establish shared-store readiness.
+At `fabd17e`, [all six CI cells passed](https://github.com/kaneki003/code-review-workbench/actions/runs/39027907486): Windows x64, Linux x64 and macOS arm64 at VS Code 1.141.2/1.142.0. Each cell passed formatting, types, the behavior suite and all three installed-VSIX tests. macOS runs 35 behavior tests; Windows/Linux pass 34 and skip the macOS boot-session check. [Measured host versions and package targets](shared-store-platforms.json) come from the six evidence files and VSIX manifests, including the packaged store worker.
+
+Local `pnpm validate` passed 35 tests and `pnpm test:host` passed all three installed tests on macOS 25.6.0 arm64 / VS Code 1.142.0. Embedded Node 24.21.0, Electron 43.7.7 and SQLite 3.53.4 match the matrix. These checks exercise real file publication and process crashes; they do not simulate hardware power loss or every flush failure.
+
+The first Windows run caught default object ownership differing from the actual user in an elevated token. Native creation now explicitly sets the current user's owner SID as well as its protected DACL. Microsoft's [default ownership rules](https://learn.microsoft.com/en-us/windows/win32/secauthz/owner-of-a-new-object) explain the distinction. The same tests then passed in both Windows cells.
 
 ## Standards
 
 The first full implementation review found four issues: descendant settlement, missing independent outcome publication, missing action-specific repository facts, and relative Linux data-root fallback. The unsafe generic Git executor and raw argument transport were removed. The remaining intent seam never authorizes execution and exposes no completion/clear action. Independent intent precedes its database projection. Relative XDG roots are now explicitly refused.
 
+The reviewer rechecked these changes and the Windows owner fix: **0 remaining actionable checkpoint findings**, no additional actionable smell heuristics. Full #18 gates remain unfinished.
+
 ## Spec
 
 The first full implementation review found three issues: top-level Git exit mistaken for descendant completion, raw arguments bypassing repository scopes, and missing repository-fact/failure-boundary proof. Removing production Git execution resolves the active unsafe paths. Expected repository facts, descendant supervision, outcome receipts/reconciliation and full failure injection remain unfinished #18 acceptance work.
 
+The reviewer rechecked the narrowed boundary and Windows owner fix: **0 additional actionable checkpoint bugs**. The persistent barrier proves refusal; it does not prove safe dispatch or reconciliation.
+
 This is the large-change walkthrough checkpoint requested by the owner. The draft PR must remain unmerged; the issue stays open.
+
+Standards: 4 original findings addressed, 0 open checkpoint findings; highest original severity P1. Spec: 3 original findings removed from active paths, 0 additional checkpoint bugs; highest original severity P1. Full issue acceptance remains open on both axes.
