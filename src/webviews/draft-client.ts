@@ -40,7 +40,8 @@ export class DraftWriterClient {
   private incomingSequence = 0;
   private syncing = false;
   private discardRequested = false;
-  private fencedInput: RecoveryCopy | undefined;
+  private readonly fencedInputs = new Map<string, RecoveryCopy>();
+  private pendingControl: DraftControl | undefined;
   private sentEditRevision = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly listeners = new Set<() => void>();
@@ -75,6 +76,8 @@ export class DraftWriterClient {
     }
   }
   private fail(problem: string) {
+    this.pendingControl = undefined;
+    this.syncing = false;
     this.update({ problem, action: undefined });
   }
   private watch() {
@@ -119,7 +122,10 @@ export class DraftWriterClient {
         throw new Error('The host projection was malformed. Keep the input and Retry.');
       const previous = this.state.snapshot;
       if (snapshot.fenced) {
-        this.fencedInput = this.state.recovery ?? this.recoveryCopy() ?? this.fencedInput;
+        for (const copy of [this.state.recovery, this.recoveryCopy()])
+          if (copy) this.fencedInputs.set(copy.draftId, copy);
+        this.pendingControl = undefined;
+        this.syncing = false;
         this.discardRequested = false;
         this.sentEditRevision = 0;
         clearTimeout(this.timer);
@@ -138,16 +144,41 @@ export class DraftWriterClient {
         return;
       }
       if (snapshot.reset) this.syncing = false;
+      if (this.pendingControl && snapshot.reset) {
+        const control = this.pendingControl;
+        this.pendingControl = undefined;
+        const next = snapshot.state;
+        if (next && next.writerId === previous?.state?.writerId) {
+          // A reset establishes the authoritative revision after all prior
+          // requests. Keep visible text while rebasing; older frames are now
+          // below this sequence and cannot replace the recovery input.
+          try {
+            const requests = draftEditRequests(snapshot, this.state.body, next.editRevision);
+            this.sentEditRevision = next.editRevision + 1;
+            this.update({
+              snapshot,
+              editRevision: this.sentEditRevision,
+              problem: undefined,
+              action: undefined,
+            });
+            for (const request of requests) this.send(request);
+            if (!this.state.problem) this.control(control);
+          } catch (error) {
+            this.fail(error instanceof Error ? error.message : 'Keep a copy and Retry.');
+          }
+          return;
+        }
+      }
       let { body, editRevision, recovery, action } = this.state;
       const next = snapshot.state;
+      const fencedInput = next ? this.fencedInputs.get(next.id) : undefined;
       if (
         next &&
-        this.fencedInput?.draftId === next.id &&
-        this.fencedInput.reviewId === next.reviewId &&
-        this.fencedInput.contentGeneration === next.contentGeneration
+        fencedInput?.reviewId === next.reviewId &&
+        fencedInput.contentGeneration === next.contentGeneration
       ) {
-        recovery = this.fencedInput;
-        this.fencedInput = undefined;
+        recovery = fencedInput;
+        this.fencedInputs.delete(next.id);
       }
       if (next?.writerId !== previous?.state?.writerId) {
         if (
@@ -180,7 +211,14 @@ export class DraftWriterClient {
         action = undefined;
       if (next && next.editRevision >= editRevision) clearTimeout(this.timer);
       if (next) this.sentEditRevision = Math.max(this.sentEditRevision, next.editRevision);
-      this.update({ snapshot, body, editRevision, recovery, action, problem: snapshot.problem });
+      this.update({
+        snapshot,
+        body,
+        editRevision,
+        recovery,
+        action,
+        problem: this.state.problem ?? snapshot.problem,
+      });
     } catch (error) {
       this.assembly.clear();
       this.fail(
@@ -235,10 +273,11 @@ export class DraftWriterClient {
     if (type === 'close') this.discardRequested = false;
     try {
       if (this.state.problem && type !== 'discard') {
-        const requests = draftEditRequests(snapshot, this.state.body, snapshot.state.editRevision);
-        this.sentEditRevision = snapshot.state.editRevision + 1;
-        this.update({ editRevision: snapshot.state.editRevision + 1, problem: undefined });
-        for (const request of requests) this.send(request);
+        this.pendingControl = type;
+        this.update({ action: type });
+        this.watch();
+        this.sync();
+        return;
       }
       const expected =
         type === 'discard' && this.state.problem
@@ -256,6 +295,7 @@ export class DraftWriterClient {
   }
   dispose() {
     clearTimeout(this.timer);
+    this.fencedInputs.clear();
     this.listeners.clear();
   }
 }

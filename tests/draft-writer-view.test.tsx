@@ -30,12 +30,17 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
   const initial = manager.attachDraftWriter(instance);
   let closed = false;
   let paused = false;
-  function deliver(snapshot: ReturnType<typeof manager.snapshotDraftWriter>) {
-    if (!paused) for (const chunk of draftSnapshotChunks(snapshot)) client.receive(chunk);
+  let failNext = false;
+  function deliver(snapshot: ReturnType<typeof manager.snapshotDraftWriter>, force = false) {
+    if (!paused || force) for (const chunk of draftSnapshotChunks(snapshot)) client.receive(chunk);
   }
   const client = new DraftWriterClient(instance, (message) => {
+    if (failNext && message.type === 'editChunk') {
+      failNext = false;
+      throw new Error('Fixture transport failure');
+    }
     void manager.handleDraftWriterMessage(message).then((result) => {
-      if (result.snapshot) deliver(result.snapshot);
+      if (result.snapshot) deliver(result.snapshot, message.type === 'sync');
       if (result.closedTarget) {
         expect(result.closedTarget).toEqual(target);
         closed = true;
@@ -63,12 +68,57 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
     pause: () => {
       paused = true;
     },
+    failNextEdit: () => {
+      failNext = true;
+    },
     resume: () => {
       paused = false;
       deliver(manager.snapshotDraftWriter(instance, true));
     },
   };
 }
+test(
+  'Retry resynchronizes before rebasing failed transport and preserves the newest input',
+  async () => {
+    const { manager, draft, pause, failNextEdit } = await renderWriter();
+    pause();
+    const input = screen.getByRole('textbox', { name: 'Private feedback' });
+    fireEvent.change(input, { target: { value: 'first' } });
+    fireEvent.change(input, { target: { value: 'second' } });
+    await waitFor(() => expect(manager.readDraftWriter()?.editRevision).toBe(2));
+    failNextEdit();
+    fireEvent.change(input, { target: { value: 'newest unreceived input' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(manager.readDraftWriter()?.body).toBe('newest unreceived input'));
+    expect((input as HTMLTextAreaElement).value).toBe('newest unreceived input');
+    await manager.flushDraftWriter();
+    expect((await manager.readLocalDraft(draft.id))?.body).toBe('newest unreceived input');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'an older Saved projection cannot clear the failure and copy path for rejected input',
+  async () => {
+    const { manager, pause, resume } = await renderWriter();
+    const input = screen.getByRole('textbox', { name: 'Private feedback' });
+    fireEvent.change(input, { target: { value: 'valid earlier edit' } });
+    await waitFor(() => expect(manager.readDraftWriter()?.editRevision).toBe(1));
+    pause();
+    const rejected = 'x'.repeat(1024 * 1024 + 1);
+    fireEvent.change(input, { target: { value: rejected } });
+    await waitFor(() => expect(manager.readDraftWriter()?.status).toBe('saved'));
+    await act(async () => {
+      resume();
+    });
+    expect((input as HTMLTextAreaElement).value).toBe(rejected);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy input' })).toBeTruthy();
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 test(
   'trimming rejected input while host projections lag never replaces it with older text',
   async () => {
@@ -265,6 +315,14 @@ test(
       await manager.openDraftWriter(other.id);
     });
     expect(screen.queryByRole('textbox', { name: 'Recovery copy of private feedback' })).toBeNull();
+    const secondBody = body + 'second original identity';
+    fireEvent.change(screen.getByRole('textbox', { name: 'Private feedback' }), {
+      target: { value: secondBody },
+    });
+    await act(async () => {
+      manager.fencePullRequestOverview();
+    });
+    await manager.openPullRequestOverview('https://github.com/base/project/pull/20');
     await act(async () => {
       await manager.openDraftWriter(draft.id);
     });
@@ -272,6 +330,17 @@ test(
       name: 'Recovery copy of private feedback',
     });
     expect((recovery as HTMLTextAreaElement).value).toBe(body);
+    fireEvent.click(screen.getByRole('button', { name: 'Close recovery copy' }));
+    await act(async () => {
+      await manager.openDraftWriter(other.id);
+    });
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: 'Recovery copy of private feedback',
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe(secondBody);
     expect((await manager.readLocalDraft(draft.id))?.body).toBe('');
     await manager.releasePrivateStore();
   },
