@@ -24,6 +24,7 @@ import type {
   SourceNavigation,
 } from './committed-source';
 import { isSourceAction } from './committed-source';
+import { DraftWriter } from './draft-writer';
 import {
   isDraftAction,
   type LocalDraft,
@@ -59,6 +60,7 @@ export interface ReviewConnections {
 
 // The owning manager coordinates actions independently of editor/view lifetime.
 export class ReviewManager {
+  private readonly draftWriter: DraftWriter;
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
   private overviewGeneration = 0;
@@ -67,11 +69,21 @@ export class ReviewManager {
   constructor(private readonly connections: ReviewConnections) {
     this.account = connections.account;
     this.sourceAuthorized = Boolean(connections.account);
+    this.draftWriter = new DraftWriter({
+      read: (id) => this.readLocalDraft(id),
+      save: (edit) => this.saveLocalDraft(edit),
+      discard: (change) => this.discardLocalDraft(change),
+      authority: () =>
+        this.sourceAuthorized && this.storeLease
+          ? { incarnation: this.storeLease.incarnation, fence: this.storeLease.fence }
+          : undefined,
+    });
   }
   async dispose(): Promise<void> {
     try {
       if (this.storeLease) await this.releasePrivateStore();
     } finally {
+      this.draftWriter.reset();
       await this.connections.store?.dispose();
     }
   }
@@ -79,7 +91,15 @@ export class ReviewManager {
   openPrivateStore(handoff?: StoreHandoff): Promise<StoreView> {
     return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
   }
-  releasePrivateStore(): Promise<StoreView> {
+  async releasePrivateStore(): Promise<StoreView> {
+    if (!(await this.draftWriter.flush()))
+      return {
+        status: 'recovery',
+        code: 'DRAFT_SAVE_FAILED',
+        detail:
+          'The latest draft is not saved. Keep the writer open, copy the input if needed and Retry before releasing storage.',
+      };
+    this.draftWriter.reset();
     this.fencePullRequestOverview();
     return this.storeAction('release');
   }
@@ -114,6 +134,7 @@ export class ReviewManager {
     this.sourceAuthorized = false;
     this.overviewGeneration += 1;
     this.connections.github?.sessionChanged();
+    this.draftWriter.changed();
   }
 
   handleGitHubSessionChange(requestingFirstSession: boolean): boolean {
@@ -238,6 +259,30 @@ export class ReviewManager {
     const draft = await this.readLocalDraft(reply.draftCommit.draftId);
     if (!draft) throw new StoreError('DRAFT_UNAVAILABLE', 'The new draft could not be reopened.');
     return draft;
+  }
+  openDraftWriter(id: string) {
+    return this.draftWriter.open(id);
+  }
+  readDraftWriter() {
+    return this.draftWriter.read();
+  }
+  editDraftWriter(writerId: string, expectedEditRevision: number, body: string) {
+    return this.draftWriter.edit(writerId, expectedEditRevision, body);
+  }
+  flushDraftWriter() {
+    return this.draftWriter.flush();
+  }
+  closeDraftWriter(writerId: string) {
+    return this.draftWriter.close(writerId);
+  }
+  discardDraftWriter(writerId: string) {
+    return this.draftWriter.discard(writerId);
+  }
+  retryDraftWriter(writerId: string) {
+    return this.draftWriter.retry(writerId);
+  }
+  onDraftWriterChange(listener: () => void) {
+    return this.draftWriter.subscribe(listener);
   }
   async readLocalDraft(draftId: string): Promise<LocalDraft | undefined> {
     const reply = await this.storeRequest('readDraft', { draftId });

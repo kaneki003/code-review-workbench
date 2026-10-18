@@ -40,6 +40,13 @@ export interface DraftEdit extends DraftVersion {
 export interface DraftDiscard extends DraftVersion {
   requestId: string;
 }
+export type DraftWriterProjection = LocalDraft & {
+  writerId: string;
+  incarnation: string;
+  fence: number;
+  status: 'saving' | 'saved' | 'failed' | 'discarding';
+  detail: string;
+};
 // A save acknowledgment identifies a committed edit. It carries no replacement
 // text that could overwrite input typed while that save was in flight.
 export interface DraftCommit {
