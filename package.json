@@ -66,6 +66,7 @@
     "test": "pnpm build:native && vitest run",
     "build:native": "node scripts/build-native.mjs",
     "test:host": "node scripts/test-host.mjs",
+    "test:provider": "node scripts/test-provider.mjs",
     "build": "node scripts/build.mjs",
     "package": "pnpm run build && node scripts/package.mjs"
   },
