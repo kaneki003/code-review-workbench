@@ -9,6 +9,14 @@ import {
   type StoreReply,
   type StoreHandoff,
 } from './private-store';
+import {
+  sameLocalRepository,
+  GitHubAccount,
+  GitHubConnection,
+  type LocalRepositoryConnection,
+  type PullRequestOverview,
+  type ReviewCandidate,
+} from './pull-request';
 
 export interface HostEnvironment {
   vscode: string;
@@ -23,19 +31,27 @@ export interface HostEnvironment {
   folders: { scheme: string; path: string }[];
 }
 
-export interface ReadinessConnections {
+export interface ReviewConnections {
   environment(): HostEnvironment;
   git(folder: string): Promise<Capability>;
   sqlite(): Promise<Capability>;
   native(): Promise<Capability>;
   store?: StoreConnection;
+  account?: Pick<GitHubAccount, 'host' | 'userId'>;
+  github?: GitHubConnection;
+  repository?: LocalRepositoryConnection;
+  confirmLocalRepository?(candidate: ReviewCandidate): Promise<boolean>;
 }
 
-// This public action only inspects capabilities. It never acquires review ownership.
+// The owning manager coordinates actions independently of editor/view lifetime.
 export class ReviewManager {
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
-  constructor(private readonly connections: ReadinessConnections) {}
+  private overviewGeneration = 0;
+  private account: Pick<GitHubAccount, 'host' | 'userId'> | undefined;
+  constructor(private readonly connections: ReviewConnections) {
+    this.account = connections.account;
+  }
   async dispose(): Promise<void> {
     try {
       if (this.storeLease) await this.releasePrivateStore();
@@ -48,6 +64,7 @@ export class ReviewManager {
     return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
   }
   releasePrivateStore(): Promise<StoreView> {
+    this.fencePullRequestOverview();
     return this.storeAction('release');
   }
   inspectPrivateStore(): Promise<StoreView> {
@@ -77,15 +94,182 @@ export class ReviewManager {
     return this.storeRequest('inspectOperation', { operationId });
   }
 
+  fencePullRequestOverview(): void {
+    this.overviewGeneration += 1;
+    this.connections.github?.sessionChanged();
+  }
+
+  handleGitHubSessionChange(requestingFirstSession: boolean): boolean {
+    // First-time consent adds a session before /user can establish an actor.
+    // There is no old private identity to fence in that specific state.
+    if (requestingFirstSession && !this.account && !this.storeLease) return false;
+    this.fencePullRequestOverview();
+    return true;
+  }
+
+  async readSavedPullRequest(
+    baseRepositoryId: string,
+    pullNumber: number,
+  ): Promise<ReviewCandidate | undefined> {
+    const reply = await this.storeRequest('readCandidate', {
+      candidateKey: { baseRepositoryId, pullNumber },
+    });
+    return reply.candidate;
+  }
+
+  async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
+    const generation = ++this.overviewGeneration;
+    const github = this.connections.github;
+    const repository = this.connections.repository;
+    if (!github || !repository) {
+      return { status: 'blocked', detail: 'This installation has no GitHub PR connection.' };
+    }
+    const host = this.connections.environment();
+    if (
+      [
+        checkWorkspace(host),
+        checkWorkspaceTrust(host),
+        checkEmbeddedRuntime(host),
+        checkPlatform(host),
+      ].some((check) => check.status !== 'passed')
+    ) {
+      return {
+        status: 'blocked',
+        detail: 'Use a trusted supported local desktop workspace to register this PR.',
+      };
+    }
+    let local;
+    try {
+      local = await repository.inspect(host.folders[0]!.path);
+    } catch {
+      return {
+        status: 'local-required',
+        detail:
+          'Select an existing local Git repository root. Git could not inspect this folder safely. Check Git installation, folder access and safe.directory, then Retry. Nothing was cloned or switched.',
+      };
+    }
+    if (generation !== this.overviewGeneration) return staleOverview();
+    const resolved = await github.resolvePullRequest(url, local.remotes);
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (resolved.status !== 'ready') return resolved;
+    if (this.account && this.account.userId !== resolved.account.userId) {
+      return {
+        status: 'blocked',
+        detail:
+          'The private store belongs to another GitHub account or local scope. Reconnect its original account or explicitly Release Private Store before selecting this account. Saved identity was retained.',
+      };
+    }
+    if (this.storeLease && !this.account)
+      return {
+        status: 'blocked',
+        detail:
+          'This window owns the private store in its local scope. Explicitly Release Private Store, then Retry to open it for the verified GitHub account.',
+      };
+    const baseRemote = resolved.repositories.find(
+      (item) => item.identity.id === resolved.pullRequest.base.repository.id,
+    );
+    const headRemote = resolved.repositories.find(
+      (item) => item.identity.id === resolved.pullRequest.head.repository?.id,
+    );
+    const selected = baseRemote ?? headRemote;
+    const relation = baseRemote ? ('base' as const) : headRemote ? ('head' as const) : undefined;
+    if (!relation) {
+      return {
+        status: 'local-required',
+        detail:
+          "The selected local folder is not a verified copy of this pull request's base or head repository. Open an existing local copy; nothing was cloned or switched.",
+      };
+    }
+    let current;
+    try {
+      current = await repository.inspect(host.folders[0]!.path);
+    } catch {
+      return {
+        status: 'local-required',
+        detail: 'The selected local repository became unavailable. Restore access and Retry.',
+      };
+    }
+    if (!sameLocalRepository(local, current) || generation !== this.overviewGeneration)
+      return staleOverview();
+    const actor = { host: resolved.account.host, userId: resolved.account.userId };
+    const ownership = await this.storeRequest('open', { actor }, generation);
+    if (ownership.view.status === 'owned') this.account = actor;
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (ownership.view.status !== 'owned')
+      return { status: 'blocked', detail: ownership.view.detail };
+    const candidate: ReviewCandidate = {
+      account: resolved.account,
+      pullRequest: resolved.pullRequest,
+      localRepository: {
+        confirmation: 'user-confirmed',
+        ...(resolved.unverifiedRemotes ? { unverifiedRemotes: true as const } : {}),
+        facts: local,
+        repositoryId: selected!.identity.id,
+        relation,
+        remote: selected!.remote,
+      },
+    };
+    const registration = await this.storeRequest(
+      'readRegistration',
+      { registrationPath: local.worktree.path },
+      generation,
+    );
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (registration.view.status !== 'owned')
+      return { status: 'blocked', detail: registration.view.detail };
+    const retained = [baseRemote, headRemote].find(
+      (item) => item && item.identity.id === registration.registration?.repositoryId,
+    );
+    if (retained) {
+      candidate.localRepository.repositoryId = retained.identity.id;
+      candidate.localRepository.relation = retained === baseRemote ? 'base' : 'head';
+      candidate.localRepository.remote = retained.remote;
+    }
+    if (!registration.registration) {
+      const confirmed = await this.connections.confirmLocalRepository?.(candidate);
+      if (generation !== this.overviewGeneration) return staleOverview();
+      if (!confirmed)
+        return {
+          status: 'local-required',
+          detail:
+            'First registration requires confirmation of this local copy and the verified GitHub repository ID. A remote name cannot prove clone origin. No candidate was saved; Retry to select and confirm the copy.',
+        };
+    }
+    const saved = await this.storeRequest('saveCandidate', { candidate }, generation);
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (saved.view.status !== 'owned' || !saved.candidate) {
+      return { status: 'blocked', detail: saved.view.detail };
+    }
+    return { status: 'ready', ...saved.candidate };
+  }
+
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
     return this.storeRequest(action).then((reply) => reply.view);
   }
 
   private storeRequest(
     action: StoreRequest['action'],
-    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId'> = {},
+    fields: Pick<
+      StoreRequest,
+      | 'handoff'
+      | 'targetWindowId'
+      | 'refUpdate'
+      | 'operationId'
+      | 'candidate'
+      | 'actor'
+      | 'candidateKey'
+      | 'registrationPath'
+    > = {},
+    overviewGeneration?: number,
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
+      if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
+        return {
+          view: {
+            status: 'blocked',
+            detail: 'This overview request was superseded before storage dispatch.',
+          },
+        };
       const host = this.connections.environment();
       if (
         [
@@ -120,6 +304,13 @@ export class ReviewManager {
             },
           };
         }
+        if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
+          return {
+            view: {
+              status: 'blocked',
+              detail: 'This overview request was superseded before storage dispatch.',
+            },
+          };
         const request: StoreRequest = {
           protocol: 1,
           id: randomUUID(),
@@ -136,6 +327,7 @@ export class ReviewManager {
           reply.lease.revision >= this.storeLease.revision
         )
           this.storeLease = reply.lease;
+        if (action === 'release' && reply.view.status === 'closed') this.account = undefined;
         return reply;
       } catch (error) {
         return {
@@ -288,4 +480,11 @@ function meetsMinimumVersion(version: string, minimum: [number, number, number])
     return minor > minimumMinor;
   }
   return patch >= minimumPatch;
+}
+
+function staleOverview(): PullRequestOverview {
+  return {
+    status: 'stale',
+    detail: 'A newer account or pull request selection replaced this read. Its result was ignored.',
+  };
 }

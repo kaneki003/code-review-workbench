@@ -45,6 +45,7 @@ import {
 } from './repository-operation';
 
 import { StorageFaults } from './storage-diagnostics';
+import { normalizeCandidate, type ReviewCandidate } from '../application/pull-request';
 
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
 
@@ -85,6 +86,7 @@ function ensureParents(path: string) {
 }
 
 class SharedStore {
+  private actor: StoreConfiguration['actor'];
   private readonly rendezvous: string;
   private guard: { readonly created: boolean } | null = null;
   private registry: StoreRegistry | undefined;
@@ -100,6 +102,7 @@ class SharedStore {
 
   constructor(private readonly config: StoreConfiguration) {
     this.rendezvous = join(config.osHome, '.code-review-workbench');
+    this.actor = config.actor;
   }
 
   private registryPath() {
@@ -220,13 +223,26 @@ class SharedStore {
   open(request: StoreRequest): StoreReply {
     if (this.poisoned)
       recovery('An earlier storage outcome is uncertain; close this window before recovery.');
+    if (
+      request.actor &&
+      (request.actor.host !== 'github.com' || !/^[1-9]\d{0,19}$/.test(request.actor.userId))
+    )
+      throw new StoreError('INVALID_ACCOUNT', 'An immutable verified GitHub account is required.');
     if (this.guard) {
       if (this.lease) {
+        if (request.actor && request.actor.userId !== this.actor?.userId)
+          throw new StoreError(
+            'WRONG_ACCOUNT',
+            'Release the original owner explicitly before claiming another account.',
+          );
         this.validate(this.lease, false);
         return this.owned();
       }
       recovery('This window holds an incomplete storage claim.');
     }
+    this.actor = request.actor
+      ? { host: 'github.com', userId: request.actor.userId }
+      : this.config.actor;
     native.assertLocalDirectory(this.config.osHome);
     // Serialize before directory creation too. A mkdir followed by flock has
     // a gap where a contender can arrive before the creating process locks.
@@ -280,7 +296,7 @@ class SharedStore {
       recovery('A new verified owner generation is unavailable.');
     const owner = {
       token: randomUUID(),
-      scopeId: accountScope(this.database, registry, this.config.actor),
+      scopeId: accountScope(this.database, registry, this.actor),
       windowId: this.config.windowId,
       location: this.config.location,
       process: identity,
@@ -292,7 +308,7 @@ class SharedStore {
       this.database,
       registry,
       owner,
-      this.config,
+      { ...this.config, ...(this.actor ? { actor: this.actor } : {}) },
       control.fence + 1,
       () => {
         native.assertHeld(this.guard!);
@@ -559,6 +575,151 @@ class SharedStore {
     this.lease = lease;
     this.saveControl({ ...this.control!, revision: lease.revision });
     return reply;
+  }
+
+  private saveCandidate(request: StoreRequest): StoreReply {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    let candidate: ReviewCandidate;
+    try {
+      candidate = normalizeCandidate(request.candidate);
+    } catch {
+      throw new StoreError(
+        'INVALID_CANDIDATE',
+        'The PR candidate is malformed or exceeds the supported size. Saved work is unchanged.',
+      );
+    }
+    if (candidate.account.userId !== this.actor?.userId)
+      throw new StoreError('WRONG_ACCOUNT', 'This account does not own the private store.');
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'Reconcile the pending repository operation before saving a PR candidate.',
+      );
+    if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
+      recovery('The metadata sequence is exhausted.');
+    const local = candidate.localRepository;
+    const requested = statSync(local.facts.worktree.path, { bigint: true });
+    const configured = statSync(this.config.location, { bigint: true });
+    if (
+      !requested.isDirectory() ||
+      requested.dev !== configured.dev ||
+      requested.ino < 1n ||
+      requested.ino !== configured.ino
+    ) {
+      throw new StoreError(
+        'WORKSPACE_CHANGED',
+        'The selected local repository changed before its mapping could be saved.',
+      );
+    }
+    for (const identity of [
+      local.facts.worktree,
+      local.facts.gitDirectory,
+      local.facts.commonDirectory,
+    ]) {
+      native.assertLocalDirectory(identity.path);
+      const current = statSync(identity.path, { bigint: true });
+      if (String(current.dev) !== identity.device || String(current.ino) !== identity.inode)
+        throw new StoreError(
+          'WORKSPACE_CHANGED',
+          'The registered repository directories were replaced. Saved work is unchanged.',
+        );
+    }
+    const existing = this.database!.prepare(
+      `SELECT result FROM requests
+      WHERE action='saveCandidate'
+      AND json_extract(result,'$.candidate.localRepository.facts.worktree.path')=?
+      ORDER BY rowid DESC LIMIT 1`,
+    ).get(local.facts.worktree.path);
+    if (existing) {
+      const prior = normalizeCandidate(JSON.parse(String(existing.result)).candidate);
+      if (
+        prior.localRepository.repositoryId !== local.repositoryId ||
+        JSON.stringify(prior.localRepository.facts.worktree) !==
+          JSON.stringify(local.facts.worktree) ||
+        JSON.stringify(prior.localRepository.facts.gitDirectory) !==
+          JSON.stringify(local.facts.gitDirectory) ||
+        JSON.stringify(prior.localRepository.facts.commonDirectory) !==
+          JSON.stringify(local.facts.commonDirectory)
+      ) {
+        throw new StoreError(
+          'REGISTRATION_CHANGED',
+          'The selected copy was previously registered to different immutable repository or directory identities. A reused name or replaced copy cannot inherit that registration. Saved work is retained; select its original copy.',
+        );
+      }
+    }
+    const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    const reply: StoreReply = {
+      view: { ...this.owned().view, revision: lease.revision },
+      lease,
+      candidate,
+    };
+    transaction(this.database!, () => {
+      this.validate(request.lease, true);
+      // The existing durable receipt journal is the candidate record. No schema
+      // change or unversioned lazy table is introduced for this narrow slice.
+      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      this.database!.prepare('UPDATE ownership SET heartbeat=? WHERE token=? AND scope_id=?').run(
+        Date.now(),
+        lease.token,
+        lease.scopeId,
+      );
+      saveReply(this.database!, request, lease, reply);
+    });
+    this.lease = lease;
+    this.saveControl({
+      ...this.control!,
+      revision: lease.revision,
+      owner: { ...this.control!.owner!, heartbeat: Date.now() },
+    });
+    return reply;
+  }
+
+  private readCandidate(request: StoreRequest): StoreReply {
+    this.validate(request.lease, true);
+    const key = request.candidateKey;
+    if (
+      !key ||
+      !/^[1-9]\d{0,19}$/.test(key.baseRepositoryId) ||
+      !Number.isSafeInteger(key.pullNumber) ||
+      key.pullNumber < 1
+    )
+      throw new StoreError(
+        'INVALID_CANDIDATE',
+        'A verified repository ID and PR number are required.',
+      );
+    const row = this.database!.prepare(
+      `SELECT result FROM requests WHERE scope_id=? AND action='saveCandidate'
+      AND json_extract(result,'$.candidate.pullRequest.base.repository.id')=?
+      AND json_extract(result,'$.candidate.pullRequest.number')=? ORDER BY rowid DESC LIMIT 1`,
+    ).get(this.lease!.scopeId, key.baseRepositoryId, key.pullNumber);
+    return {
+      ...this.owned(),
+      ...(row ? { candidate: normalizeCandidate(JSON.parse(String(row.result)).candidate) } : {}),
+    };
+  }
+
+  private readRegistration(request: StoreRequest): StoreReply {
+    this.validate(request.lease, true);
+    if (!text(request.registrationPath) || !isAbsolute(request.registrationPath))
+      throw new StoreError('INVALID_CANDIDATE', 'A canonical local registration path is required.');
+    // Copy identity is shared across this OS user's accounts. No private PR
+    // content or other actor identity is returned through this lookup.
+    const row = this.database!.prepare(
+      `SELECT result FROM requests WHERE action='saveCandidate'
+      AND json_extract(result,'$.candidate.localRepository.facts.worktree.path')=? ORDER BY rowid DESC LIMIT 1`,
+    ).get(request.registrationPath);
+    return {
+      ...this.owned(),
+      ...(row
+        ? {
+            registration: normalizeCandidate(JSON.parse(String(row.result)).candidate)
+              .localRepository,
+          }
+        : {}),
+    };
   }
 
   private repository(location = this.config.location) {
@@ -848,7 +1009,7 @@ class SharedStore {
         'The recorded Git process or its descendants may still run. Retry recovery only after they have stopped.',
       );
     this.database ??= openDatabase(join(registry.root, 'review.sqlite'), registry, control, true);
-    if (accountScope(this.database, registry, this.config.actor) !== lease.scopeId)
+    if (accountScope(this.database, registry, this.actor) !== lease.scopeId)
       throw new StoreError(
         'WRONG_ACCOUNT',
         'Return to the original account or local owner scope before recovering this operation.',
@@ -910,6 +1071,9 @@ class SharedStore {
         'executeOperation',
         'recover',
         'inspectOperation',
+        'saveCandidate',
+        'readCandidate',
+        'readRegistration',
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -944,6 +1108,9 @@ class SharedStore {
       }
       if (request.action === 'recover') return this.recoverOperation(request);
       if (request.action === 'recordIntent') return this.recordIntent(request);
+      if (request.action === 'saveCandidate') return this.saveCandidate(request);
+      if (request.action === 'readCandidate') return this.readCandidate(request);
+      if (request.action === 'readRegistration') return this.readRegistration(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {
@@ -1000,6 +1167,9 @@ class SharedStore {
           'GIT_INSPECTION',
           'REPOSITORY_LIMIT',
           'REPOSITORY_CHANGED',
+          'REGISTRATION_CHANGED',
+          'WORKSPACE_CHANGED',
+          'INVALID_CANDIDATE',
         ].includes(error.code)
       )
         this.poisoned = true;

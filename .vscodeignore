@@ -8,3 +8,4 @@
 !dist/native-guard.node
 !dist/readiness.js
 !dist/readiness.css
+!dist/third-party-notices.txt

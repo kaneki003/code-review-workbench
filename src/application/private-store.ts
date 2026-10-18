@@ -1,3 +1,5 @@
+import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
+
 export interface StoreProcess {
   pid: number;
   start: string;
@@ -47,12 +49,19 @@ export interface StoreRequest {
     | 'prepareRef'
     | 'executeOperation'
     | 'recover'
-    | 'inspectOperation';
+    | 'inspectOperation'
+    | 'saveCandidate'
+    | 'readCandidate'
+    | 'readRegistration';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
   refUpdate?: { ref: string; newOid: string };
   operationId?: string;
+  candidate?: ReviewCandidate;
+  actor?: Pick<GitHubAccount, 'host' | 'userId'>;
+  candidateKey?: { baseRepositoryId: string; pullNumber: number };
+  registrationPath?: string;
   workspacePath?: string;
 }
 
@@ -64,6 +73,7 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  registration?: LocalRepositoryRegistration;
   view: StoreView;
   lease?: StoreLease;
   handoff?: StoreHandoff;
@@ -74,6 +84,7 @@ export interface StoreReply {
     outcome?: 'applied' | 'not-applied' | 'refused';
     exitCode?: number;
   };
+  candidate?: ReviewCandidate;
 }
 
 export interface StoreConnection {

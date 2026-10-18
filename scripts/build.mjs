@@ -3,6 +3,7 @@ import { spawnPnpm } from './pnpm.mjs';
 import { mkdir, rm, copyFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { buildNative } from './build-native.mjs';
+import { writeThirdPartyNotices } from './third-party-notices.mjs';
 
 const watchMode = process.argv.includes('--watch');
 if (!watchMode) {
@@ -52,7 +53,10 @@ if (watchMode) {
     await bundleWatcher.watch();
   }
 } else {
-  await Promise.all(bundles.map((options) => build(options)));
+  const results = await Promise.all(
+    bundles.map((options) => build({ ...options, metafile: true })),
+  );
+  await writeThirdPartyNotices(results);
 }
 const stylesheetCompiler = spawnPnpm([
   'exec',
