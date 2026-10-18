@@ -25,7 +25,15 @@ const manager = new ReviewManager({
   native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
   store: createStoreConnection(process.argv[2]!, configuration, {
     boundary: process.argv[6] || (process.argv[5] ? 'checkout.effect.after' : 'dispatch.after'),
-    mode: 'error',
+    mode:
+      process.argv[8] === 'native'
+        ? 'native'
+        : process.argv[8] === 'commit'
+          ? 'commit'
+          : process.argv[8] === 'crash'
+            ? 'crash'
+            : 'error',
+    ...(process.argv[8] === 'native' ? { stage: 'directory-flush' as const } : {}),
   }),
   account,
   editors: {

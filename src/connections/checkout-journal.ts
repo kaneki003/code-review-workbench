@@ -18,16 +18,39 @@ import { oid } from './repository-operation';
 import type { StorageFaults } from './storage-diagnostics';
 
 export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
+  const editorUri = (value: unknown): value is string =>
+    text(value, 8192) && /^(?:file:\/\/\/|crw-source:|crw-overview:)/.test(value);
+  function leaves(groups: unknown, depth = 0): number {
+    if (!Array.isArray(groups) || !groups.length || groups.length > 9 || depth > 8) return 0;
+    let count = 0;
+    for (const group of groups) {
+      if (
+        !object(group) ||
+        (group.size !== undefined &&
+          (typeof group.size !== 'number' || !Number.isFinite(group.size) || group.size <= 0))
+      )
+        return 0;
+      const children = group.groups === undefined ? 1 : leaves(group.groups, depth + 1);
+      if (!children) return 0;
+      count += children;
+    }
+    return count;
+  }
   if (
     !object(value) ||
     value.protocol !== 1 ||
     !text(value.workspace) ||
     !object(value.layout) ||
     !Array.isArray(value.layout.groups) ||
+    (value.layout.orientation !== undefined &&
+      value.layout.orientation !== 0 &&
+      value.layout.orientation !== 1) ||
     !Array.isArray(value.groups) ||
     value.groups.length < 1 ||
     value.groups.length > 9 ||
-    JSON.stringify(value).length > 48000
+    Buffer.byteLength(JSON.stringify(value), 'utf8') > 48000 ||
+    leaves(value.layout.groups) !== value.groups.length ||
+    value.groups.filter((group) => object(group) && group.active === true).length !== 1
   )
     return false;
   let tabs = 0;
@@ -37,18 +60,24 @@ export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
       group.column === index + 1 &&
       typeof group.active === 'boolean' &&
       Array.isArray(group.tabs) &&
+      (group.tabs.length === 0 ||
+        group.tabs.filter((tab) => object(tab) && tab.active === true).length === 1) &&
       group.tabs.every((tab) => {
         tabs += 1;
         return (
           tabs <= 100 &&
           object(tab) &&
           ['text', 'diff', 'markdown-preview'].includes(String(tab.kind)) &&
-          text(tab.uri, 8192) &&
+          editorUri(tab.uri) &&
+          (tab.title === undefined || text(tab.title, 4096)) &&
+          (tab.kind !== 'markdown-preview' ||
+            (String(tab.uri).startsWith('crw-overview:') && typeof tab.content === 'string')) &&
+          (tab.focus === undefined || tab.focus === tab.uri || tab.focus === tab.original) &&
           (tab.content === undefined ||
             (typeof tab.content === 'string' &&
               tab.content.length <= 48000 &&
               tab.uri.startsWith('crw-overview:'))) &&
-          (tab.kind !== 'diff' || text(tab.original, 8192)) &&
+          (tab.kind !== 'diff' || editorUri(tab.original)) &&
           typeof tab.active === 'boolean' &&
           typeof tab.preview === 'boolean' &&
           typeof tab.pinned === 'boolean' &&
@@ -58,6 +87,7 @@ export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
             (view) =>
               object(view) &&
               text(view.uri, 8192) &&
+              (view.uri === tab.uri || view.uri === tab.original) &&
               sequence(view.topLine) &&
               Array.isArray(view.selections) &&
               Array.isArray(view.reversed) &&
@@ -168,7 +198,7 @@ export class CheckoutJournal {
     return { record: raw.record, databaseRecord, independentRecord, agrees };
   }
   publish(record: CheckoutReview, previous: CheckoutJournalState | undefined) {
-    if (!validReview(record) || JSON.stringify(record).length > 60000)
+    if (!validReview(record) || Buffer.byteLength(JSON.stringify(record), 'utf8') > 60000)
       throw new StoreError(
         'INVALID_CHECKOUT',
         'The editor/recovery snapshot is unsupported or exceeds the bounded save size.',

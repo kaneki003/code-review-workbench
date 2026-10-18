@@ -1329,6 +1329,9 @@ class SharedStore {
     return reply;
   }
   private async checkoutAction(request: StoreRequest): Promise<StoreReply> {
+    this.validate(request.lease, false);
+    const previousReplyValue = previousReply(this.database!, request);
+    if (previousReplyValue) return previousReplyValue;
     this.validate(request.lease, true);
     if (this.control!.pending)
       throw new StoreError(

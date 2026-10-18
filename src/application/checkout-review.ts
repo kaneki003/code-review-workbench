@@ -20,6 +20,7 @@ export interface EditorTab {
   pinned: boolean;
   views: EditorView[];
   content?: string;
+  title?: string;
   focus?: string;
 }
 export interface EditorSnapshot {

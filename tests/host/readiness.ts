@@ -418,7 +418,7 @@ suite('Installed readiness VSIX', () => {
       base: { repository: { id: '3001', fullName: 'acme/service' }, ref: 'main', oid: base },
       head: { repository: { id: '4001', fullName: 'fork/service' }, ref: 'feature', oid: head },
     };
-    const manager = api.createManager(
+    let manager = api.createManager(
       { osHome: home, candidateRoot: join(home, 'data'), location, windowId: 'source-host' },
       {
         confirmLocalRepository: async () => true,
@@ -473,6 +473,12 @@ suite('Installed readiness VSIX', () => {
       };
       const commands = await vscode.commands.getCommands(true);
       assert.ok(commands.includes('codeReviewWorkbench.returnToCommittedSource'));
+      for (const command of [
+        'enterPullRequestCheckout',
+        'exitReview',
+        'recoverPullRequestCheckout',
+      ])
+        assert.ok(commands.includes(`codeReviewWorkbench.${command}`));
       const opened = await vscode.commands.executeCommand<{
         original: vscode.Uri;
         modified: vscode.Uri;
@@ -664,12 +670,38 @@ suite('Installed readiness VSIX', () => {
         'original clean workspace',
       ]);
       const priorBranch = git(['symbolic-ref', 'HEAD']);
-      const priorCommit = git(['rev-parse', 'HEAD']);
+      let priorCommit = git(['rev-parse', 'HEAD']);
       const priorUri = vscode.Uri.file(join(location, 'view.txt'));
       const priorEditor = await vscode.window.showTextDocument(priorUri, {
         preview: false,
         viewColumn: vscode.ViewColumn.One,
       });
+      await priorEditor.edit((edit) =>
+        edit.insert(new vscode.Position(0, 0), 'saved through normal host behavior\n'),
+      );
+      assert.equal(priorEditor.document.isDirty, true);
+      const refused = await manager.enterPullRequestCheckout(source.id);
+      assert.equal(refused.status, 'blocked', JSON.stringify(refused));
+      assert.equal(priorEditor.document.isDirty, false, 'The normal host save completed');
+      assert.match(await readFile(priorUri.fsPath, 'utf8'), /^saved through normal host behavior/);
+      assert.equal(
+        git(['rev-parse', 'HEAD']),
+        priorCommit,
+        'Saving unfinished work does not authorize switching',
+      );
+      git(['add', 'view.txt']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-m',
+        'commit normally saved work',
+      ]);
+      priorCommit = git(['rev-parse', 'HEAD']);
       const priorSelections = [
         new vscode.Selection(150, 5, 149, 2),
         new vscode.Selection(155, 0, 155, 2),
@@ -689,12 +721,20 @@ suite('Installed readiness VSIX', () => {
         preview: false,
         viewColumn: vscode.ViewColumn.Two,
       });
+      await vscode.commands.executeCommand('codeReviewWorkbench.openChangedDiff', target);
       await api.showOverview(source.candidate, source);
       const beforeTabs = vscode.window.tabGroups.all.map((group) =>
         group.tabs.map((tab) => tab.label),
       );
       const entered = await manager.enterPullRequestCheckout(source.id);
-      assert.equal(entered.status, 'active', JSON.stringify(entered));
+      assert.equal(
+        entered.status,
+        'active',
+        JSON.stringify({
+          entered,
+          layout: await vscode.commands.executeCommand('vscode.getEditorLayout'),
+        }),
+      );
       assert.equal(git(['rev-parse', 'HEAD']), head);
       await vscode.window.tabGroups.close(
         vscode.window.tabGroups.all.flatMap((group) => [...group.tabs]),
@@ -705,7 +745,17 @@ suite('Installed readiness VSIX', () => {
         'Closing tabs does not Exit',
       );
       await vscode.commands.executeCommand('vscode.open', opened.modified);
-      const exited = await manager.exitPullRequestCheckout();
+      await manager.dispose();
+      manager = api.createManager({
+        osHome: home,
+        candidateRoot: join(home, 'data'),
+        location,
+        windowId: 'resumed-source-host',
+        actor: { host: 'github.com', userId: '1001' },
+      });
+      assert.equal((await manager.openPrivateStore()).status, 'owned');
+      await api.showCommittedSource(source, manager);
+      const exited = await manager.recoverPullRequestCheckout('restore');
       assert.equal(exited.status, 'complete', JSON.stringify(exited));
       assert.equal(git(['symbolic-ref', 'HEAD']), priorBranch);
       assert.equal(git(['rev-parse', 'HEAD']), priorCommit);

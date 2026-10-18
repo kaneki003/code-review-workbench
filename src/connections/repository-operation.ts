@@ -101,6 +101,8 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !uuid(value.scopeId) ||
     !sequence(value.fence) ||
     !['update-ref', 'fetch', 'checkout', 'delete-ref'].includes(String(value.kind)) ||
+    (value.kind === 'delete-ref' &&
+      (value.beforeOid === null || value.beforeOid !== value.newOid)) ||
     (value.kind === 'checkout' &&
       (!object(value.checkout) ||
         !checkoutState(value.checkout.before) ||

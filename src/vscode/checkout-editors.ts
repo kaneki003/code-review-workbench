@@ -59,6 +59,7 @@ function describe(tab: vscode.Tab, overviews?: Overviews): EditorTab {
     kind: original ? 'diff' : 'text',
     uri: uriKey(uri),
     ...(original ? { original: uriKey(original) } : {}),
+    ...(original ? { title: tab.label } : {}),
     active: tab.isActive,
     preview: tab.isPreview,
     pinned: tab.isPinned,
@@ -82,11 +83,26 @@ function tabShape(groups: EditorSnapshot['groups']) {
       column: group.column,
       tabs: group.tabs.map((tab) => ({
         id: identity(tab),
+        title: tab.title ?? null,
         preview: tab.preview,
         pinned: tab.pinned,
       })),
     })),
   );
+}
+function sameLayout(expected: EditorLayout, actual: EditorLayout): boolean {
+  const sameGroups = (left: EditorLayout['groups'], right: EditorLayout['groups']): boolean =>
+    left.length === right.length &&
+    left.every((group, index) => {
+      const other = right[index]!;
+      const totalLeft = left.reduce((sum, item) => sum + (item.size ?? 1), 0);
+      const totalRight = right.reduce((sum, item) => sum + (item.size ?? 1), 0);
+      return (
+        Math.abs((group.size ?? 1) / totalLeft - (other.size ?? 1) / totalRight) < 0.02 &&
+        (group.groups ? !!other.groups && sameGroups(group.groups, other.groups) : !other.groups)
+      );
+    });
+  return expected.orientation === actual.orientation && sameGroups(expected.groups, actual.groups);
 }
 async function waitFor(action: () => boolean, detail: string) {
   const until = Date.now() + 5000;
@@ -137,7 +153,7 @@ async function open(tab: EditorTab, column: number, overviews?: Overviews) {
       'vscode.diff',
       vscode.Uri.parse(tab.original!),
       vscode.Uri.parse(tab.uri),
-      undefined,
+      tab.title,
       options,
     );
   else await vscode.window.showTextDocument(vscode.Uri.parse(tab.uri), options);
@@ -150,24 +166,44 @@ async function open(tab: EditorTab, column: number, overviews?: Overviews) {
     );
   }, 'The native editor did not activate the saved tab. Its recovery snapshot is retained.');
 }
-function views(tab: EditorTab, column: number): EditorView[] {
-  return vscode.window.visibleTextEditors
-    .filter(
+function visibleEditors(tab: EditorTab, column: number): vscode.TextEditor[] {
+  const input = vscode.window.tabGroups.all.find((group) => group.viewColumn === column)?.activeTab
+    ?.input;
+  const embedded =
+    tab.kind === 'diff' &&
+    input instanceof vscode.TabInputTextDiff &&
+    input.modified.toString() === tab.uri &&
+    input.original.toString() === tab.original;
+  const candidates = vscode.window.visibleTextEditors.filter(
+    (editor) =>
+      [tab.uri, tab.original].includes(uriKey(editor.document.uri)) &&
+      (editor.viewColumn === column || (editor.viewColumn === undefined && embedded)),
+  );
+  if (
+    candidates.some(
       (editor) =>
-        editor.viewColumn === column &&
-        [tab.uri, tab.original].includes(uriKey(editor.document.uri)),
+        candidates.filter(
+          (other) => other.document.uri.toString() === editor.document.uri.toString(),
+        ).length > 1,
     )
-    .map((editor) => ({
-      uri: uriKey(editor.document.uri),
-      topLine: editor.visibleRanges[0]?.start.line ?? 0,
-      reversed: editor.selections.map((selection) => selection.isReversed),
-      selections: editor.selections.map((selection) => ({
-        startLine: selection.start.line,
-        startCharacter: selection.start.character,
-        endLine: selection.end.line,
-        endCharacter: selection.end.character,
-      })),
-    }));
+  )
+    failure(
+      'Duplicate embedded diff editors cannot be associated with a saved group unambiguously. Close the duplicate before switching.',
+    );
+  return candidates;
+}
+function views(tab: EditorTab, column: number): EditorView[] {
+  return visibleEditors(tab, column).map((editor) => ({
+    uri: uriKey(editor.document.uri),
+    topLine: editor.visibleRanges[0]?.start.line ?? 0,
+    reversed: editor.selections.map((selection) => selection.isReversed),
+    selections: editor.selections.map((selection) => ({
+      startLine: selection.start.line,
+      startCharacter: selection.start.character,
+      endLine: selection.end.line,
+      endCharacter: selection.end.character,
+    })),
+  }));
 }
 
 export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
@@ -200,6 +236,20 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
     for (const group of order) {
       const tab = group.tabs.find((tab) => tab.active);
       if (tab) await open(tab, group.column, overviews);
+      else if (group.active) {
+        const ordinal = [
+          'First',
+          'Second',
+          'Third',
+          'Fourth',
+          'Fifth',
+          'Sixth',
+          'Seventh',
+          'Eighth',
+          'Ninth',
+        ][group.column - 1];
+        await vscode.commands.executeCommand(`workbench.action.focus${ordinal}EditorGroup`);
+      }
     }
   }
   return {
@@ -220,6 +270,16 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
         for (const group of groups)
           for (const tab of group.tabs) {
             await open(tab, group.column, overviews);
+            if (tab.kind !== 'markdown-preview')
+              await waitFor(
+                () =>
+                  views(tab, group.column).length > 0 &&
+                  (tab.kind !== 'diff' ||
+                    [tab.uri, tab.original].includes(
+                      vscode.window.activeTextEditor?.document.uri.toString(),
+                    )),
+                'The native editor did not expose the saved text/diff positions.',
+              );
             tab.views = views(tab, group.column);
             const focus = vscode.window.activeTextEditor?.document.uri.toString();
             if (tab.kind === 'diff' && focus) tab.focus = focus;
@@ -259,6 +319,16 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
           ...group.tabs.filter((tab) => tab.preview),
         ]) {
           await open(tab, group.column, overviews);
+          if (tab.kind !== 'markdown-preview')
+            await waitFor(
+              () =>
+                tab.views.every((saved) =>
+                  visibleEditors(tab, group.column).some(
+                    (editor) => uriKey(editor.document.uri) === saved.uri,
+                  ),
+                ),
+              'A saved native source side did not become visible during restoration.',
+            );
           if (tab.pinned) await vscode.commands.executeCommand('workbench.action.pinEditor');
           const index = group.tabs.indexOf(tab);
           await vscode.commands.executeCommand('moveActiveEditor', {
@@ -267,9 +337,8 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
             value: index + 1,
           });
           for (const saved of tab.views) {
-            const editor = vscode.window.visibleTextEditors.find(
-              (editor) =>
-                editor.viewColumn === group.column && uriKey(editor.document.uri) === saved.uri,
+            const editor = visibleEditors(tab, group.column).find(
+              (editor) => uriKey(editor.document.uri) === saved.uri,
             );
             if (!editor) failure('A saved source side is unavailable during editor restoration.');
             editor!.selections = saved.selections.map((range, index) =>
@@ -325,6 +394,20 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
         'The host did not restore the saved tab groups/order. Retry editor restoration.',
       );
       assertSaved();
+      const current = inventory(overviews);
+      if (
+        current.some(
+          (group, index) =>
+            group.active !== snapshot.groups[index]!.active ||
+            group.tabs.some(
+              (tab, tabIndex) => tab.active !== snapshot.groups[index]!.tabs[tabIndex]!.active,
+            ),
+        )
+      )
+        failure('The original active editor/group did not restore. Retry; Exit is not complete.');
+      const layout = await vscode.commands.executeCommand<EditorLayout>('vscode.getEditorLayout');
+      if (!layout || !sameLayout(snapshot.layout, layout))
+        failure('The saved editor layout did not restore. Retry; Exit is not complete.');
       for (const group of snapshot.groups) {
         const active = group.tabs.find((tab) => tab.active);
         if (!active) continue;

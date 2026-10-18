@@ -90,7 +90,9 @@ export function activate(context: vscode.ExtensionContext) {
   let lastUrl = '';
   let selectedCandidate: ReviewCandidate | undefined;
   let incompleteSourceId: string | undefined;
-  async function presentCheckout(result: CheckoutResult) {
+  let checkoutPresentation = 0;
+  async function presentCheckout(result: CheckoutResult, presentation: number) {
+    if (presentation !== checkoutPresentation) return result;
     await vscode.commands.executeCommand(
       'setContext',
       'codeReviewWorkbench.checkoutPending',
@@ -98,8 +100,16 @@ export function activate(context: vscode.ExtensionContext) {
     );
     if (result.status === 'active' && result.review) {
       const retained = await manager.readCommittedSource(result.review.sourceId);
-      if (retained.status === 'ready') await committedReview.show(retained.source, manager, true);
+      if (presentation !== checkoutPresentation) return result;
+      if (retained.status === 'ready') {
+        try {
+          await committedReview.show(retained.source, manager, true);
+        } catch (error) {
+          if (presentation === checkoutPresentation) throw error;
+        }
+      }
     } else if (result.status === 'complete') committedReview.clear();
+    if (presentation !== checkoutPresentation) return result;
     if (result.status === 'active' || result.status === 'complete')
       void vscode.window.showInformationMessage(result.detail);
     else void vscode.window.showWarningMessage(result.detail);
@@ -112,6 +122,8 @@ export function activate(context: vscode.ExtensionContext) {
       );
       if (!overview) return;
     }
+    const presentation = ++checkoutPresentation;
+    const selectedReview = selection;
     const selected =
       choice ??
       (await vscode.window.showQuickPick(
@@ -124,9 +136,9 @@ export function activate(context: vscode.ExtensionContext) {
           placeHolder: 'Actual Git state will be checked before any switch.',
         },
       ));
-    if (!selected) return;
+    if (!selected || presentation !== checkoutPresentation || selectedReview !== selection) return;
     const action = typeof selected === 'string' ? selected : selected.choice;
-    return presentCheckout(await manager.recoverPullRequestCheckout(action));
+    return presentCheckout(await manager.recoverPullRequestCheckout(action), presentation);
   }
   context.subscriptions.push(
     panel,
@@ -138,6 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
         selectedCandidate?.pullRequest.url || lastUrl || undefined,
       );
       if (!overview || !selectedCandidate) return;
+      const presentation = ++checkoutPresentation;
       const saved = await manager.readCheckoutReview();
       if (saved && saved.phase !== 'complete') return recoverCheckout('continue');
       const candidate = selectedCandidate;
@@ -151,22 +164,27 @@ export function activate(context: vscode.ExtensionContext) {
       }
       return vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: 'Entering the exact PR checkout' },
-        async () => presentCheckout(await manager.enterPullRequestCheckout(source.source.id)),
+        async () =>
+          presentCheckout(await manager.enterPullRequestCheckout(source.source.id), presentation),
       );
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.exitReview', async () => {
+      selection += 1;
+      checkoutPresentation += 1;
+      committedReview.clear();
       if (!lastUrl) {
         const opened = await vscode.commands.executeCommand(
           'codeReviewWorkbench.openPullRequestOverview',
         );
         if (!opened) return;
       }
+      const presentation = ++checkoutPresentation;
       return vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
           title: 'Restoring the original checkout and editors',
         },
-        async () => presentCheckout(await manager.exitPullRequestCheckout()),
+        async () => presentCheckout(await manager.exitPullRequestCheckout(), presentation),
       );
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.recoverPullRequestCheckout', () =>
@@ -179,6 +197,7 @@ export function activate(context: vscode.ExtensionContext) {
       return view;
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.releasePrivateStore', async () => {
+      checkoutPresentation += 1;
       selection += 1;
       selectedCandidate = undefined;
       committedReview.clear();
@@ -195,6 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'codeReviewWorkbench.openPullRequestOverview',
       async (providedUrl?: unknown) => {
+        checkoutPresentation += 1;
         const selected = ++selection;
         selectedCandidate = undefined;
         committedReview.clear();
@@ -289,6 +309,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.authentication.onDidChangeSessions((event) => {
       if (event.provider.id !== 'github') return;
       if (manager.handleGitHubSessionChange(requestingSession)) {
+        checkoutPresentation += 1;
         selectedCandidate = undefined;
         committedReview.clear();
         const changed = ++selection;
@@ -307,6 +328,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      checkoutPresentation += 1;
       selectedCandidate = undefined;
       committedReview.clear();
       selection += 1;

@@ -1,7 +1,7 @@
 {
   "name": "code-review-workbench",
   "displayName": "Code Review Workbench",
-  "description": "Personal-local code review workbench: exact committed PR diffs, Reviewed marks and shared private storage.",
+  "description": "Personal-local code review workbench: committed PR diffs, clean checkout/Exit recovery, Reviewed marks and shared private storage.",
   "version": "0.0.1",
   "publisher": "kaneki003",
   "private": true,
