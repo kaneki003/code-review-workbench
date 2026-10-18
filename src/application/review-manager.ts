@@ -25,6 +25,7 @@ import type {
 } from './committed-source';
 import { isSourceAction } from './committed-source';
 import { DraftWriter } from './draft-writer';
+import { DraftWriterProtocol } from './draft-writer-protocol';
 import {
   isDraftAction,
   type LocalDraft,
@@ -61,6 +62,7 @@ export interface ReviewConnections {
 // The owning manager coordinates actions independently of editor/view lifetime.
 export class ReviewManager {
   private readonly draftWriter: DraftWriter;
+  private readonly draftProtocol: DraftWriterProtocol;
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
   private overviewGeneration = 0;
@@ -78,6 +80,7 @@ export class ReviewManager {
           ? { incarnation: this.storeLease.incarnation, fence: this.storeLease.fence }
           : undefined,
     });
+    this.draftProtocol = new DraftWriterProtocol(this.draftWriter);
   }
   async dispose(): Promise<void> {
     try {
@@ -134,6 +137,8 @@ export class ReviewManager {
     this.sourceAuthorized = false;
     this.overviewGeneration += 1;
     this.connections.github?.sessionChanged();
+    this.draftWriter.fence();
+    this.draftProtocol.invalidate();
     this.draftWriter.changed();
   }
 
@@ -283,6 +288,18 @@ export class ReviewManager {
   }
   onDraftWriterChange(listener: () => void) {
     return this.draftWriter.subscribe(listener);
+  }
+  attachDraftWriter(instanceId: string) {
+    return this.draftProtocol.attach(instanceId);
+  }
+  detachDraftWriter(instanceId: string) {
+    this.draftProtocol.detach(instanceId);
+  }
+  snapshotDraftWriter(instanceId: string, reset = false) {
+    return this.draftProtocol.snapshot(instanceId, reset);
+  }
+  handleDraftWriterMessage(message: unknown) {
+    return this.draftProtocol.handle(message);
   }
   async readLocalDraft(draftId: string): Promise<LocalDraft | undefined> {
     const reply = await this.storeRequest('readDraft', { draftId });

@@ -285,4 +285,7 @@ export class DraftWriter {
     this.opening += 1;
     this.changed();
   }
+  fence() {
+    if (this.current) this.current.writerId = randomUUID();
+  }
 }

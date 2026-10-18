@@ -14,6 +14,11 @@ import { createLocalRepositoryConnection } from '../src/connections/local-reposi
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../src/application/private-store';
 import type { SourceNavigation } from '../src/application/committed-source';
+import {
+  draftEditRequests,
+  draftControlRequest,
+  draftTransportBytes,
+} from '../src/shared/draft-writer';
 
 const integrationTimeout = process.platform === 'win32' ? 60_000 : 20_000;
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -144,6 +149,74 @@ test(
     expect(manager.readDraftWriter()).toBeUndefined();
     expect(await manager.readLocalDraft(draft.id)).toMatchObject({
       body: 'keep this unsaved input 🐈',
+      committedRevision: 1,
+    });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'complete view payloads save after disposal and a recreated view fences old-instance edits',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    await manager.openDraftWriter(draft.id);
+    const first = manager.attachDraftWriter(randomUUID());
+    expect(first.state).toMatchObject({ id: draft.id, body: '', status: 'saved' });
+    const body = '🧪'.repeat(256 * 1024);
+    const incomplete = draftEditRequests(first, body);
+    expect((await manager.handleDraftWriterMessage(incomplete.at(-1)!)).accepted).toBe(false);
+    expect(manager.readDraftWriter()).toMatchObject({ body: '', editRevision: 0 });
+    const messages = draftEditRequests(first, body);
+    for (const message of messages) {
+      expect(Buffer.byteLength(JSON.stringify(message), 'utf8')).toBeLessThanOrEqual(
+        draftTransportBytes,
+      );
+      expect((await manager.handleDraftWriterMessage(message)).accepted).toBe(true);
+    }
+    expect((await manager.handleDraftWriterMessage(messages.at(-1)!)).duplicate).toBe(true);
+    expect(manager.readDraftWriter()).toMatchObject({ body, editRevision: 1, status: 'saving' });
+    manager.detachDraftWriter(first.instanceId);
+    const next = manager.attachDraftWriter(randomUUID());
+    expect(next.state).toMatchObject({ id: draft.id, body, target: draft.target, editRevision: 1 });
+    const stale = await manager.handleDraftWriterMessage({
+      version: 1,
+      type: 'sync',
+      instanceId: first.instanceId,
+      requestId: randomUUID(),
+    });
+    expect(stale.accepted).toBe(false);
+    const sync = await manager.handleDraftWriterMessage({
+      version: 1,
+      type: 'sync',
+      instanceId: next.instanceId,
+      requestId: randomUUID(),
+    });
+    expect(sync.snapshot).toMatchObject({
+      instanceId: next.instanceId,
+      reset: true,
+      state: { id: draft.id },
+    });
+    expect(await manager.flushDraftWriter()).toBe(true);
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({ body, committedRevision: 1 });
+    const current = manager.snapshotDraftWriter(next.instanceId);
+    const retry = draftControlRequest(current, 'retry');
+    for (const invalid of [
+      { ...retry, version: 2 },
+      { ...retry, unexpected: 'field' },
+      { ...retry, fence: retry.fence + 1 },
+      { ...retry, contentGeneration: 2 },
+      { ...retry, reviewId: randomUUID() },
+      { ...retry, expectedRowRevision: 999 },
+    ]) {
+      expect((await manager.handleDraftWriterMessage(invalid)).accepted).toBe(false);
+    }
+    expect(manager.readDraftWriter()).toMatchObject({
+      body,
+      editRevision: 1,
       committedRevision: 1,
     });
     await manager.releasePrivateStore();
