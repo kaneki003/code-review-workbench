@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { statSync } from 'node:fs';
 import type { CheckoutReview, EditorSnapshot } from '../application/checkout-review';
 import { validRange } from '../application/committed-source';
 import { StoreError } from '../application/private-store';
@@ -95,6 +96,20 @@ function validReview(value: unknown): value is CheckoutReview {
     value.editors.workspace === value.repository.worktree.path
   );
 }
+export function checkoutRecoveryApplies(directory: string, location: string): boolean {
+  const raw = readRecord(join(directory, 'checkout-review.json'), true);
+  if (raw === undefined) return false;
+  if (!object(raw) || !validReview(raw.record))
+    recovery('The checkout recovery journal is malformed.');
+  const record = raw.record;
+  if (record.phase === 'complete' || record.repository.worktree.path !== location) return false;
+  const actual = statSync(location, { bigint: true });
+  return (
+    String(actual.dev) === record.repository.worktree.device &&
+    String(actual.ino) === record.repository.worktree.inode
+  );
+}
+
 const digest = (text: string | null) =>
   text === null ? null : createHash('sha256').update(text).digest('hex');
 export interface CheckoutJournalState {

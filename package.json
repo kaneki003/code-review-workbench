@@ -36,6 +36,21 @@
   "contributes": {
     "commands": [
       {
+        "command": "codeReviewWorkbench.enterPullRequestCheckout",
+        "title": "Code Review Workbench: Enter PR Checkout",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "codeReviewWorkbench.exitReview",
+        "title": "Code Review Workbench: Exit Review",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "codeReviewWorkbench.recoverPullRequestCheckout",
+        "title": "Code Review Workbench: Recover PR Checkout",
+        "icon": "$(history)"
+      },
+      {
         "command": "codeReviewWorkbench.checkReadiness",
         "title": "Code Review Workbench: Check Readiness"
       },
@@ -109,6 +124,21 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "codeReviewWorkbench.enterPullRequestCheckout",
+          "when": "view == codeReviewWorkbench.files && !codeReviewWorkbench.checkoutPending",
+          "group": "review@1"
+        },
+        {
+          "command": "codeReviewWorkbench.exitReview",
+          "when": "view == codeReviewWorkbench.files && codeReviewWorkbench.checkoutPending",
+          "group": "review@2"
+        },
+        {
+          "command": "codeReviewWorkbench.recoverPullRequestCheckout",
+          "when": "view == codeReviewWorkbench.files && codeReviewWorkbench.checkoutPending",
+          "group": "review@3"
+        },
         {
           "command": "codeReviewWorkbench.inspectCommittedSource",
           "when": "view == codeReviewWorkbench.files",

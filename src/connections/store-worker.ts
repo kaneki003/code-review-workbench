@@ -49,6 +49,7 @@ import {
 import { StorageFaults } from './storage-diagnostics';
 import {
   CheckoutJournal,
+  checkoutRecoveryApplies,
   validEditorSnapshot,
   type CheckoutJournalState,
 } from './checkout-journal';
@@ -178,12 +179,30 @@ class SharedStore {
     const registry = readRegistry(this.registryPath());
     if (!registry) recovery('Canonical registration is incomplete.');
     const control = readControl(this.controlPath(), registry);
+    const affectedCheckout = checkoutRecoveryApplies(this.rendezvous, this.config.location);
+    if (
+      affectedCheckout &&
+      control.owner &&
+      native.processIdentity(control.owner.process.pid)?.start !== control.owner.process.start
+    )
+      return {
+        view: {
+          status: 'recovery',
+          checkoutPending: true,
+          code: control.pending ? 'OPERATION_PENDING' : 'CHECKOUT_RECOVERY',
+          detail:
+            'This repository retains an interrupted PR checkout. Verify its original GitHub account, then use Recover PR Checkout to continue or restore previous work.',
+        },
+      };
     if (control.phase === 'released')
       return {
         view: {
           status: 'closed',
           root: registry.root,
           detail: 'The shared private store is released. Use Open Private Store to claim it.',
+          ...(checkoutRecoveryApplies(this.rendezvous, this.config.location)
+            ? { checkoutPending: true }
+            : {}),
         },
       };
     return this.busy();
@@ -378,6 +397,9 @@ class SharedStore {
       revision: this.lease.revision,
       scopeId: this.lease.scopeId,
       process: this.control.owner.process,
+      ...(checkoutRecoveryApplies(this.rendezvous, this.config.location)
+        ? { checkoutPending: true }
+        : {}),
       ownerLocation: this.control.owner.location,
     };
     return { view, lease: this.lease };
@@ -614,6 +636,26 @@ class SharedStore {
     }
     if (candidate.account.userId !== this.actor?.userId)
       throw new StoreError('WRONG_ACCOUNT', 'This account does not own the private store.');
+    const checkout = this.checkoutJournal().read(true)?.record;
+    if (checkout && checkout.phase !== 'complete') {
+      if (
+        checkout.scopeId !== this.lease!.scopeId ||
+        checkout.repository.worktree.path !== this.config.location
+      )
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'A prior checkout needs its original verified account/local repository before another review can be selected.',
+        );
+      const selected = this.sourcePlan(checkout.sourceId).candidate.pullRequest;
+      if (
+        selected.number !== candidate.pullRequest.number ||
+        selected.base.repository.id !== candidate.pullRequest.base.repository.id
+      )
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'Exit or recover the current checkout before selecting another PR.',
+        );
+    }
     if (this.control!.pending)
       throw new StoreError(
         'OPERATION_UNAVAILABLE',

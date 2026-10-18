@@ -297,7 +297,7 @@ export class ReviewManager {
         if (!this.connections.editors)
           throw new StoreError('EDITOR_UNAVAILABLE', 'Native editor recovery is unavailable.');
         const ownership = await this.inspectPrivateStore();
-        if (ownership.status === 'recovery') {
+        if (ownership.status === 'recovery' && ownership.code === 'OPERATION_PENDING') {
           const recovered = await this.recoverPrivateStore();
           if (recovered.view.status !== 'closed')
             throw new StoreError(recovered.view.code ?? 'CHECKOUT_RECOVERY', recovered.view.detail);
@@ -524,6 +524,10 @@ export class ReviewManager {
     if (!sameLocalRepository(local, current) || generation !== this.overviewGeneration)
       return staleOverview();
     const actor = { host: resolved.account.host, userId: resolved.account.userId };
+    // Identity was verified by /user even if a pending Git operation prevents
+    // ownership claim. Keep it for explicit original-scope recovery.
+    this.account = actor;
+    this.sourceAuthorized = true;
     const ownership = await this.storeRequest('open', { actor }, generation);
     if (ownership.view.status === 'owned') this.account = actor;
     if (generation !== this.overviewGeneration) return staleOverview();

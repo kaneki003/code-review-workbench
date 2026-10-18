@@ -18,6 +18,7 @@ import type { ReviewCandidate } from './application/pull-request';
 import { createCommittedReview } from './vscode/committed-review';
 import type { CommittedSource } from './application/committed-source';
 import { createCheckoutEditors } from './vscode/checkout-editors';
+import type { CheckoutResult } from './application/checkout-review';
 
 let activeManager: ReviewManager | undefined;
 
@@ -89,10 +90,88 @@ export function activate(context: vscode.ExtensionContext) {
   let lastUrl = '';
   let selectedCandidate: ReviewCandidate | undefined;
   let incompleteSourceId: string | undefined;
+  async function presentCheckout(result: CheckoutResult) {
+    await vscode.commands.executeCommand(
+      'setContext',
+      'codeReviewWorkbench.checkoutPending',
+      result.status !== 'complete' && !!result.review,
+    );
+    if (result.status === 'active' && result.review) {
+      const retained = await manager.readCommittedSource(result.review.sourceId);
+      if (retained.status === 'ready') await committedReview.show(retained.source, manager, true);
+    } else if (result.status === 'complete') committedReview.clear();
+    if (result.status === 'active' || result.status === 'complete')
+      void vscode.window.showInformationMessage(result.detail);
+    else void vscode.window.showWarningMessage(result.detail);
+    return result;
+  }
+  async function recoverCheckout(choice?: 'continue' | 'restore') {
+    if (!lastUrl) {
+      const overview = await vscode.commands.executeCommand(
+        'codeReviewWorkbench.openPullRequestOverview',
+      );
+      if (!overview) return;
+    }
+    const selected =
+      choice ??
+      (await vscode.window.showQuickPick(
+        [
+          { label: 'Continue the saved transition', choice: 'continue' as const },
+          { label: 'Restore my previous work', choice: 'restore' as const },
+        ],
+        {
+          title: 'Recover this repository’s PR checkout',
+          placeHolder: 'Actual Git state will be checked before any switch.',
+        },
+      ));
+    if (!selected) return;
+    const action = typeof selected === 'string' ? selected : selected.choice;
+    return presentCheckout(await manager.recoverPullRequestCheckout(action));
+  }
   context.subscriptions.push(
     panel,
     documents,
     committedReview,
+    vscode.commands.registerCommand('codeReviewWorkbench.enterPullRequestCheckout', async () => {
+      const overview = await vscode.commands.executeCommand(
+        'codeReviewWorkbench.openPullRequestOverview',
+        selectedCandidate?.pullRequest.url || lastUrl || undefined,
+      );
+      if (!overview || !selectedCandidate) return;
+      const saved = await manager.readCheckoutReview();
+      if (saved && saved.phase !== 'complete') return recoverCheckout('continue');
+      const candidate = selectedCandidate;
+      const source = await manager.inspectPullRequestSource(
+        candidate.pullRequest.base.repository.id,
+        candidate.pullRequest.number,
+      );
+      if (source.status !== 'ready') {
+        void vscode.window.showWarningMessage(source.detail);
+        return source;
+      }
+      return vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Entering the exact PR checkout' },
+        async () => presentCheckout(await manager.enterPullRequestCheckout(source.source.id)),
+      );
+    }),
+    vscode.commands.registerCommand('codeReviewWorkbench.exitReview', async () => {
+      if (!lastUrl) {
+        const opened = await vscode.commands.executeCommand(
+          'codeReviewWorkbench.openPullRequestOverview',
+        );
+        if (!opened) return;
+      }
+      return vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Restoring the original checkout and editors',
+        },
+        async () => presentCheckout(await manager.exitPullRequestCheckout()),
+      );
+    }),
+    vscode.commands.registerCommand('codeReviewWorkbench.recoverPullRequestCheckout', () =>
+      recoverCheckout(),
+    ),
     vscode.commands.registerCommand('codeReviewWorkbench.checkReadiness', () => panel.show()),
     vscode.commands.registerCommand('codeReviewWorkbench.openPrivateStore', async () => {
       const view = await manager.openPrivateStore();
@@ -159,6 +238,14 @@ export function activate(context: vscode.ExtensionContext) {
       const candidate = selectedCandidate;
       if (!candidate) return undefined;
       const selected = selection;
+      const active = await manager.readCheckoutReview();
+      if (active && active.phase !== 'complete') {
+        const retained = await manager.readCommittedSource(active.sourceId);
+        if (retained.status === 'ready')
+          await committedReview.show(retained.source, manager, active.phase === 'active');
+        else void vscode.window.showWarningMessage(retained.detail);
+        return retained;
+      }
       const result = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -226,6 +313,16 @@ export function activate(context: vscode.ExtensionContext) {
       manager.fencePullRequestOverview();
     }),
   );
+  void manager.inspectPrivateStore().then(async (view) => {
+    if (!view.checkoutPending) return;
+    await vscode.commands.executeCommand('setContext', 'codeReviewWorkbench.checkoutPending', true);
+    const action = await vscode.window.showInformationMessage(
+      'This repository has a saved PR checkout. Verify the original PR/account, then continue its transition or restore previous work.',
+      'Recover PR Checkout',
+    );
+    if (action)
+      void vscode.commands.executeCommand('codeReviewWorkbench.recoverPullRequestCheckout');
+  });
   return {
     createManager,
     showOverview: (candidate: ReviewCandidate, source?: CommittedSource) =>

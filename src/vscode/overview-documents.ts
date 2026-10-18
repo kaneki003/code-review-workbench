@@ -56,13 +56,14 @@ export function createOverviewDocuments() {
       input: ReviewCandidate,
       isCurrent: () => boolean = () => true,
       source?: CommittedSource,
+      checkedOut = false,
     ) {
       const candidate = normalizeCandidate(input);
       const uri = vscode.Uri.from({
         scheme: 'crw-overview',
         path: `/pull-${candidate.pullRequest.number}-${randomUUID()}.md`,
       });
-      content.set(uri.toString(), createPullRequestOverviewMarkdown(candidate, source));
+      content.set(uri.toString(), createPullRequestOverviewMarkdown(candidate, source, checkedOut));
       const document = await vscode.workspace.openTextDocument(uri);
       if (!isCurrent()) {
         content.delete(uri.toString());
