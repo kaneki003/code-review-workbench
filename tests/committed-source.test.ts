@@ -46,6 +46,9 @@ async function fixture() {
   git('config', 'user.name', 'Fixture');
   git('config', 'user.email', 'fixture@example.test');
   git('config', 'commit.gpgsign', 'false');
+  // The clean-checkout fixture uses exact working-file bytes. Platform/user
+  // line-ending conversion is a separate, currently refused representation.
+  git('config', 'core.autocrlf', 'false');
   await writeFile(join(location, 'worker.ts'), 'export const count = 1;\n');
   await writeFile(join(location, 'delete.py'), 'print("old")\n');
   git('add', '.');
