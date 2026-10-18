@@ -179,7 +179,11 @@ class SharedStore {
     const registry = readRegistry(this.registryPath());
     if (!registry) recovery('Canonical registration is incomplete.');
     const control = readControl(this.controlPath(), registry);
-    const affectedCheckout = checkoutRecoveryApplies(this.rendezvous, this.config.location);
+    const affectedCheckout = checkoutRecoveryApplies(
+      this.rendezvous,
+      this.config.location,
+      Boolean(control.pending),
+    );
     if (
       affectedCheckout &&
       control.owner &&
@@ -200,7 +204,11 @@ class SharedStore {
           status: 'closed',
           root: registry.root,
           detail: 'The shared private store is released. Use Open Private Store to claim it.',
-          ...(checkoutRecoveryApplies(this.rendezvous, this.config.location)
+          ...(checkoutRecoveryApplies(
+            this.rendezvous,
+            this.config.location,
+            Boolean(control.pending),
+          )
             ? { checkoutPending: true }
             : {}),
         },
@@ -397,7 +405,11 @@ class SharedStore {
       revision: this.lease.revision,
       scopeId: this.lease.scopeId,
       process: this.control.owner.process,
-      ...(checkoutRecoveryApplies(this.rendezvous, this.config.location)
+      ...(checkoutRecoveryApplies(
+        this.rendezvous,
+        this.config.location,
+        Boolean(this.control.pending),
+      )
         ? { checkoutPending: true }
         : {}),
       ownerLocation: this.control.owner.location,
@@ -1316,7 +1328,7 @@ class SharedStore {
     this.faults.at(`checkout-${record.phase}.commit.after`);
     return reply;
   }
-  private checkoutAction(request: StoreRequest): StoreReply {
+  private async checkoutAction(request: StoreRequest): Promise<StoreReply> {
     this.validate(request.lease, true);
     if (this.control!.pending)
       throw new StoreError(
@@ -1360,7 +1372,9 @@ class SharedStore {
     if (request.action === 'readCheckout') {
       if (
         !state ||
-        (state.record.phase === 'complete' && state.record.scopeId !== this.lease!.scopeId)
+        (state.record.phase === 'complete' &&
+          (state.record.scopeId !== this.lease!.scopeId ||
+            state.record.repository.worktree.path !== this.config.location))
       )
         return this.owned();
       return { ...this.owned(), checkout: this.checkoutForOwner(state) };
@@ -1377,6 +1391,82 @@ class SharedStore {
     const repository = this.repository();
     const actual = repository.cleanCheckoutState();
     const original = JSON.stringify(actual) === JSON.stringify(record.original);
+    if (request.action === 'cleanupCheckout') {
+      if (record.phase !== 'complete' || !original)
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'Keep artifacts until completed restoration and current clean repository facts agree.',
+        );
+      if (!existsSync(operationFile(this.rendezvous, record.entryId))) {
+        const pin = originalCheckoutRef(record.entryId);
+        return {
+          ...this.owned(),
+          checkout: record,
+          cleanup: { removed: [], retained: repository.refOid(pin) ? [pin] : [] },
+        };
+      }
+      const entry = readOperation(this.rendezvous, record.entryId);
+      if (
+        entry.kind !== 'checkout' ||
+        !entry.checkout?.create ||
+        entry.phase !== 'observed' ||
+        !entry.outcome ||
+        entry.scopeId !== record.scopeId ||
+        entry.facts.worktree !== this.config.location ||
+        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
+          entry.id,
+        )?.record !== JSON.stringify(entry)
+      )
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'Cleanup has no proven-owned entry receipt. Retain all artifacts.',
+        );
+      const cleanup = { removed: [] as string[], retained: [] as string[] };
+      for (const [ref, expected] of [
+        [originalCheckoutRef(record.entryId), record.original.commit],
+        [entry.ref, entry.newOid],
+      ]) {
+        const current = repository.refOid(ref!);
+        if (current === null) continue;
+        if (
+          current !== expected ||
+          (ref!.startsWith('refs/heads/') && !repository.mergedIntoHead(expected!))
+        ) {
+          cleanup.retained.push(ref!);
+          continue;
+        }
+        repository.validateDelete(ref!, expected!);
+        const facts = repository.facts();
+        const deletion: OperationRecord = {
+          protocol: 1,
+          id: randomUUID(),
+          kind: 'delete-ref',
+          phase: 'prepared',
+          storeId: this.lease!.storeId,
+          incarnation: this.lease!.incarnation,
+          scopeId: this.lease!.scopeId,
+          fence: this.lease!.fence,
+          ownerToken: this.lease!.token,
+          ref: ref!,
+          beforeOid: expected!,
+          newOid: expected!,
+          facts,
+          storage: repository.referenceStorage(ref!, facts),
+          child: null,
+        };
+        this.projectOperation(deletion);
+        const result = await this.executeOperation({
+          protocol: 1,
+          id: randomUUID(),
+          action: 'executeOperation',
+          operationId: deletion.id,
+          lease: this.lease!,
+          workspacePath: this.config.location,
+        });
+        (result.operation?.outcome === 'applied' ? cleanup.removed : cleanup.retained).push(ref!);
+      }
+      return { ...this.owned(), checkout: record, cleanup };
+    }
     const entry = () => {
       const operation = readOperation(this.rendezvous, record.entryId);
       if (
@@ -1595,6 +1685,7 @@ class SharedStore {
       );
     const repository = this.repository(record.facts.worktree);
     if (record.kind === 'checkout') repository.validateCheckout(record);
+    if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
     if (
       !repository.sameFacts(record.facts) ||
       !repository.sameReferenceStorage(record) ||
@@ -1610,6 +1701,7 @@ class SharedStore {
       this.projectOperation(record);
       this.validate(this.lease, true);
       if (record.kind === 'checkout') repository.validateCheckout(record);
+      if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record) ||
@@ -1628,6 +1720,7 @@ class SharedStore {
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
+      const expectedAfter = record.kind === 'delete-ref' ? null : record.newOid;
       if (record.kind === 'checkout') {
         const outcome = repository.checkoutOutcome(record);
         if (
@@ -1651,19 +1744,19 @@ class SharedStore {
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record, true) ||
-        (record.kind !== 'fetch' && actual !== record.newOid && actual !== record.beforeOid)
+        (record.kind !== 'fetch' && actual !== expectedAfter && actual !== record.beforeOid)
       )
         recovery(
           'Repository state changed during Git. Preserve the operation and reconcile its actual outcome.',
         );
-      if (status.exitCode !== 0 && actual === record.newOid)
+      if (status.exitCode !== 0 && actual === expectedAfter)
         recovery('Git exit and observed reference disagree; explicit reconciliation is required.');
       return this.projectOperation(
         {
           ...record,
           phase: 'observed',
           outcome:
-            actual === record.newOid
+            actual === expectedAfter
               ? 'applied'
               : actual === record.beforeOid
                 ? 'not-applied'
@@ -1773,6 +1866,7 @@ class SharedStore {
     const repository = this.repository(record.facts.worktree);
     if (record.kind === 'fetch')
       repository.validateFetch(record.ref, record.newOid, record.fetch!.remoteRef);
+    else if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
     else if (record.kind !== 'checkout') repository.validateUpdate(record.ref, record.newOid);
     const checkoutOutcome =
       record.kind === 'checkout' ? repository.checkoutOutcome(record) : undefined;
@@ -1789,11 +1883,12 @@ class SharedStore {
         'Reference storage changed. Preserve its recovery records; no Git command was repeated.',
       );
     const actual = repository.refOid(record.ref);
+    const expectedAfter = record.kind === 'delete-ref' ? null : record.newOid;
     if (
       record.kind !== 'fetch' &&
       record.kind !== 'checkout' &&
       actual !== record.beforeOid &&
-      actual !== record.newOid
+      actual !== expectedAfter
     )
       recovery(
         'The reference has an unexpected value. Preserve it for manual Git recovery; no command was repeated.',
@@ -1802,7 +1897,7 @@ class SharedStore {
       record.phase === 'observed' &&
       (record.kind === 'checkout'
         ? record.outcome !== checkoutOutcome
-        : (record.outcome === 'applied' && actual !== record.newOid) ||
+        : (record.outcome === 'applied' && actual !== expectedAfter) ||
           (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
           (record.kind === 'fetch' &&
             record.observedOid !== undefined &&
@@ -1821,7 +1916,7 @@ class SharedStore {
       record.phase === 'observed'
         ? record.outcome!
         : (checkoutOutcome ??
-          (actual === record.newOid
+          (actual === expectedAfter
             ? 'applied'
             : actual === record.beforeOid
               ? 'not-applied'
@@ -1896,7 +1991,7 @@ class SharedStore {
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
       if (isSourceAction(request.action)) return await this.sourceAction(request);
-      if (isCheckoutAction(request.action)) return this.checkoutAction(request);
+      if (isCheckoutAction(request.action)) return await this.checkoutAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {

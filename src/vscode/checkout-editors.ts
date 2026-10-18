@@ -160,6 +160,7 @@ function views(tab: EditorTab, column: number): EditorView[] {
     .map((editor) => ({
       uri: uriKey(editor.document.uri),
       topLine: editor.visibleRanges[0]?.start.line ?? 0,
+      reversed: editor.selections.map((selection) => selection.isReversed),
       selections: editor.selections.map((selection) => ({
         startLine: selection.start.line,
         startCharacter: selection.start.character,
@@ -220,6 +221,8 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
           for (const tab of group.tabs) {
             await open(tab, group.column, overviews);
             tab.views = views(tab, group.column);
+            const focus = vscode.window.activeTextEditor?.document.uri.toString();
+            if (tab.kind === 'diff' && focus) tab.focus = focus;
             if (tab.kind !== 'markdown-preview' && !tab.views.length)
               failure('The native editor did not expose the tab positions for verified capture.');
           }
@@ -269,18 +272,49 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
                 editor.viewColumn === group.column && uriKey(editor.document.uri) === saved.uri,
             );
             if (!editor) failure('A saved source side is unavailable during editor restoration.');
-            editor!.selections = saved.selections.map(
-              (range) =>
-                new vscode.Selection(
-                  range.startLine,
-                  range.startCharacter,
-                  range.endLine,
-                  range.endCharacter,
-                ),
+            editor!.selections = saved.selections.map((range, index) =>
+              saved.reversed[index]
+                ? new vscode.Selection(
+                    range.endLine,
+                    range.endCharacter,
+                    range.startLine,
+                    range.startCharacter,
+                  )
+                : new vscode.Selection(
+                    range.startLine,
+                    range.startCharacter,
+                    range.endLine,
+                    range.endCharacter,
+                  ),
             );
-            editor!.revealRange(
-              new vscode.Range(saved.topLine, 0, saved.topLine, 0),
-              vscode.TextEditorRevealType.AtTop,
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              const current = editor!.visibleRanges[0]?.start.line ?? 0;
+              if (attempt > 0 && current === saved.topLine) break;
+              const line = Math.min(
+                editor!.document.lineCount - 1,
+                Math.max(0, saved.topLine + (attempt > 0 ? saved.topLine - current : 0)),
+              );
+              editor!.revealRange(
+                new vscode.Range(line, 0, line, 0),
+                vscode.TextEditorRevealType.AtTop,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 30));
+            }
+            if (editor!.visibleRanges[0]?.start.line !== saved.topLine)
+              failure(
+                'The saved editor scroll position did not restore. Retry; Exit is not complete.',
+              );
+          }
+          if (
+            tab.kind === 'diff' &&
+            tab.focus &&
+            vscode.window.activeTextEditor?.document.uri.toString() !== tab.focus
+          ) {
+            await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+            await vscode.commands.executeCommand('diffEditor.switchSide');
+            await waitFor(
+              () => vscode.window.activeTextEditor?.document.uri.toString() === tab.focus,
+              'The original native diff side did not regain focus.',
             );
           }
         }
@@ -297,7 +331,12 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
         const actual = views(active, group.column);
         for (const view of active.views) {
           const restored = actual.find((item) => item.uri === view.uri);
-          if (!restored || JSON.stringify(restored.selections) !== JSON.stringify(view.selections))
+          if (
+            !restored ||
+            restored.topLine !== view.topLine ||
+            JSON.stringify(restored.selections) !== JSON.stringify(view.selections) ||
+            JSON.stringify(restored.reversed) !== JSON.stringify(view.reversed)
+          )
             failure('The saved editor selection did not restore. Retry; Exit is not complete.');
         }
       }

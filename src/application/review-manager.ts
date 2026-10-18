@@ -283,10 +283,19 @@ export class ReviewManager {
         checkoutRevision: review.revision,
       }),
     );
+    const cleanup = await this.storeRequest('cleanupCheckout', {
+      checkoutId: complete.id,
+      checkoutRevision: complete.revision,
+    });
+    if (cleanup.view.status !== 'owned')
+      return {
+        status: 'recovery',
+        detail: `Git and editors were restored. Artifact cleanup needs recovery: ${cleanup.view.detail}`,
+        review: complete,
+      };
     return {
       status: 'complete',
-      detail:
-        'Exit complete: the original branch/commit, clean files and native editor state were verified.',
+      detail: `Exit complete: the original branch/commit, clean files and native editor state were verified.${cleanup.cleanup?.retained.length ? ' Recovery artifacts were retained to keep their unmerged, moved or uncertain commits reachable.' : ''}`,
       review: complete,
     };
   }

@@ -45,7 +45,7 @@ export interface OperationRecord {
   fence: number;
   ownerToken: string;
   scopeId: string;
-  kind: 'update-ref' | 'fetch' | 'checkout';
+  kind: 'update-ref' | 'fetch' | 'checkout' | 'delete-ref';
   fetch?: { url: string; remoteRef: string };
   checkout?: {
     before: CleanCheckoutState;
@@ -100,7 +100,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !uuid(value.ownerToken) ||
     !uuid(value.scopeId) ||
     !sequence(value.fence) ||
-    !['update-ref', 'fetch', 'checkout'].includes(String(value.kind)) ||
+    !['update-ref', 'fetch', 'checkout', 'delete-ref'].includes(String(value.kind)) ||
     (value.kind === 'checkout' &&
       (!object(value.checkout) ||
         !checkoutState(value.checkout.before) ||
@@ -127,7 +127,8 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !text(value.ref, 512) ||
     !oid(value.newOid) ||
     (value.beforeOid !== null && !oid(value.beforeOid)) ||
-    (value.kind !== 'checkout' && value.beforeOid === value.newOid) ||
+    (!['checkout', 'delete-ref'].includes(String(value.kind)) &&
+      value.beforeOid === value.newOid) ||
     !object(value.facts) ||
     !text(value.facts.worktree) ||
     !text(value.facts.commonGitDir) ||
@@ -302,6 +303,7 @@ export class RepositoryOperation {
       record.storage,
       this.referenceStorage(record.ref, record.facts, record.kind === 'checkout'),
       settled,
+      record.kind === 'delete-ref',
     );
   }
   facts(includeIndexCache = true): RepositoryFacts {
@@ -403,6 +405,33 @@ export class RepositoryOperation {
       actual.gitDir === expected.gitDir &&
       actual.index === expected.index
     );
+  }
+  validateDelete(ref: string, commit: string) {
+    if (
+      !/^refs\/(?:heads\/code-review-workbench\/[a-f0-9-]{36}|code-review-workbench\/recovery\/[a-f0-9-]{36}\/original)$/.test(
+        ref,
+      ) ||
+      !oid(commit)
+    )
+      throw new StoreError(
+        'INVALID_OPERATION',
+        'Cleanup requires an exact proven-owned checkout artifact.',
+      );
+    this.git(['check-ref-format', ref]);
+    this.git(['cat-file', '-e', `${commit}^{commit}`]);
+    if (
+      this.git(['worktree', 'list', '--porcelain', '-z'])!
+        .toString()
+        .split('\0')
+        .includes(`branch ${ref}`)
+    )
+      throw new StoreError(
+        'CHECKOUT_INTERFERENCE',
+        'The branch is now in use by a worktree. Keep it reachable.',
+      );
+  }
+  mergedIntoHead(commit: string) {
+    return this.git(['merge-base', '--is-ancestor', commit, 'HEAD'], true) !== null;
   }
   cleanCheckoutState(target?: string): CleanCheckoutState {
     // Refuse configurations whose checkout/status can execute repository-owned
@@ -624,7 +653,9 @@ export class RepositoryOperation {
               record.fetch!.url,
               `${record.fetch!.remoteRef}:${record.ref}`,
             ]
-          : ['update-ref', '--no-deref', '--create-reflog', record.ref, record.newOid, expected];
+          : record.kind === 'delete-ref'
+            ? ['update-ref', '--no-deref', '-d', record.ref, record.beforeOid!]
+            : ['update-ref', '--no-deref', '--create-reflog', record.ref, record.newOid, expected];
     return this.native.prepareChild(
       this.executable,
       [

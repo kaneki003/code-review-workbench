@@ -72,6 +72,7 @@ export function sameReferenceStorage(
   expected: ReferencePath[],
   current: ReferencePath[],
   settled: boolean,
+  removingOwned = false,
 ) {
   return (
     expected.length === current.length &&
@@ -79,6 +80,12 @@ export function sameReferenceStorage(
       const after = current[index]!;
       if (before.path !== after.path || before.kind !== after.kind) return false;
       if (!settled) return before.identity === after.identity;
+      if (
+        removingOwned &&
+        after.identity === null &&
+        /[\\/]refs[\\/](?:heads[\\/])?code-review-workbench(?:[\\/]|$)/.test(before.path)
+      )
+        return true;
       // Git may create missing parents/reflogs and atomically replace the ref.
       // Existing directories and an appended reflog must retain their identity.
       return (

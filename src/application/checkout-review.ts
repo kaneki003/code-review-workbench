@@ -8,6 +8,7 @@ export interface EditorLayout {
 export interface EditorView {
   uri: string;
   selections: SourceRange[];
+  reversed: boolean[];
   topLine: number;
 }
 export interface EditorTab {
@@ -19,6 +20,7 @@ export interface EditorTab {
   pinned: boolean;
   views: EditorView[];
   content?: string;
+  focus?: string;
 }
 export interface EditorSnapshot {
   protocol: 1;
@@ -64,6 +66,7 @@ export const checkoutActions = [
   'finishCheckoutGit',
   'completeCheckout',
   'reconcileCheckout',
+  'cleanupCheckout',
 ] as const;
 export function isCheckoutAction(action: string) {
   return (checkoutActions as readonly string[]).includes(action);

@@ -184,7 +184,11 @@ async function fixture() {
     remoteGit('fetch', location, '+HEAD:refs/pull/20/head');
     remoteGit('update-server-info');
   }
-  async function interruptedInspector(checkoutSourceId?: string) {
+  async function interruptedInspector(
+    checkoutSourceId?: string,
+    lifecycleFault?: string,
+    stage?: 'exit',
+  ) {
     const script = join(directory, 'source-process.cjs');
     await build({
       entryPoints: ['tests/fixtures/source-process.ts'],
@@ -207,6 +211,7 @@ async function fixture() {
         }),
         JSON.stringify(pullRequest),
         ...(checkoutSourceId ? [checkoutSourceId] : []),
+        ...(lifecycleFault ? [lifecycleFault, ...(stage ? [stage] : [])] : []),
       ],
       { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
     );
@@ -273,6 +278,13 @@ test(
     expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
     expect(restored).toEqual(original);
     expect((await manager.readCheckoutReview())?.phase).toBe('complete');
+    expect(
+      context.git(
+        'for-each-ref',
+        '--format=%(refname)',
+        `refs/code-review-workbench/recovery/${entered.review!.entryId}/original`,
+      ),
+    ).toBe('');
     await manager.releasePrivateStore();
   },
   integrationTimeout,
@@ -357,6 +369,86 @@ test(
       ),
     ).toBe('');
     await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'interrupted Active publication reconciles independent intent and actual checkout before resuming',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const first = context.manager();
+    await first.openPullRequestOverview(context.pullRequest.url);
+    const source = await first.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    await first.dispose();
+    const { child, result } = await context.interruptedInspector(
+      source.source.id,
+      'checkout-active.record.after',
+    );
+    expect(result.result).toMatchObject({ status: 'recovery' });
+    const exited = once(child, 'exit');
+    child.kill('SIGKILL');
+    await exited;
+    const snapshot = {
+      protocol: 1 as const,
+      workspace: context.location,
+      layout: { groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    };
+    const recovered = context.manager(undefined, undefined, {
+      capture: async () => snapshot,
+      assertSaved() {},
+      restore: async () => {},
+    });
+    expect((await recovered.inspectPrivateStore()).checkoutPending).toBe(true);
+    const resumed = await recovered.recoverPullRequestCheckout('continue');
+    expect(resumed, JSON.stringify(resumed)).toMatchObject({ status: 'active' });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    expect(await recovered.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    await recovered.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'interrupted editor-restoration publication finishes from actual original Git without repeating checkout',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const first = context.manager();
+    await first.openPullRequestOverview(context.pullRequest.url);
+    const source = await first.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    await first.dispose();
+    const { child, result } = await context.interruptedInspector(
+      source.source.id,
+      'checkout-restoring-editors.record.after',
+      'exit',
+    );
+    expect(result.result).toMatchObject({ status: 'recovery' });
+    const exited = once(child, 'exit');
+    child.kill('SIGKILL');
+    await exited;
+    const before = context.git('reflog', 'show', '--format=%gs', 'HEAD');
+    const snapshot = {
+      protocol: 1 as const,
+      workspace: context.location,
+      layout: { groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    };
+    const recovered = context.manager(undefined, undefined, {
+      capture: async () => snapshot,
+      assertSaved() {},
+      restore: async () => {},
+    });
+    const restored = await recovered.recoverPullRequestCheckout('restore');
+    expect(restored, JSON.stringify(restored)).toMatchObject({ status: 'complete' });
+    expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(before);
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    await recovered.releasePrivateStore();
   },
   integrationTimeout,
 );

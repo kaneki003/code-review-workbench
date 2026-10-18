@@ -645,6 +645,12 @@ suite('Installed readiness VSIX', () => {
       // its actual native editor adapter, after the no-switch assertions above.
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       git(['config', 'core.autocrlf', 'false']);
+      await writeFile(
+        join(location, 'view.txt'),
+        Array.from({ length: 400 }, (_, index) => `line ${index}: original editor position`).join(
+          '\n',
+        ),
+      );
       git(['add', '.']);
       git([
         '-c',
@@ -659,12 +665,25 @@ suite('Installed readiness VSIX', () => {
       ]);
       const priorBranch = git(['symbolic-ref', 'HEAD']);
       const priorCommit = git(['rev-parse', 'HEAD']);
-      const priorUri = vscode.Uri.file(join(location, 'fixture.txt'));
+      const priorUri = vscode.Uri.file(join(location, 'view.txt'));
       const priorEditor = await vscode.window.showTextDocument(priorUri, {
         preview: false,
         viewColumn: vscode.ViewColumn.One,
       });
-      priorEditor.selection = new vscode.Selection(0, 2, 0, 5);
+      const priorSelections = [
+        new vscode.Selection(150, 5, 149, 2),
+        new vscode.Selection(155, 0, 155, 2),
+      ];
+      priorEditor.selections = priorSelections;
+      priorEditor.revealRange(new vscode.Range(120, 0, 120, 0), vscode.TextEditorRevealType.AtTop);
+      const positionDeadline = Date.now() + 5000;
+      while ((priorEditor.visibleRanges[0]?.start.line ?? 0) < 50) {
+        if (Date.now() > positionDeadline)
+          throw new Error('Native source did not scroll to the original position');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await vscode.commands.executeCommand('workbench.action.pinEditor');
+      const priorTop = priorEditor.visibleRanges[0]!.start.line;
       const otherUri = vscode.Uri.file(join(location, 'untracked.txt'));
       await vscode.window.showTextDocument(otherUri, {
         preview: false,
@@ -697,7 +716,8 @@ suite('Installed readiness VSIX', () => {
       const restoredPrior = vscode.window.visibleTextEditors.find(
         (editor) => editor.document.uri.toString() === priorUri.toString(),
       )!;
-      assert.deepEqual(restoredPrior.selection, new vscode.Selection(0, 2, 0, 5));
+      assert.deepEqual(restoredPrior.selections, priorSelections);
+      assert.equal(restoredPrior.visibleRanges[0]?.start.line, priorTop);
       assert.equal((await manager.releasePrivateStore()).status, 'closed');
     } finally {
       await diffConfiguration.update(

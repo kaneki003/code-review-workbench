@@ -60,6 +60,9 @@ export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
               text(view.uri, 8192) &&
               sequence(view.topLine) &&
               Array.isArray(view.selections) &&
+              Array.isArray(view.reversed) &&
+              view.reversed.length === view.selections.length &&
+              view.reversed.every((flag) => typeof flag === 'boolean') &&
               view.selections.length > 0 &&
               view.selections.length <= 100 &&
               view.selections.every(validRange),
@@ -96,13 +99,21 @@ function validReview(value: unknown): value is CheckoutReview {
     value.editors.workspace === value.repository.worktree.path
   );
 }
-export function checkoutRecoveryApplies(directory: string, location: string): boolean {
+export function checkoutRecoveryApplies(
+  directory: string,
+  location: string,
+  includeCompleted = false,
+): boolean {
   const raw = readRecord(join(directory, 'checkout-review.json'), true);
   if (raw === undefined) return false;
   if (!object(raw) || !validReview(raw.record))
     recovery('The checkout recovery journal is malformed.');
   const record = raw.record;
-  if (record.phase === 'complete' || record.repository.worktree.path !== location) return false;
+  if (
+    (!includeCompleted && record.phase === 'complete') ||
+    record.repository.worktree.path !== location
+  )
+    return false;
   const actual = statSync(location, { bigint: true });
   return (
     String(actual.dev) === record.repository.worktree.device &&

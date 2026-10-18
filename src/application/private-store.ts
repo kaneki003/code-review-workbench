@@ -65,6 +65,7 @@ export interface StoreRequest {
     | 'finishCheckoutGit'
     | 'completeCheckout'
     | 'reconcileCheckout'
+    | 'cleanupCheckout'
     | 'executeOperation'
     | 'recover'
     | 'inspectOperation'
@@ -110,6 +111,7 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  cleanup?: { removed: string[]; retained: string[] };
   checkout?: CheckoutReview;
   sourceId?: string;
   sourcePlan?: SourcePlan;
