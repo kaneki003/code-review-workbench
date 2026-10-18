@@ -1161,8 +1161,9 @@ test('GitHub accounts have stable separate scopes and share the same OS-user exc
   expect(await first.releasePrivateStore()).toMatchObject({ status: 'closed' });
 });
 
-async function waitForFile(path: string) {
-  for (let attempt = 0; attempt < 100; attempt++) {
+async function waitForFile(path: string, timeoutMs = 2500) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
     try {
       return await readFile(path, 'utf8');
     } catch (error) {
@@ -1173,45 +1174,52 @@ async function waitForFile(path: string) {
   throw new Error(`Timed out waiting for ${path}`);
 }
 
-test('an acknowledged intent survives host death and a live fixture child; no takeover after it finishes', async () => {
-  const context = await fixture();
-  const repository = join(context.directory, 'repository');
-  await mkdir(repository);
-  execFileSync('git', ['init', repository]);
-  await writeFile(
-    join(repository, 'child.cjs'),
-    `
+test.each([1500, 3500])(
+  'an acknowledged intent survives host death and a live fixture child finishing after %i ms; no takeover after it finishes',
+  async (childDelay) => {
+    const context = await fixture();
+    const repository = join(context.directory, 'repository');
+    await mkdir(repository);
+    execFileSync('git', ['init', repository]);
+    await writeFile(
+      join(repository, 'child.cjs'),
+      `
     const fs = require('node:fs');
     fs.writeFileSync('child-started', String(process.pid));
     setTimeout(() => {
       require('node:child_process').execFileSync('git', ['config', '--local', 'crw.child', 'survived']);
       fs.writeFileSync('child-done', 'done');
-    }, 1500);
+    }, ${childDelay});
   `,
-  );
-  const owner = await context.contender('repository');
-  expect(await owner.send('open')).toMatchObject({ status: 'owned' });
-  expect(await owner.send('reserve-child')).toMatchObject({
-    status: 'recovery',
-    code: 'OPERATION_PENDING',
-  });
-  await waitForFile(join(repository, 'child-started'));
-  const exited = once(owner.child, 'exit');
-  owner.child.kill('SIGKILL');
-  await exited;
-  const next = context.manager('second');
-  expect(await next.openPrivateStore()).toMatchObject({
-    status: 'recovery',
-    code: 'RECOVERY_REQUIRED',
-  });
-  await waitForFile(join(repository, 'child-done'));
-  expect(
-    execFileSync('git', ['-C', repository, 'config', '--local', 'crw.child'], {
-      encoding: 'utf8',
-    }).trim(),
-  ).toBe('survived');
-  expect(await context.manager('third').openPrivateStore()).toMatchObject({ status: 'recovery' });
-});
+    );
+    const owner = await context.contender('repository');
+    expect(await owner.send('open')).toMatchObject({ status: 'owned' });
+    expect(await owner.send('reserve-child')).toMatchObject({
+      status: 'recovery',
+      code: 'OPERATION_PENDING',
+    });
+    await waitForFile(join(repository, 'child-started'));
+    const exited = once(owner.child, 'exit');
+    owner.child.kill('SIGKILL');
+    await exited;
+    const next = context.manager('second');
+    expect(await next.openPrivateStore()).toMatchObject({
+      status: 'recovery',
+      code: 'RECOVERY_REQUIRED',
+    });
+    // This child intentionally outlives its host and then launches Git. A busy
+    // Windows runner can need more than the generic 2.5s file-marker budget.
+    // Bound fixture completion separately from production ownership deadlines.
+    await waitForFile(join(repository, 'child-done'), 10_000);
+    expect(
+      execFileSync('git', ['-C', repository, 'config', '--local', 'crw.child'], {
+        encoding: 'utf8',
+      }).trim(),
+    ).toBe('survived');
+    expect(await context.manager('third').openPrivateStore()).toMatchObject({ status: 'recovery' });
+  },
+  integrationTimeout,
+);
 
 test('orphan registration, corrupt database and newer protocol are preserved for recovery', async () => {
   const orphan = await fixture();
