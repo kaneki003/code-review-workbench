@@ -111,28 +111,32 @@ async function waitFor(action: () => boolean, detail: string) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+async function focusGroup(column: number) {
+  const ordinal = [
+    'First',
+    'Second',
+    'Third',
+    'Fourth',
+    'Fifth',
+    'Sixth',
+    'Seventh',
+    'Eighth',
+    'Ninth',
+  ][column - 1];
+  if (!ordinal) return failure('The saved editor group is outside the supported native layout.');
+  await vscode.commands.executeCommand(`workbench.action.focus${ordinal}EditorGroup`);
+  await waitFor(
+    () => vscode.window.tabGroups.activeTabGroup.viewColumn === column,
+    'The host could not focus the saved editor group.',
+  );
+}
 async function open(tab: EditorTab, column: number, overviews?: Overviews) {
   if (tab.content !== undefined) overviews?.retain(tab.uri, tab.content);
   const existing = vscode.window.tabGroups.all.find((group) => group.viewColumn === column);
   if (
     existing?.tabs.some((candidate) => identity(describe(candidate, overviews)) === identity(tab))
   ) {
-    const ordinal = [
-      'First',
-      'Second',
-      'Third',
-      'Fourth',
-      'Fifth',
-      'Sixth',
-      'Seventh',
-      'Eighth',
-      'Ninth',
-    ][column - 1];
-    await vscode.commands.executeCommand(`workbench.action.focus${ordinal}EditorGroup`);
-    await waitFor(
-      () => vscode.window.tabGroups.activeTabGroup.viewColumn === column,
-      'The host could not focus the saved editor group.',
-    );
+    await focusGroup(column);
     for (let attempt = 0; attempt <= existing.tabs.length; attempt += 1) {
       const current = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (current && identity(describe(current, overviews)) === identity(tab)) return;
@@ -236,20 +240,7 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
     for (const group of order) {
       const tab = group.tabs.find((tab) => tab.active);
       if (tab) await open(tab, group.column, overviews);
-      else if (group.active) {
-        const ordinal = [
-          'First',
-          'Second',
-          'Third',
-          'Fourth',
-          'Fifth',
-          'Sixth',
-          'Seventh',
-          'Eighth',
-          'Ninth',
-        ][group.column - 1];
-        await vscode.commands.executeCommand(`workbench.action.focus${ordinal}EditorGroup`);
-      }
+      else if (group.active) await focusGroup(group.column);
     }
   }
   return {

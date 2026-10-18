@@ -226,8 +226,7 @@ export class ReviewManager {
     });
   }
   private async exitCheckout(review: CheckoutReview): Promise<CheckoutResult> {
-    if (review.phase === 'complete')
-      return { status: 'complete', detail: 'The recorded Exit is complete.', review };
+    if (review.phase === 'complete') return this.cleanupCheckout(review);
     if (!this.connections.editors)
       throw new StoreError(
         'EDITOR_UNAVAILABLE',
@@ -283,6 +282,9 @@ export class ReviewManager {
         checkoutRevision: review.revision,
       }),
     );
+    return this.cleanupCheckout(complete);
+  }
+  private async cleanupCheckout(complete: CheckoutReview): Promise<CheckoutResult> {
     const cleanup = await this.storeRequest('cleanupCheckout', {
       checkoutId: complete.id,
       checkoutRevision: complete.revision,
@@ -318,8 +320,7 @@ export class ReviewManager {
           await this.storeRequest('reconcileCheckout', { checkoutChoice: choice }),
         );
         await this.connections.editors.capture();
-        if (review.phase === 'complete')
-          return { status: 'complete', detail: 'The recorded Exit is complete.', review };
+        if (review.phase === 'complete') return await this.cleanupCheckout(review);
         if (review.phase === 'restoring-editors') return await this.restoreCheckoutEditors(review);
         if (review.phase === 'entering') return await this.continueCheckoutEntry(review);
         if (review.phase === 'exiting') return await this.continueCheckoutExit(review);

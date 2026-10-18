@@ -1532,6 +1532,11 @@ class SharedStore {
         if (record.phase === 'complete' && state!.agrees)
           return { ...this.owned(), checkout: record };
         if (original) {
+          if (request.checkoutChoice === 'continue' && record.phase === 'active')
+            throw new StoreError(
+              'CHECKOUT_INTERFERENCE',
+              'The original checkout is present, but no Exit was recorded. Choose Restore to restore the saved editors and finish Exit, or keep the recovery record while inspecting manual changes.',
+            );
           if (request.checkoutChoice === 'continue' && record.phase === 'entering') {
             next.entryId = randomUUID();
             next.phase = 'entering';

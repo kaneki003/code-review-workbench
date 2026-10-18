@@ -23,6 +23,8 @@ Recovery inspects the actual branch, commit, index/files and operation receipts.
 
 A failed editor restoration retains its snapshot and the restoring-editors phase. After reconnecting the original account, retry restoration without another checkout. Older source remains identified by its exact committed revision; this ticket does not add active Source Sync.
 
+If someone manually returns an Active review to its original clean checkout, Continue keeps the recovery record and asks for explicit Restore before restoring editors. An interruption after completion but before artifact cleanup resumes cleanup through Recover or repeated Exit, without repeating Git or editor restoration.
+
 ## Walk through the implementation
 
 1. **Manager actions.** [ReviewManager](../../src/application/review-manager.ts) serializes Enter, Exit and recovery independently of view lifetime. Host bindings in [extension.ts](../../src/extension.ts) register commands and repository-scoped notices. Presentation generations prevent stale command results from reopening views after a later action. View/menu state does not authorize Git.
@@ -55,4 +57,4 @@ pnpm test:host
 CRW_VSCODE_VERSION=1.141.2 pnpm test:host
 ```
 
-See the [review record](clean-checkout-review.md) and PR checks for current findings and exact platform evidence. Initial checkpoint evidence remains historical; full implementation and final matrix evidence are recorded as validation completes.
+See the [review record](clean-checkout-review.md) and PR checks for final findings and platform evidence.

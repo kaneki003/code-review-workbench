@@ -293,6 +293,49 @@ test(
 );
 
 test(
+  'manual return to the original checkout requires explicit restoration rather than Continue completing Exit',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const snapshot = {
+      protocol: 1 as const,
+      workspace: context.location,
+      layout: { groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    };
+    let restores = 0;
+    const manager = context.manager(undefined, undefined, {
+      capture: async () => snapshot,
+      assertSaved() {},
+      restore: async () => {
+        restores += 1;
+      },
+    });
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    expect(await manager.enterPullRequestCheckout(source.source.id)).toMatchObject({
+      status: 'active',
+    });
+    context.git('checkout', 'prior-work');
+    const before = context.git('reflog', 'show', '--format=%gs', 'HEAD');
+    expect(await manager.recoverPullRequestCheckout('continue')).toMatchObject({
+      status: 'blocked',
+      detail: expect.stringMatching(/original.*Restore/i),
+    });
+    expect((await manager.readCheckoutReview())?.phase).toBe('active');
+    expect(restores).toBe(0);
+    expect(await manager.recoverPullRequestCheckout('restore')).toMatchObject({
+      status: 'complete',
+    });
+    expect(restores).toBe(1);
+    expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(before);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
   'failed host restoration retains recovery across restart and retries editors without another checkout',
   async () => {
     const context = await fixture();
@@ -422,12 +465,13 @@ test.each([
 );
 
 test.each([
-  { boundary: 'checkout-restoring-editors.record.after', mode: 'error' as const },
-  { boundary: 'checkout-complete.record.after', mode: 'error' as const },
-  { boundary: 'checkout-complete.commit.after', mode: 'crash' as const },
+  { boundary: 'checkout-restoring-editors.record.after', mode: 'error' as const, retryExit: false },
+  { boundary: 'checkout-complete.record.after', mode: 'error' as const, retryExit: false },
+  { boundary: 'checkout-complete.commit.after', mode: 'crash' as const, retryExit: false },
+  { boundary: 'checkout-complete.commit.after', mode: 'crash' as const, retryExit: true },
 ])(
-  'interrupted editor-restoration publication at $boundary finishes without repeating checkout',
-  async ({ boundary, mode }) => {
+  'interrupted editor-restoration publication at $boundary (retry Exit: $retryExit) finishes without repeating checkout',
+  async ({ boundary, mode, retryExit }) => {
     const context = await fixture();
     context.git('checkout', '-b', 'prior-work', context.base);
     const first = context.manager();
@@ -457,10 +501,16 @@ test.each([
       assertSaved() {},
       restore: async () => {},
     });
-    const restored = await recovered.recoverPullRequestCheckout('restore');
+    if (retryExit) await recovered.openPrivateStore();
+    const restored = retryExit
+      ? await recovered.exitPullRequestCheckout()
+      : await recovered.recoverPullRequestCheckout('restore');
     expect(restored, JSON.stringify(restored)).toMatchObject({ status: 'complete' });
     expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(before);
     expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    expect(
+      context.git('for-each-ref', '--format=%(refname)', 'refs/code-review-workbench/recovery/'),
+    ).toBe('');
     await recovered.releasePrivateStore();
   },
   integrationTimeout,
