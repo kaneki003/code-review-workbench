@@ -37,6 +37,9 @@ export class DraftWriter {
   private opening = 0;
   private readonly listeners = new Set<() => void>();
   constructor(private readonly storage: DraftWriterStorage) {}
+  get authorized() {
+    return Boolean(this.storage.authority());
+  }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -197,6 +200,10 @@ export class DraftWriter {
             : 'The draft did not save. Keep the input and Retry.';
       } finally {
         state.inFlight = undefined;
+        if (state.discarding) {
+          state.status = 'discarding';
+          state.detail = 'Discarding local draft…';
+        }
         this.changed();
         if (
           !state.closing &&

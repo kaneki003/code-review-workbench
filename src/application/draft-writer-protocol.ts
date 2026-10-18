@@ -46,6 +46,7 @@ export class DraftWriterProtocol {
       instanceId,
       sequence: ++this.sequence,
       reset,
+      fenced: !this.writer.authorized,
       ...(state ? { state } : {}),
       ...(this.problem ? { problem: this.problem } : {}),
     };

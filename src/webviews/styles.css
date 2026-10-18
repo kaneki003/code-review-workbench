@@ -32,3 +32,185 @@ button:focus-visible {
 p {
   line-height: 1.5;
 }
+
+.draft-writer {
+  box-sizing: border-box;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  font-family: Inter, var(--vscode-font-family);
+}
+.draft-writer *,
+.draft-writer *::before,
+.draft-writer *::after {
+  box-sizing: border-box;
+}
+.draft-writer button {
+  color: var(--vscode-foreground);
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-contrastBorder, var(--vscode-panel-border));
+  border-radius: 5px;
+  padding: 5px 10px;
+}
+.draft-writer button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.draft-writer button:hover:enabled {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+.draft-writer textarea:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+.draft-target {
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.draft-target > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.draft-tag {
+  color: var(--vscode-textLink-foreground);
+  border: 1px solid var(--vscode-contrastBorder, var(--vscode-textLink-foreground));
+  border-radius: 12px;
+  padding: 1px 7px;
+  font-size: 0.85em;
+}
+.draft-location {
+  margin-top: 5px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+.draft-location code {
+  font-family: 'JetBrains Mono', var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+.draft-composer {
+  border: 1px solid var(--vscode-contrastBorder, var(--vscode-panel-border));
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+.draft-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 0;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+}
+.draft-tabs > button {
+  border-color: transparent;
+  border-radius: 5px 5px 0 0;
+  background: transparent;
+  padding: 7px 12px;
+}
+.draft-tabs > button[aria-selected='true'] {
+  border-color: var(--vscode-contrastBorder, var(--vscode-panel-border));
+  border-bottom-color: var(--vscode-editor-background);
+  background: var(--vscode-editor-background);
+  margin-bottom: -1px;
+}
+.draft-formatting {
+  display: flex;
+  margin-left: auto;
+  gap: 3px;
+  padding-bottom: 4px;
+}
+.draft-formatting button {
+  background: transparent;
+  border-color: transparent;
+  padding: 3px 8px;
+}
+.draft-writer textarea {
+  display: block;
+  width: 100%;
+  min-height: 105px;
+  resize: vertical;
+  border: 0;
+  border-radius: 0;
+  padding: 12px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  font: inherit;
+  line-height: 1.5;
+}
+.draft-writer textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+.draft-editor-note {
+  color: var(--vscode-descriptionForeground);
+  border-top: 1px solid var(--vscode-panel-border);
+  padding: 5px 12px;
+  font-size: 0.85em;
+}
+.draft-preview {
+  min-height: 105px;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+.draft-preview > :first-child {
+  margin-top: 0;
+}
+.draft-preview pre {
+  white-space: pre-wrap;
+  background: var(--vscode-textCodeBlock-background);
+  padding: 8px;
+}
+.draft-preview a {
+  color: var(--vscode-textLink-foreground);
+}
+.draft-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+#draft-private-note {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  margin-top: 3px;
+}
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.draft-writer .draft-primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+.draft-writer .draft-discard {
+  color: var(--vscode-errorForeground);
+  background: transparent;
+}
+.draft-error {
+  color: var(--vscode-errorForeground);
+  overflow-wrap: anywhere;
+}
+.draft-recovery {
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-contrastBorder));
+  padding: 10px;
+  margin-bottom: 12px;
+}
+@media (max-width: 500px) {
+  .draft-writer {
+    padding: 10px;
+  }
+  .draft-footer {
+    align-items: stretch;
+  }
+  .draft-actions {
+    width: 100%;
+  }
+  .draft-formatting button {
+    padding: 3px 5px;
+  }
+}

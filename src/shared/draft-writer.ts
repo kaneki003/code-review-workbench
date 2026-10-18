@@ -13,6 +13,7 @@ export interface DraftSnapshot {
   instanceId: string;
   sequence: number;
   reset: boolean;
+  fenced: boolean;
   state?: DraftWriterProjection;
   problem?: string;
 }
@@ -336,12 +337,14 @@ export function isDraftSnapshot(value: unknown): value is DraftSnapshot {
   if (
     !record(value) ||
     Object.keys(value).some(
-      (key) => !['version', 'instanceId', 'sequence', 'reset', 'state', 'problem'].includes(key),
+      (key) =>
+        !['version', 'instanceId', 'sequence', 'reset', 'fenced', 'state', 'problem'].includes(key),
     ) ||
     value.version !== 1 ||
     !identifier(value.instanceId) ||
     !sequence(value.sequence, 1) ||
     typeof value.reset !== 'boolean' ||
+    typeof value.fenced !== 'boolean' ||
     (value.problem !== undefined &&
       (typeof value.problem !== 'string' || value.problem.length > 4096))
   )
