@@ -55,8 +55,10 @@ export class ReviewManager {
   private storeQueue: Promise<unknown> = Promise.resolve();
   private overviewGeneration = 0;
   private account: Pick<GitHubAccount, 'host' | 'userId'> | undefined;
+  private sourceAuthorized: boolean;
   constructor(private readonly connections: ReviewConnections) {
     this.account = connections.account;
+    this.sourceAuthorized = Boolean(connections.account);
   }
   async dispose(): Promise<void> {
     try {
@@ -101,6 +103,7 @@ export class ReviewManager {
   }
 
   fencePullRequestOverview(): void {
+    this.sourceAuthorized = false;
     this.overviewGeneration += 1;
     this.connections.github?.sessionChanged();
   }
@@ -197,6 +200,15 @@ export class ReviewManager {
     });
     if (!reply.navigation)
       throw new StoreError(reply.view.code ?? 'NAVIGATION_FAILED', reply.view.detail);
+    return reply.navigation;
+  }
+  async validateSourceNavigation(navigation: SourceNavigation): Promise<SourceNavigation> {
+    const reply = await this.storeRequest('validateNavigation', {
+      sourceId: navigation.anchor.sourceId,
+      navigation,
+    });
+    if (!reply.navigation)
+      throw new StoreError(reply.view.code ?? 'RANGE_UNAVAILABLE', reply.view.detail);
     return reply.navigation;
   }
   async readSourceNavigation(): Promise<SourceNavigation | undefined> {
@@ -326,6 +338,7 @@ export class ReviewManager {
     if (saved.view.status !== 'owned' || !saved.candidate) {
       return { status: 'blocked', detail: saved.view.detail };
     }
+    this.sourceAuthorized = true;
     return { status: 'ready', ...saved.candidate };
   }
 
@@ -354,6 +367,28 @@ export class ReviewManager {
     overviewGeneration?: number,
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
+      if (
+        [
+          'prepareSource',
+          'prepareSourceFetch',
+          'publishSource',
+          'readSource',
+          'readCommittedFile',
+          'setReviewed',
+          'readReviewed',
+          'saveNavigation',
+          'validateNavigation',
+          'readNavigation',
+        ].includes(action) &&
+        !this.sourceAuthorized
+      )
+        return {
+          view: {
+            status: 'blocked',
+            detail:
+              'Reopen the PR overview to verify its original GitHub account before inspecting saved source or progress.',
+          },
+        };
       if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
         return {
           view: {

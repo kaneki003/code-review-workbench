@@ -988,7 +988,7 @@ class SharedStore {
     if (request.action === 'readSource') return { ...this.owned(), source };
     if (request.action === 'readReviewed')
       return { ...this.owned(), reviewed: this.sourceMarks(source) };
-    if (request.action === 'saveNavigation') {
+    if (request.action === 'saveNavigation' || request.action === 'validateNavigation') {
       const nav = request.navigation;
       if (
         !nav ||
@@ -1035,7 +1035,9 @@ class SharedStore {
         focus: nav.focus,
         column: nav.column,
       };
-      return this.saveSourceReply(request, { navigation });
+      return request.action === 'validateNavigation'
+        ? { ...this.owned(), navigation }
+        : this.saveSourceReply(request, { navigation });
     }
     const file = source.files.find((file) => file.id === request.fileId);
     if (!file)
@@ -1436,6 +1438,7 @@ class SharedStore {
         'setReviewed',
         'readReviewed',
         'saveNavigation',
+        'validateNavigation',
         'readNavigation',
       ].includes(String(message.action))
     )
@@ -1484,6 +1487,7 @@ class SharedStore {
           'setReviewed',
           'readReviewed',
           'saveNavigation',
+          'validateNavigation',
           'readNavigation',
         ].includes(request.action)
       )

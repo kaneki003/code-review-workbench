@@ -15,6 +15,8 @@ import { createGitHubConnection } from './connections/github';
 import { createLocalRepositoryConnection } from './connections/local-repository';
 import { createOverviewDocuments } from './vscode/overview-documents';
 import type { ReviewCandidate } from './application/pull-request';
+import { createCommittedReview } from './vscode/committed-review';
+import type { CommittedSource } from './application/committed-source';
 
 let activeManager: ReviewManager | undefined;
 
@@ -80,11 +82,15 @@ export function activate(context: vscode.ExtensionContext) {
   activeManager = manager;
   const panel = createReadinessPanel(context.extensionUri, () => manager.checkReadiness());
   const documents = createOverviewDocuments();
+  const committedReview = createCommittedReview(manager);
   let selection = 0;
   let lastUrl = '';
+  let selectedCandidate: ReviewCandidate | undefined;
+  let incompleteSourceId: string | undefined;
   context.subscriptions.push(
     panel,
     documents,
+    committedReview,
     vscode.commands.registerCommand('codeReviewWorkbench.checkReadiness', () => panel.show()),
     vscode.commands.registerCommand('codeReviewWorkbench.openPrivateStore', async () => {
       const view = await manager.openPrivateStore();
@@ -93,6 +99,8 @@ export function activate(context: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.releasePrivateStore', async () => {
       selection += 1;
+      selectedCandidate = undefined;
+      committedReview.clear();
       manager.fencePullRequestOverview();
       const view = await manager.releasePrivateStore();
       void vscode.window.showInformationMessage(view.detail);
@@ -107,6 +115,8 @@ export function activate(context: vscode.ExtensionContext) {
       'codeReviewWorkbench.openPullRequestOverview',
       async (providedUrl?: unknown) => {
         const selected = ++selection;
+        selectedCandidate = undefined;
+        committedReview.clear();
         manager.fencePullRequestOverview();
         const url =
           typeof providedUrl === 'string'
@@ -137,12 +147,61 @@ export function activate(context: vscode.ExtensionContext) {
           return overview;
         }
         await documents.show(overview, () => selected === selection);
+        if (selected === selection) selectedCandidate = overview;
         return overview;
       },
     ),
+    vscode.commands.registerCommand('codeReviewWorkbench.inspectCommittedSource', async () => {
+      if (!selectedCandidate)
+        await vscode.commands.executeCommand('codeReviewWorkbench.openPullRequestOverview');
+      const candidate = selectedCandidate;
+      if (!candidate) return undefined;
+      const selected = selection;
+      const result = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Fetching and comparing committed PR source (no branch switch)',
+        },
+        () =>
+          manager.inspectPullRequestSource(
+            candidate.pullRequest.base.repository.id,
+            candidate.pullRequest.number,
+          ),
+      );
+      if (selected !== selection) return result;
+      if (result.status !== 'ready') {
+        incompleteSourceId = result.sourceId;
+        void vscode.window.showWarningMessage(result.detail);
+        return result;
+      }
+      incompleteSourceId = undefined;
+      await committedReview.show(result.source);
+      await documents.show(candidate, () => selected === selection, result.source);
+      return result;
+    }),
+    vscode.commands.registerCommand('codeReviewWorkbench.reconcileCommittedSource', async () => {
+      const sourceId =
+        incompleteSourceId ??
+        (await vscode.window.showInputBox({
+          title: 'Reconcile interrupted source publication',
+          prompt: 'Source identity from the interrupted inspection (Git will not be repeated)',
+        }));
+      if (!sourceId) return;
+      const selected = selection;
+      const result = await manager.publishCommittedSource(sourceId);
+      if (selected !== selection) return result;
+      if (result.status === 'ready') {
+        incompleteSourceId = undefined;
+        await committedReview.show(result.source);
+        await documents.show(result.source.candidate, () => selected === selection, result.source);
+      } else void vscode.window.showWarningMessage(result.detail);
+      return result;
+    }),
     vscode.authentication.onDidChangeSessions((event) => {
       if (event.provider.id !== 'github') return;
       if (manager.handleGitHubSessionChange(requestingSession)) {
+        selectedCandidate = undefined;
+        committedReview.clear();
         const changed = ++selection;
         void vscode.window
           .showWarningMessage(
@@ -159,13 +218,18 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      selectedCandidate = undefined;
+      committedReview.clear();
       selection += 1;
       manager.fencePullRequestOverview();
     }),
   );
   return {
     createManager,
-    showOverview: (candidate: ReviewCandidate) => documents.show(candidate),
+    showOverview: (candidate: ReviewCandidate, source?: CommittedSource) =>
+      documents.show(candidate, () => true, source),
+    showCommittedSource: (source: CommittedSource, owner: ReviewManager) =>
+      committedReview.show(source, owner),
     // A silent probe proves routing to the built-in provider without triggering
     // interactive login in an unattended host fixture.
     probeGitHubSignIn: async () => ({

@@ -68,6 +68,7 @@ export interface StoreRequest {
     | 'setReviewed'
     | 'readReviewed'
     | 'saveNavigation'
+    | 'validateNavigation'
     | 'readNavigation';
   lease?: StoreLease;
   targetWindowId?: string;

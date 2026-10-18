@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { normalizeCandidate, type ReviewCandidate } from '../application/pull-request';
 import { createPullRequestOverviewMarkdown } from './pull-request-overview';
+import type { CommittedSource } from '../application/committed-source';
 
 export function createOverviewDocuments() {
   const content = new Map<string, string>();
@@ -13,13 +14,17 @@ export function createOverviewDocuments() {
     content.delete(document.uri.toString()),
   );
   return {
-    async show(input: ReviewCandidate, isCurrent: () => boolean = () => true) {
+    async show(
+      input: ReviewCandidate,
+      isCurrent: () => boolean = () => true,
+      source?: CommittedSource,
+    ) {
       const candidate = normalizeCandidate(input);
       const uri = vscode.Uri.from({
         scheme: 'crw-overview',
         path: `/pull-${candidate.pullRequest.number}-${randomUUID()}.md`,
       });
-      content.set(uri.toString(), createPullRequestOverviewMarkdown(candidate));
+      content.set(uri.toString(), createPullRequestOverviewMarkdown(candidate, source));
       const document = await vscode.workspace.openTextDocument(uri);
       if (!isCurrent()) {
         content.delete(uri.toString());

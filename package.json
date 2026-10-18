@@ -54,6 +54,100 @@
       {
         "command": "codeReviewWorkbench.openPullRequestOverview",
         "title": "Code Review Workbench: Open Pull Request Overview"
+      },
+      {
+        "command": "codeReviewWorkbench.inspectCommittedSource",
+        "title": "Code Review Workbench: Inspect Committed PR Diffs",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "codeReviewWorkbench.reconcileCommittedSource",
+        "title": "Code Review Workbench: Reconcile Committed Source"
+      },
+      {
+        "command": "codeReviewWorkbench.openChangedDiff",
+        "title": "Code Review Workbench: Open Committed Diff"
+      },
+      {
+        "command": "codeReviewWorkbench.openCommittedFile",
+        "title": "Code Review Workbench: Open Exact-Revision Source",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "codeReviewWorkbench.returnToCommittedSource",
+        "title": "Code Review Workbench: Return to Committed Source",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "codeReviewWorkbench.markReviewed",
+        "title": "Code Review Workbench: Mark File Reviewed",
+        "icon": "$(check)"
+      },
+      {
+        "command": "codeReviewWorkbench.unmarkReviewed",
+        "title": "Code Review Workbench: Remove Reviewed Mark",
+        "icon": "$(circle-slash)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeReviewWorkbench",
+          "title": "Code Review Workbench",
+          "icon": "media/review.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeReviewWorkbench": [
+        {
+          "id": "codeReviewWorkbench.files",
+          "name": "Changed Files",
+          "icon": "media/review.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "codeReviewWorkbench.inspectCommittedSource",
+          "when": "view == codeReviewWorkbench.files",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeReviewWorkbench.returnToCommittedSource",
+          "when": "view == codeReviewWorkbench.files",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "codeReviewWorkbench.markReviewed",
+          "when": "view == codeReviewWorkbench.files && viewItem == crw-unreviewed",
+          "group": "inline"
+        },
+        {
+          "command": "codeReviewWorkbench.unmarkReviewed",
+          "when": "view == codeReviewWorkbench.files && viewItem == crw-reviewed",
+          "group": "inline"
+        },
+        {
+          "command": "codeReviewWorkbench.openCommittedFile",
+          "when": "view == codeReviewWorkbench.files",
+          "group": "navigation"
+        },
+        {
+          "command": "codeReviewWorkbench.openChangedDiff",
+          "when": "view == codeReviewWorkbench.files",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codeReviewWorkbench.returnToCommittedSource",
+        "key": "alt+shift+left",
+        "when": "resourceScheme == crw-source"
       }
     ]
   },
