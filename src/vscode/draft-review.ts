@@ -72,7 +72,7 @@ export function createDraftReview(
     if (pending) {
       drafts.set(pending.id, pending);
       void updateThread(pending).catch(showError);
-    }
+    } else if (source) void refresh().catch(showError);
   }
   async function updateThread(draft: LocalDraft | DraftWriterProjection) {
     const generation = refreshGeneration;

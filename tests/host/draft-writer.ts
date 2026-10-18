@@ -14,6 +14,50 @@ async function until(check: () => boolean | Promise<boolean>, message: string) {
   }
 }
 
+export async function exerciseFailedDraftDiscard(
+  manager: ReviewManager,
+  target: { sourceId: string; fileId: string },
+) {
+  await vscode.commands.executeCommand('codeReviewWorkbench.openCommittedFile', target, 'new');
+  const draft = await vscode.commands.executeCommand<LocalDraft>(
+    'codeReviewWorkbench.writeLocalDraft',
+  );
+  const browser = await DraftBrowser.connect();
+  try {
+    await browser.insert('private native discard recovery');
+    await until(
+      () => manager.readDraftWriter()?.body === 'private native discard recovery',
+      'Input did not reach the discard writer',
+    );
+    await until(
+      () =>
+        browser.workbench<boolean>(
+          `return document.body.innerText.includes('private native discard recovery');`,
+        ),
+      'The native tag did not display the input before Discard',
+    );
+    await browser.click('Discard draft');
+    await until(
+      () => manager.readDraftWriter()?.status === 'failed',
+      'Discard failure did not retain the writer',
+    );
+    await browser.click('Retry');
+    await until(() => manager.readDraftWriter() === undefined, 'Retry did not delete the draft');
+    await until(
+      () =>
+        browser.workbench<boolean>(
+          `return !document.body.innerText.includes('private native discard recovery');`,
+        ),
+      'Retried Discard left native draft text visible',
+    );
+    assert.ok((await manager.readLocalDraft(draft.id))!.deletionRevision > 0);
+    assert.deepEqual(await manager.listReviewDrafts(target.sourceId), []);
+    assert.equal((await manager.releasePrivateStore()).status, 'closed');
+  } finally {
+    browser.dispose();
+  }
+}
+
 export async function exerciseDraftWriter(
   manager: ReviewManager,
   source: CommittedSource,
