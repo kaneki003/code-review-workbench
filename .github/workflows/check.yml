@@ -13,6 +13,7 @@ jobs:
       matrix:
         os: [windows-2025]
         vscode: ['1.141.2']
+        lane: [1, 2, 3, 4, 5, 6]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,14 +28,14 @@ jobs:
       - name: Reproduce Windows request failure
         shell: bash
         run: |
-          for crw_attempt in {1..12}; do
+          for crw_attempt in {1..2}; do
             pnpm exec vitest run tests/committed-source.test.ts -t 'entry pins an otherwise|interrupted Active publication' > crw22-repro.log 2>&1 || { cat crw22-repro.log; exit 1; }
             echo "Passed Windows probe $crw_attempt"
           done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: readiness-${{ matrix.os }}-${{ matrix.vscode }}
+          name: readiness-${{ matrix.os }}-${{ matrix.vscode }}-${{ matrix.lane }}
           include-hidden-files: true
           path: |
             crw22-repro.log
