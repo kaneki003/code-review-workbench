@@ -199,7 +199,7 @@ export function DraftWriterView({ client }: { client: DraftWriterClient }) {
                   disabled={preview || busy || Boolean(view.recovery)}
                   onClick={() => format('`')}
                 >
-                  〈〉
+                  {'<>'}
                 </button>
               </span>
             </div>
