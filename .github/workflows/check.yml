@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15]
+        os: [windows-2025]
         vscode: ['1.141.2']
     runs-on: ${{ matrix.os }}
     steps:
@@ -24,11 +24,12 @@ jobs:
           version: 12.11.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:native
-      - name: Reproduce interrupted entry and record OS error
+      - name: Reproduce Windows request failure
+        shell: bash
         run: |
-          for crw_attempt in {1..150}; do
-            pnpm exec vitest run tests/committed-source.test.ts -t 'entry interruption before checkout' > /tmp/crw22-repro.log 2>&1 || { cat /tmp/crw22-repro.log; exit 1; }
-            if (( crw_attempt % 10 == 0 )); then echo "Passed $crw_attempt interrupted-entry attempts"; fi
+          for crw_attempt in {1..12}; do
+            pnpm exec vitest run tests/committed-source.test.ts -t 'entry pins an otherwise|interrupted Active publication' > crw22-repro.log 2>&1 || { cat crw22-repro.log; exit 1; }
+            echo "Passed Windows probe $crw_attempt"
           done
       - uses: actions/upload-artifact@v4
         if: always()
@@ -36,7 +37,7 @@ jobs:
           name: readiness-${{ matrix.os }}-${{ matrix.vscode }}
           include-hidden-files: true
           path: |
-            /tmp/crw22-repro.log
+            crw22-repro.log
             .host-test/evidence.json
             dist/*.vsix
           if-no-files-found: warn

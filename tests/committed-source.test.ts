@@ -129,7 +129,7 @@ async function fixture() {
     editors?: CheckoutEditors,
     repositoryLocation = location,
   ) {
-    const store = wrap(
+    const underlying =
       createStoreConnection(
         worker,
         {
@@ -140,8 +140,18 @@ async function fixture() {
           actor,
         },
         diagnostics,
-      ),
-    );
+      );
+    const store = wrap({
+      ...underlying,
+      async request(request) {
+        try { return await underlying.request(request); }
+        catch(error) {
+          if ((error as {code?:string}).code === 'COMMIT_UNKNOWN' || (error as {code?:string}).code === 'CONNECTION_UNKNOWN')
+            console.error('[DEBUG-crw22-request]', request.action, error);
+          throw error;
+        }
+      },
+    });
     cleanups.push(() => store.dispose());
     return new ReviewManager({
       environment: () => ({
@@ -459,7 +469,8 @@ test.each([
     const resumed = await recovered.recoverPullRequestCheckout('continue');
     expect(resumed, JSON.stringify(resumed)).toMatchObject({ status: 'active' });
     expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
-    expect(await recovered.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
+    const exitedReview = await recovered.exitPullRequestCheckout();
+    expect(exitedReview, JSON.stringify(exitedReview)).toMatchObject({ status: 'complete' });
     expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
     await recovered.releasePrivateStore();
   },

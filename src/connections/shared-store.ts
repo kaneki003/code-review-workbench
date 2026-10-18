@@ -87,8 +87,8 @@ export function createStoreConnection(
         fail();
       }
     });
-    worker.on('error', fail);
-    worker.on('exit', fail);
+    worker.on('error', (error) => { console.error('[DEBUG-crw22-worker-error]', error); fail(); });
+    worker.on('exit', (code) => { if(code !== 1) console.error('[DEBUG-crw22-worker-exit]', code); fail(); });
     return worker;
   }
   return {
