@@ -2085,6 +2085,7 @@ parentPort!.on('message', (message: unknown) => {
       parentPort!.postMessage({ id, reply: await store.dispatch(message) });
     } catch (error) {
       const known = error instanceof StoreError;
+      if (!known) console.error('[DEBUG-crw22-recovery]', object(message) ? message.action : '', error);
       parentPort!.postMessage({
         id,
         error: {
