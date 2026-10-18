@@ -69,6 +69,7 @@ import {
   listDrafts,
   assertDraftVersion,
   removeEarlierDraftBodies,
+  draftWriteError,
 } from './local-draft-storage';
 
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
@@ -864,12 +865,18 @@ class SharedStore {
       lease,
       ...fields,
     };
-    transaction(this.database!, () => {
-      this.validate(request.lease, true);
-      beforeWrite?.();
-      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
-      saveReply(this.database!, request, lease, reply);
-    });
+    transaction(
+      this.database!,
+      () => {
+        this.validate(request.lease, true);
+        beforeWrite?.();
+        if (isDraftAction(request.action))
+          this.faults.at(`${request.action}.commit.before`, this.database!);
+        this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+        saveReply(this.database!, request, lease, reply);
+      },
+      isDraftAction(request.action) ? draftWriteError : undefined,
+    );
     this.lease = lease;
     this.saveControl({ ...this.control!, revision: lease.revision });
     return reply;
@@ -919,7 +926,8 @@ class SharedStore {
         drafts: listDrafts(this.database!, this.lease!.scopeId, source.id),
       };
     }
-    const draftId = request.action === 'readDraft' ? request.draftId : request.draftEdit?.draftId;
+    const change = request.action === 'discardDraft' ? request.draftDiscard : request.draftEdit;
+    const draftId = request.action === 'readDraft' ? request.draftId : change?.draftId;
     const draft = readDraft(this.database!, this.lease!.scopeId, draftId!);
     if (!draft) {
       if (request.action === 'readDraft') return this.owned();
@@ -931,8 +939,20 @@ class SharedStore {
     // Bind all actions to the original account, registered copy and exact source.
     this.sourceRecord(draft.target.anchor.sourceId);
     if (request.action === 'readDraft') return { ...this.owned(), draft };
+    assertDraftVersion(change, draft);
+    if (!change || change.requestId !== request.id || draft.rowRevision === Number.MAX_SAFE_INTEGER)
+      throw new StoreError(
+        'INVALID_DRAFT',
+        'The draft change requires a unique request identity and an available revision.',
+      );
+    if (request.action === 'discardDraft')
+      return this.saveDraftReply(request, {
+        ...draft,
+        body: '',
+        rowRevision: draft.rowRevision + 1,
+        deletionRevision: draft.rowRevision + 1,
+      });
     const edit = request.draftEdit;
-    assertDraftVersion(edit, draft);
     if (
       !edit ||
       edit.requestId !== request.id ||
@@ -1674,6 +1694,7 @@ class SharedStore {
           'DRAFT_UNAVAILABLE',
           'DRAFT_CONFLICT',
           'DRAFT_DELETED',
+          'DRAFT_WRITE_FAILED',
         ].includes(error.code)
       )
         this.poisoned = true;

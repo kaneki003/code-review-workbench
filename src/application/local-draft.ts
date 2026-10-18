@@ -1,7 +1,13 @@
 import type { SourceNavigation } from './committed-source';
 
 export const maxDraftBytes = 1024 * 1024;
-export const draftActions = ['createDraft', 'saveDraft', 'readDraft', 'listDrafts'] as const;
+export const draftActions = [
+  'createDraft',
+  'saveDraft',
+  'discardDraft',
+  'readDraft',
+  'listDrafts',
+] as const;
 export function isDraftAction(action: string): boolean {
   return (draftActions as readonly string[]).includes(action);
 }
@@ -30,6 +36,9 @@ export interface DraftEdit extends DraftVersion {
   requestId: string;
   editRevision: number;
   body: string;
+}
+export interface DraftDiscard extends DraftVersion {
+  requestId: string;
 }
 // A save acknowledgment identifies a committed edit. It carries no replacement
 // text that could overwrite input typed while that save was in flight.

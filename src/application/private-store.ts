@@ -1,5 +1,5 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
-import type { LocalDraft, DraftEdit, DraftCommit } from './local-draft';
+import type { LocalDraft, DraftEdit, DraftDiscard, DraftCommit } from './local-draft';
 import type {
   CommittedContent,
   CommittedSource,
@@ -73,6 +73,7 @@ export interface StoreRequest {
     | 'readNavigation'
     | 'createDraft'
     | 'saveDraft'
+    | 'discardDraft'
     | 'readDraft'
     | 'listDrafts';
   lease?: StoreLease;
@@ -92,6 +93,7 @@ export interface StoreRequest {
   navigation?: SourceNavigation;
   draftId?: string;
   draftEdit?: DraftEdit;
+  draftDiscard?: DraftDiscard;
 }
 
 export interface StoreHandoff {

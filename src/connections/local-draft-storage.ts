@@ -5,6 +5,29 @@ import { object, recovery, sequence, uuid } from './store-records';
 
 const mutations = "('createDraft','saveDraft','discardDraft')";
 
+export function draftWriteError(error: unknown): Error {
+  if (error instanceof StoreError && error.code !== 'INJECTED_IO') return error;
+  if (
+    (error instanceof StoreError && error.code === 'INJECTED_IO') ||
+    (object(error) &&
+      error.code === 'ERR_SQLITE_ERROR' &&
+      typeof error.errcode === 'number' &&
+      [5, 6, 8, 10, 13, 19].includes(error.errcode & 0xff))
+  )
+    return new StoreError(
+      'DRAFT_WRITE_FAILED',
+      'The draft write did not commit. Keep the original input and target, check disk space / private-store access and Retry.',
+    );
+  // Corruption, an unrecognized driver failure or uncertain rollback must not
+  // turn into an ordinary Retry loop on this connection.
+  return error instanceof Error
+    ? error
+    : new StoreError(
+        'STORE_UNAVAILABLE',
+        'The draft write outcome is unknown. Preserve the input and check private-store recovery.',
+      );
+}
+
 function draftFromResult(result: unknown): LocalDraft {
   const draft = JSON.parse(String(result)).draft as LocalDraft | undefined;
   if (

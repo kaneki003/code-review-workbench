@@ -24,7 +24,13 @@ import type {
   SourceNavigation,
 } from './committed-source';
 import { isSourceAction } from './committed-source';
-import { isDraftAction, type LocalDraft, type DraftEdit, type DraftCommit } from './local-draft';
+import {
+  isDraftAction,
+  type LocalDraft,
+  type DraftEdit,
+  type DraftDiscard,
+  type DraftCommit,
+} from './local-draft';
 
 export interface HostEnvironment {
   vscode: string;
@@ -255,6 +261,17 @@ export class ReviewManager {
       throw new StoreError(reply.view.code ?? 'DRAFT_SAVE_FAILED', reply.view.detail);
     return reply.draftCommit;
   }
+  async discardLocalDraft(discard: DraftDiscard): Promise<DraftCommit> {
+    const reply = await this.storeRequest(
+      'discardDraft',
+      { draftDiscard: discard },
+      undefined,
+      discard.requestId,
+    );
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_DISCARD_FAILED', reply.view.detail);
+    return reply.draftCommit;
+  }
 
   async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
     const generation = ++this.overviewGeneration;
@@ -406,6 +423,7 @@ export class ReviewManager {
       | 'navigation'
       | 'draftId'
       | 'draftEdit'
+      | 'draftDiscard'
     > = {},
     overviewGeneration?: number,
     requestId: string = randomUUID(),

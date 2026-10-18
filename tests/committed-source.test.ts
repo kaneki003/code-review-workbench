@@ -822,3 +822,120 @@ test(
   },
   integrationTimeout,
 );
+
+test(
+  'discard durably deletes one draft and delayed or duplicate saves cannot revive its identity',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const target = await draftTarget(manager);
+    const draft = await manager.createLocalDraft(target);
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'private feedback to discard',
+    };
+    const saved = await manager.saveLocalDraft(edit);
+    const discard = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 2,
+      expectedCommittedRevision: 1,
+    };
+    const discarded = manager.discardLocalDraft(discard);
+    const delayed = manager.saveLocalDraft({
+      ...edit,
+      requestId: randomUUID(),
+      expectedRowRevision: 2,
+      expectedCommittedRevision: 1,
+      editRevision: 2,
+      body: 'delayed save',
+    });
+    const rejected = expect(delayed).rejects.toMatchObject({ code: 'DRAFT_DELETED' });
+    expect(await discarded).toMatchObject({
+      draftId: draft.id,
+      rowRevision: 3,
+      deletionRevision: 3,
+    });
+    await rejected;
+    expect(await manager.discardLocalDraft(discard)).toMatchObject({ deletionRevision: 3 });
+    expect(await manager.saveLocalDraft(edit)).toEqual(saved);
+    await manager.releasePrivateStore();
+    const restarted = context.manager();
+    await restarted.openPrivateStore();
+    expect(await restarted.readLocalDraft(draft.id)).toMatchObject({
+      body: '',
+      deletionRevision: 3,
+    });
+    expect(await restarted.listLocalDrafts(target.anchor.sourceId)).toEqual([]);
+    const fresh = await restarted.createLocalDraft(target);
+    expect(fresh.id).not.toBe(draft.id);
+    expect(fresh).toMatchObject({
+      reviewId: draft.reviewId,
+      target,
+      body: '',
+      editRevision: 0,
+      deletionRevision: 0,
+    });
+    await restarted.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test.each(['saveDraft', 'discardDraft'] as const)(
+  '%s rolls back its text and receipt together on a real SQLite commit failure, then permits Retry',
+  async (action) => {
+    const context = await fixture();
+    const manager = context.manager({ boundary: `${action}.commit.before`, mode: 'commit' });
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'retain this private input',
+    };
+    if (action === 'saveDraft') {
+      await expect(manager.saveLocalDraft(edit)).rejects.toMatchObject({
+        code: 'DRAFT_WRITE_FAILED',
+      });
+      expect(await manager.readLocalDraft(draft.id)).toEqual(draft);
+      expect(await manager.saveLocalDraft(edit)).toMatchObject({
+        committedRevision: 1,
+        rowRevision: 2,
+      });
+      expect(await manager.readLocalDraft(draft.id)).toMatchObject({ body: edit.body });
+    } else {
+      await manager.saveLocalDraft(edit);
+      const discard = {
+        ...edit,
+        requestId: randomUUID(),
+        expectedRowRevision: 2,
+        expectedCommittedRevision: 1,
+      };
+      await expect(manager.discardLocalDraft(discard)).rejects.toMatchObject({
+        code: 'DRAFT_WRITE_FAILED',
+      });
+      expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+        body: edit.body,
+        deletionRevision: 0,
+        rowRevision: 2,
+      });
+      expect(await manager.discardLocalDraft(discard)).toMatchObject({ deletionRevision: 3 });
+    }
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);

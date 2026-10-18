@@ -19,15 +19,23 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 
 const APPLICATION_ID = 0x43525731;
-export function transaction<T>(database: DatabaseSync, action: () => T): T {
-  database.exec('BEGIN IMMEDIATE');
+export function transaction<T>(
+  database: DatabaseSync,
+  action: () => T,
+  afterRollback?: (error: unknown) => Error,
+): T {
+  let began = false;
   try {
+    database.exec('BEGIN IMMEDIATE');
+    began = true;
     const result = action();
     database.exec('COMMIT');
     return result;
   } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
+    // A failed BEGIN has no effects. Only a confirmed rollback permits a caller
+    // to classify a failed write as retryable. A failed rollback stays unknown.
+    if (began) database.exec('ROLLBACK');
+    throw afterRollback ? afterRollback(error) : error;
   }
 }
 
