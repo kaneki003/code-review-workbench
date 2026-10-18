@@ -102,6 +102,12 @@ suite('Installed readiness VSIX', () => {
     assert.ok(!isAbsolute(installedRelative) && !installedRelative.startsWith('..'));
     const sourceRelative = relative(await realpath(process.env.CRW_SOURCE_ROOT!), installed);
     assert.ok(isAbsolute(sourceRelative) || sourceRelative.startsWith('..'));
+    const notices = await readFile(
+      join(extension.extensionPath, 'dist', 'third-party-notices.txt'),
+      'utf8',
+    );
+    assert.match(notices, /octokit@5\.0\.5/);
+    assert.match(notices, /markdown-it@14\.1\.0/);
     const workspace = vscode.workspace.workspaceFolders![0]!.uri.fsPath;
     const filesBeforeCheck = await fingerprintFiles(workspace);
     const report = await vscode.commands.executeCommand<ReadinessReport>(
