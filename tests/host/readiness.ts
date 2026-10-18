@@ -107,7 +107,7 @@ suite('Installed readiness VSIX', () => {
       'utf8',
     );
     assert.match(notices, /octokit@5\.0\.5/);
-    assert.match(notices, /markdown-it@14\.1\.0/);
+    assert.match(notices, /markdown-it@15\.0\.2/);
     const workspace = vscode.workspace.workspaceFolders![0]!.uri.fsPath;
     const filesBeforeCheck = await fingerprintFiles(workspace);
     const report = await vscode.commands.executeCommand<ReadinessReport>(

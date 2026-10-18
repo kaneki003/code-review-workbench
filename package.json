@@ -71,7 +71,7 @@
     "package": "pnpm run build && node scripts/package.mjs"
   },
   "dependencies": {
-    "markdown-it": "14.1.0",
+    "markdown-it": "15.0.2",
     "octokit": "5.0.5",
     "react": "19.3.1",
     "react-dom": "19.3.1"
