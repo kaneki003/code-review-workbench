@@ -96,6 +96,14 @@ export class ReviewManager {
   executeRepositoryOperation(operationId: string): Promise<StoreReply> {
     return this.storeRequest('executeOperation', { operationId });
   }
+  // Low-level guarded transitions. The host lifecycle must retain editor state
+  // before exposing these as Enter / Exit Review commands.
+  prepareCleanCheckout(sourceId: string): Promise<StoreReply> {
+    return this.storeRequest('prepareCleanCheckout', { sourceId });
+  }
+  prepareCleanRestore(operationId: string): Promise<StoreReply> {
+    return this.storeRequest('prepareCleanRestore', { operationId });
+  }
   recoverPrivateStore(): Promise<StoreReply> {
     return this.storeRequest('recover');
   }

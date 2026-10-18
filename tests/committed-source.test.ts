@@ -2,7 +2,17 @@ import { afterEach, expect, test } from 'vitest';
 import { build } from 'esbuild';
 import { execFileSync, fork } from 'node:child_process';
 import { once } from 'node:events';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/promises';
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  writeFile,
+  readFile,
+  rename,
+  link,
+} from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -166,7 +176,7 @@ async function fixture() {
     remoteGit('fetch', location, '+HEAD:refs/pull/20/head');
     remoteGit('update-server-info');
   }
-  async function interruptedInspector() {
+  async function interruptedInspector(checkoutSourceId?: string) {
     const script = join(directory, 'source-process.cjs');
     await build({
       entryPoints: ['tests/fixtures/source-process.ts'],
@@ -188,6 +198,7 @@ async function fixture() {
           actor,
         }),
         JSON.stringify(pullRequest),
+        ...(checkoutSourceId ? [checkoutSourceId] : []),
       ],
       { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
     );
@@ -215,6 +226,214 @@ async function fixture() {
     transportRequests: () => transportRequests,
   };
 }
+
+test(
+  'guarded clean checkout enters the exact PR on a fresh branch and restores the original commit',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const manager = context.manager();
+    expect(await manager.openPullRequestOverview(context.pullRequest.url)).toMatchObject({
+      status: 'ready',
+    });
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const entry = await manager.prepareCleanCheckout(source.source.id);
+    expect(entry, JSON.stringify(entry)).toMatchObject({
+      operation: { phase: 'prepared' },
+    });
+    const operationId = entry.operation!.id;
+    expect(await manager.executeRepositoryOperation(operationId)).toMatchObject({
+      operation: { phase: 'observed', outcome: 'applied' },
+    });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    expect(context.git('symbolic-ref', 'HEAD')).toBe(
+      `refs/heads/code-review-workbench/${operationId}`,
+    );
+    expect(context.git('status', '--porcelain=v1')).toBe('');
+    const restore = await manager.prepareCleanRestore(operationId);
+    expect(restore, JSON.stringify(restore)).toMatchObject({
+      operation: { phase: 'prepared' },
+    });
+    expect(await manager.executeRepositoryOperation(restore.operation!.id)).toMatchObject({
+      operation: { phase: 'observed', outcome: 'applied' },
+    });
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    expect(context.git('status', '--porcelain=v1')).toBe('');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'clean checkout refuses a shared HEAD reflog before any switch',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const log = join(context.location, '.git', 'logs', 'HEAD');
+    const sentinel = join(context.directory, 'shared-log');
+    await rename(log, sentinel);
+    await link(sentinel, log);
+    const before = await readFile(sentinel, 'utf8');
+    expect(await manager.prepareCleanCheckout(source.source.id)).toMatchObject({
+      view: { code: 'INVALID_OPERATION' },
+    });
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    expect(await readFile(sentinel, 'utf8')).toBe(before);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'protected checkout leaves an ignored collision and original branch intact',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    await writeFile(join(context.location, '.git', 'info', 'exclude'), 'new.py\n');
+    await writeFile(join(context.location, 'new.py'), 'ignored local configuration\n');
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const entry = await manager.prepareCleanCheckout(source.source.id);
+    expect(entry, JSON.stringify(entry)).toHaveProperty('operation.id');
+    expect(await manager.executeRepositoryOperation(entry.operation!.id)).toMatchObject({
+      operation: { phase: 'observed', outcome: 'not-applied' },
+    });
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    expect(await readFile(join(context.location, 'new.py'), 'utf8')).toBe(
+      'ignored local configuration\n',
+    );
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'interrupted checkout reconciles its actual result without repeating the switch',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '--detach', context.base);
+    const initial = context.manager();
+    await initial.openPullRequestOverview(context.pullRequest.url);
+    const source = await initial.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    await initial.dispose();
+    const { child, result: interrupted } = await context.interruptedInspector(source.source.id);
+    const entry = interrupted.entry;
+    expect(entry, JSON.stringify(entry)).toHaveProperty('operation.id');
+    expect(interrupted.result).toMatchObject({
+      view: { status: 'recovery' },
+    });
+    const exited = once(child, 'exit');
+    child.kill('SIGKILL');
+    await exited;
+    const recovered = context.manager();
+    let receipt = await recovered.recoverPrivateStore();
+    for (let attempt = 0; receipt.view.status === 'recovery' && attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      receipt = await recovered.recoverPrivateStore();
+    }
+    expect(receipt, JSON.stringify(receipt)).toMatchObject({
+      view: { status: 'closed' },
+      operation: { phase: 'observed', outcome: 'applied' },
+    });
+    const log = context.git('reflog', 'show', '--format=%gs', 'HEAD');
+    expect(
+      log
+        .split('\n')
+        .filter((line) => line.includes(`to code-review-workbench/${entry.operation!.id}`)),
+    ).toHaveLength(1);
+    await recovered.openPrivateStore();
+    const restore = await recovered.prepareCleanRestore(entry.operation!.id);
+    expect(restore, JSON.stringify(restore)).toHaveProperty('operation.id');
+    expect(await recovered.executeRepositoryOperation(restore.operation!.id)).toMatchObject({
+      operation: { phase: 'observed', outcome: 'applied' },
+    });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    expect(context.git('rev-parse', '--symbolic-full-name', 'HEAD')).toBe('HEAD');
+    await recovered.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'split-index state refuses checkout while retaining exact committed-source reading',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    context.git('update-index', '--split-index');
+    expect(await manager.prepareCleanCheckout(source.source.id)).toMatchObject({
+      view: { code: 'UNSUPPORTED_CHECKOUT' },
+    });
+    expect(await manager.readCommittedSource(source.source.id)).toMatchObject({ status: 'ready' });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'unfinished work and moved original branches refuse restoration without losing user work',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    await writeFile(join(context.location, 'worker.ts'), 'unfinished prior work\n');
+    expect(await manager.prepareCleanCheckout(source.source.id)).toMatchObject({
+      view: { code: 'DIRTY_CHECKOUT' },
+    });
+    expect(await readFile(join(context.location, 'worker.ts'), 'utf8')).toBe(
+      'unfinished prior work\n',
+    );
+    context.git('restore', 'worker.ts');
+    const entry = await manager.prepareCleanCheckout(source.source.id);
+    expect(await manager.executeRepositoryOperation(entry.operation!.id)).toMatchObject({
+      operation: { outcome: 'applied' },
+    });
+    await writeFile(join(context.location, 'worker.ts'), 'unfinished review edit\n');
+    expect(await manager.prepareCleanRestore(entry.operation!.id)).toMatchObject({
+      view: { code: 'DIRTY_CHECKOUT' },
+    });
+    expect(await readFile(join(context.location, 'worker.ts'), 'utf8')).toBe(
+      'unfinished review edit\n',
+    );
+    context.git('restore', 'worker.ts');
+    context.git('update-ref', 'refs/heads/prior-work', context.head);
+    expect(await manager.prepareCleanRestore(entry.operation!.id)).toMatchObject({
+      view: { code: 'CHECKOUT_INTERFERENCE' },
+    });
+    expect(context.git('rev-parse', 'prior-work')).toBe(context.head);
+    expect(context.git('symbolic-ref', 'HEAD')).toBe(
+      `refs/heads/code-review-workbench/${entry.operation!.id}`,
+    );
+    await writeFile(join(context.location, 'worker.ts'), '// user commit\n');
+    context.git('add', 'worker.ts');
+    context.git('commit', '-m', 'user work on the review branch');
+    const userCommit = context.git('rev-parse', 'HEAD');
+    expect(await manager.prepareCleanRestore(entry.operation!.id)).toMatchObject({
+      view: { code: 'CHECKOUT_INTERFERENCE' },
+    });
+    expect(
+      context.git('rev-parse', `refs/heads/code-review-workbench/${entry.operation!.id}`),
+    ).toBe(userCommit);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 
 test(
   'public source actions inspect committed mixed-language changes without adopting working edits',

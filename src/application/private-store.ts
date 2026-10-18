@@ -54,6 +54,8 @@ export interface StoreRequest {
     | 'handoff'
     | 'recordIntent'
     | 'prepareRef'
+    | 'prepareCleanCheckout'
+    | 'prepareCleanRestore'
     | 'executeOperation'
     | 'recover'
     | 'inspectOperation'

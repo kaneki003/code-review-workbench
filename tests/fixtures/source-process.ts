@@ -47,6 +47,16 @@ const manager = new ReviewManager({
 });
 process.on('message', () => {});
 void (async () => {
+  const checkoutSourceId = process.argv[5];
+  if (checkoutSourceId) {
+    await manager.openPrivateStore();
+    const entry = await manager.prepareCleanCheckout(checkoutSourceId);
+    const result = entry.operation
+      ? await manager.executeRepositoryOperation(entry.operation.id)
+      : entry;
+    process.send!({ entry, result });
+    return;
+  }
   await manager.openPullRequestOverview(pullRequest.url);
   process.send!(
     await manager.inspectPullRequestSource(pullRequest.base.repository.id, pullRequest.number),

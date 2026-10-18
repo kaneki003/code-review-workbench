@@ -865,6 +865,73 @@ class SharedStore {
         'OPERATION_UNAVAILABLE',
         'Reconcile the pending Git operation before inspecting or changing source state.',
       );
+    if (request.action === 'prepareCleanCheckout' || request.action === 'prepareCleanRestore') {
+      const repository = this.repository();
+      let ref: string;
+      let checkout: NonNullable<OperationRecord['checkout']>;
+      if (request.action === 'prepareCleanCheckout') {
+        const source = this.sourceRecord(request.sourceId);
+        ref = `refs/heads/code-review-workbench/${request.id}`;
+        checkout = {
+          before: repository.cleanCheckoutState(source.head),
+          target: { branch: ref, commit: source.head },
+          create: true,
+        };
+      } else {
+        if (!uuid(request.operationId))
+          throw new StoreError('INVALID_OPERATION', 'The original entry operation is required.');
+        const entry = readOperation(this.rendezvous, request.operationId);
+        if (
+          entry.kind !== 'checkout' ||
+          !entry.checkout?.create ||
+          entry.phase !== 'observed' ||
+          entry.outcome !== 'applied' ||
+          entry.scopeId !== this.lease!.scopeId ||
+          entry.storeId !== this.lease!.storeId ||
+          entry.incarnation !== this.lease!.incarnation ||
+          entry.facts.worktree !== this.config.location ||
+          this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
+            entry.id,
+          )?.record !== JSON.stringify(entry)
+        )
+          throw new StoreError(
+            'INVALID_OPERATION',
+            'This local copy has no verified entry receipt for that operation.',
+          );
+        const before = repository.cleanCheckoutState(entry.checkout.before.commit);
+        if (
+          before.branch !== entry.checkout.target.branch ||
+          before.commit !== entry.checkout.target.commit
+        )
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'The review branch or HEAD changed. Preserve user commits and return to the expected checkout before restoration; no reset was performed.',
+          );
+        ref = entry.checkout.before.branch ?? entry.ref;
+        checkout = { before, target: entry.checkout.before, create: false, entryId: entry.id };
+      }
+      const facts = repository.facts();
+      const record: OperationRecord = {
+        protocol: 1,
+        id: request.id,
+        kind: 'checkout',
+        phase: 'prepared',
+        storeId: this.lease!.storeId,
+        incarnation: this.lease!.incarnation,
+        fence: this.lease!.fence,
+        ownerToken: this.lease!.token,
+        scopeId: this.lease!.scopeId,
+        ref,
+        newOid: checkout.target.commit,
+        beforeOid: repository.refOid(ref),
+        facts,
+        storage: repository.referenceStorage(ref, facts, true),
+        child: null,
+        checkout,
+      };
+      repository.validateCheckout(record);
+      return this.projectOperation(record, request);
+    }
     if (request.action === 'prepareSource') {
       const candidate = this.readCandidate(request).candidate;
       if (!candidate)
@@ -1232,6 +1299,7 @@ class SharedStore {
         'Independent intent and database projection disagree. Use recovery; do not dispatch.',
       );
     const repository = this.repository(record.facts.worktree);
+    if (record.kind === 'checkout') repository.validateCheckout(record);
     if (
       !repository.sameFacts(record.facts) ||
       !repository.sameReferenceStorage(record) ||
@@ -1246,6 +1314,7 @@ class SharedStore {
       record = { ...record, phase: 'armed', child: identity };
       this.projectOperation(record);
       this.validate(this.lease, true);
+      if (record.kind === 'checkout') repository.validateCheckout(record);
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record) ||
@@ -1262,6 +1331,28 @@ class SharedStore {
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
+      if (record.kind === 'checkout') {
+        const observed = repository.facts();
+        const outcome = repository.checkoutOutcome(record);
+        if (
+          JSON.stringify(observed.scopes) !== JSON.stringify(record.facts.scopes) ||
+          observed.gitDir !== record.facts.gitDir ||
+          observed.index !== record.facts.index ||
+          !repository.sameReferenceStorage(record, true) ||
+          outcome === 'refused'
+        )
+          recovery(
+            'Checkout produced unexpected repository facts. Preserve all branches and reconcile actual state; no restoration was attempted.',
+          );
+        if (status.exitCode !== 0 && outcome === 'applied')
+          recovery(
+            'Git exit and observed checkout disagree. Reconcile the actual checkout before continuing.',
+          );
+        return this.projectOperation(
+          { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
+          request,
+        );
+      }
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record, true) ||
@@ -1387,8 +1478,18 @@ class SharedStore {
     const repository = this.repository(record.facts.worktree);
     if (record.kind === 'fetch')
       repository.validateFetch(record.ref, record.newOid, record.fetch!.remoteRef);
-    else repository.validateUpdate(record.ref, record.newOid);
-    if (!repository.sameFacts(record.facts))
+    else if (record.kind !== 'checkout') repository.validateUpdate(record.ref, record.newOid);
+    const checkoutOutcome =
+      record.kind === 'checkout' ? repository.checkoutOutcome(record) : undefined;
+    const currentFacts = repository.facts();
+    if (
+      record.kind === 'checkout'
+        ? checkoutOutcome === 'refused' ||
+          JSON.stringify(currentFacts.scopes) !== JSON.stringify(record.facts.scopes) ||
+          currentFacts.gitDir !== record.facts.gitDir ||
+          currentFacts.index !== record.facts.index
+        : !repository.sameFacts(record.facts)
+    )
       recovery(
         'HEAD, index or worktree files changed. Preserve that work and reconcile it before recovery; no Git command was repeated.',
       );
@@ -1397,17 +1498,24 @@ class SharedStore {
         'Reference storage changed. Preserve its recovery records; no Git command was repeated.',
       );
     const actual = repository.refOid(record.ref);
-    if (record.kind !== 'fetch' && actual !== record.beforeOid && actual !== record.newOid)
+    if (
+      record.kind !== 'fetch' &&
+      record.kind !== 'checkout' &&
+      actual !== record.beforeOid &&
+      actual !== record.newOid
+    )
       recovery(
         'The reference has an unexpected value. Preserve it for manual Git recovery; no command was repeated.',
       );
     if (
       record.phase === 'observed' &&
-      ((record.outcome === 'applied' && actual !== record.newOid) ||
-        (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
-        (record.kind === 'fetch' &&
-          record.observedOid !== undefined &&
-          actual !== record.observedOid))
+      (record.kind === 'checkout'
+        ? record.outcome !== checkoutOutcome
+        : (record.outcome === 'applied' && actual !== record.newOid) ||
+          (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
+          (record.kind === 'fetch' &&
+            record.observedOid !== undefined &&
+            actual !== record.observedOid))
     )
       recovery('The independent receipt and actual reference disagree.');
     this.poisoned = false;
@@ -1421,11 +1529,12 @@ class SharedStore {
     const outcome =
       record.phase === 'observed'
         ? record.outcome!
-        : actual === record.newOid
-          ? 'applied'
-          : actual === record.beforeOid
-            ? 'not-applied'
-            : 'refused';
+        : (checkoutOutcome ??
+          (actual === record.newOid
+            ? 'applied'
+            : actual === record.beforeOid
+              ? 'not-applied'
+              : 'refused'));
     this.projectOperation({
       ...record,
       phase: 'observed',
@@ -1557,6 +1666,9 @@ class SharedStore {
           'INVALID_SOURCE',
           'SOURCE_MISMATCH',
           'SOURCE_UNAVAILABLE',
+          'UNSUPPORTED_CHECKOUT',
+          'DIRTY_CHECKOUT',
+          'CHECKOUT_INTERFERENCE',
         ].includes(error.code)
       )
         this.poisoned = true;
