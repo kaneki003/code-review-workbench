@@ -2,7 +2,7 @@
 
 The command **Code Review Workbench: Open Pull Request Overview** accepts one GitHub.com PR URL in an existing trusted local repository root. It verifies the account and PR through GitHub, binds the selected local copy to immutable repository IDs, saves that candidate under the owning account, and opens an ordinary read-only Markdown document and preview.
 
-This slice does not start an active source review. Checkout, downloaded source, diffs, discussion, AI, feedback publication, push and merge are unavailable. A configured GitHub remote identifies a potential local mapping; it does not prove that Git transport can authenticate or that PR source is already present.
+The overview action verifies metadata and local mapping. The subsequent [committed-source action](committed-source.md) downloads exact source and opens native diffs without changing checkout. A configured GitHub remote identifies a potential local mapping; it does not prove that Git transport can authenticate or that PR source is already present. Checkout, discussion, AI, feedback publication, push and merge remain unavailable.
 
 ## Walk through the implementation
 

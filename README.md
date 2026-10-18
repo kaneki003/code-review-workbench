@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline, installable readiness, shared private-store ownership and a verified read-only PR overview. Source checkout, diffs and private feedback remain later tickets.
+This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview and committed PR diffs with explicit Reviewed marks. Source checkout and private feedback remain later tickets.
 
 ## Run the readiness slice
 
@@ -18,9 +18,11 @@ Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install f
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
-The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands now coordinate one owner across windows. Recover Private Store reconciles interrupted typed operations without replaying Git. The guarded Git interface updates only workbench-owned references; it is not an arbitrary command runner. Install the VSIX built for your OS and CPU.
+The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands coordinate one owner across windows. Recover Private Store reconciles interrupted typed operations without replaying Git. The guarded Git interface updates workbench-owned references and fetches verified PR source; it is not an arbitrary command runner. Install the VSIX built for your OS and CPU.
 
 Run **Code Review Workbench: Open Pull Request Overview** in the root of an existing local repository, paste a GitHub.com PR URL and sign in through VS Code. The overview retains the selected local copy and verified account/repository identities in the owning private store. It shows real metadata and the author description in a read-only Markdown tab/preview. API sign-in does not configure Git transport. See the [implementation walkthrough, try-out steps and validation limits](docs/development/pr-overview.md).
+
+Then run **Code Review Workbench: Inspect Committed PR Diffs**. The Changed Files sidebar lists the complete local Git comparison and opens ordinary native diffs. **Open Exact-Revision Source** and **Return to Committed Source** preserve committed sides/ranges. Use the explicit **Mark File Reviewed** / **Remove Reviewed Mark** actions to save human progress. This is no-switch reading: working files and ordinary terminals stay on their earlier checkout. See the [source walkthrough, recovery steps and limits](docs/development/committed-source.md).
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 

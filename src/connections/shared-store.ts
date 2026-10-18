@@ -98,17 +98,24 @@ export function createStoreConnection(
           reject(new StoreError('REQUEST_IN_FLIGHT', 'This request is already in flight.'));
           return;
         }
-        const timer = setTimeout(() => {
-          pending.delete(message.id);
-          failed = true;
-          reject(
-            new StoreError(
-              'COMMIT_UNKNOWN',
-              'The worker did not acknowledge the request. No save or release is confirmed; close this window and check ownership again.',
-            ),
-          );
-          fail();
-        }, 10_000);
+        const timer = setTimeout(
+          () => {
+            pending.delete(message.id);
+            failed = true;
+            reject(
+              new StoreError(
+                'COMMIT_UNKNOWN',
+                'The worker did not acknowledge the request. No save or release is confirmed; close this window and check ownership again.',
+              ),
+            );
+            fail();
+          },
+          message.action === 'executeOperation'
+            ? 60_000
+            : message.action === 'publishSource'
+              ? 45_000
+              : 10_000,
+        );
         pending.set(message.id, { resolve, reject, timer });
         try {
           active.postMessage(message);

@@ -1,4 +1,11 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
+import type {
+  CommittedContent,
+  CommittedSource,
+  SourcePlan,
+  SourceSide,
+  SourceNavigation,
+} from './committed-source';
 
 export interface StoreProcess {
   pid: number;
@@ -52,7 +59,17 @@ export interface StoreRequest {
     | 'inspectOperation'
     | 'saveCandidate'
     | 'readCandidate'
-    | 'readRegistration';
+    | 'readRegistration'
+    | 'prepareSource'
+    | 'prepareSourceFetch'
+    | 'publishSource'
+    | 'readSource'
+    | 'readCommittedFile'
+    | 'setReviewed'
+    | 'readReviewed'
+    | 'saveNavigation'
+    | 'validateNavigation'
+    | 'readNavigation';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
@@ -63,6 +80,11 @@ export interface StoreRequest {
   candidateKey?: { baseRepositoryId: string; pullNumber: number };
   registrationPath?: string;
   workspacePath?: string;
+  sourceId?: string;
+  fileId?: string;
+  side?: SourceSide;
+  reviewed?: boolean;
+  navigation?: SourceNavigation;
 }
 
 export interface StoreHandoff {
@@ -73,6 +95,12 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  sourceId?: string;
+  sourcePlan?: SourcePlan;
+  source?: CommittedSource;
+  content?: CommittedContent;
+  reviewed?: string[];
+  navigation?: SourceNavigation;
   registration?: LocalRepositoryRegistration;
   view: StoreView;
   lease?: StoreLease;
