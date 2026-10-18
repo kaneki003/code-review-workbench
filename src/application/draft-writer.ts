@@ -70,11 +70,6 @@ export class DraftWriter {
   }
   async open(id: string): Promise<DraftWriterProjection> {
     const opening = ++this.opening;
-    if (this.current?.record.id !== id && !(await this.flush()))
-      throw new StoreError(
-        'DRAFT_SAVE_FAILED',
-        'Keep this writer open and Retry its unsaved text before opening another draft.',
-      );
     const record = await this.storage.read(id);
     const authority = this.storage.authority();
     if (opening !== this.opening)
@@ -85,20 +80,46 @@ export class DraftWriter {
         'This original draft is unavailable or was discarded.',
       );
     if (this.current?.record.id === id && this.read()) return this.read()!;
-    this.current = {
-      record,
-      authority,
-      writerId: randomUUID(),
-      body: record.body,
-      editRevision: record.editRevision,
-      status: 'saved',
-      detail: 'Saved on this device',
-      closing: false,
-      discarding: false,
-      failedDiscard: false,
-    };
-    this.changed();
-    return this.read()!;
+    const previous = this.current;
+    if (previous?.closing || previous?.discarding)
+      throw new StoreError('DRAFT_BUSY', 'Wait for the current writer action to finish.');
+    // Reading the destination can yield while the old writer receives input.
+    // Freeze and flush that latest input before replacing its host-owned state.
+    if (previous) previous.closing = true;
+    try {
+      if (!(await this.flush()))
+        throw new StoreError(
+          'DRAFT_SAVE_FAILED',
+          'Keep this writer open and Retry its unsaved text before opening another draft.',
+        );
+      const currentAuthority = this.storage.authority();
+      if (
+        opening !== this.opening ||
+        !currentAuthority ||
+        authority.incarnation !== currentAuthority.incarnation ||
+        authority.fence !== currentAuthority.fence
+      )
+        throw new StoreError(
+          'DRAFT_SUPERSEDED',
+          'The account or draft changed while opening. Reopen its original target.',
+        );
+      this.current = {
+        record,
+        authority,
+        writerId: randomUUID(),
+        body: record.body,
+        editRevision: record.editRevision,
+        status: 'saved',
+        detail: 'Saved on this device',
+        closing: false,
+        discarding: false,
+        failedDiscard: false,
+      };
+      this.changed();
+      return this.read()!;
+    } finally {
+      if (previous) previous.closing = false;
+    }
   }
   edit(writerId: string, expectedEditRevision: number, body: string): DraftWriterProjection {
     const state = this.require(writerId);

@@ -1187,3 +1187,106 @@ test(
   },
   integrationTimeout,
 );
+
+test('committed save receipts survive account fencing and retain newer pending input', async () => {
+  const context = await fixture();
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let held = false;
+  const manager = context.manager(undefined, (store) => ({
+    async request(request) {
+      const reply = await store.request(request);
+      if (request.action === 'saveDraft' && !held) {
+        held = true;
+        entered();
+        await gate;
+      }
+      return reply;
+    },
+    dispose: () => store.dispose(),
+  }));
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const draft = await manager.createLocalDraft(await draftTarget(manager));
+  const writer = await manager.openDraftWriter(draft.id);
+  manager.editDraftWriter(writer.writerId, 0, 'durably saved while account changed');
+  const flush = manager.flushDraftWriter();
+  await waiting;
+  manager.fencePullRequestOverview();
+  release();
+  expect(await flush).toBe(true);
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const reopened = await manager.openDraftWriter(draft.id);
+  expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+    committedRevision: 1,
+    rowRevision: 2,
+    body: 'durably saved while account changed',
+  });
+  expect(reopened).toMatchObject({ committedRevision: 1, rowRevision: 2, status: 'saved' });
+  manager.editDraftWriter(reopened.writerId, 1, 'newer input after verification');
+  expect(await manager.retryDraftWriter(reopened.writerId)).toBe(true);
+  expect(await manager.closeDraftWriter(reopened.writerId)).toEqual(draft.target);
+  expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+    body: 'newer input after verification',
+    committedRevision: 2,
+  });
+  expect((await manager.releasePrivateStore()).status).toBe('closed');
+}, 20000);
+
+test('switching writers retains input received during discovery when its save fails', async () => {
+  const context = await fixture();
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const waiting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let held = false;
+  let holdDraft: string | undefined;
+  const manager = context.manager(
+    { boundary: 'saveDraft.commit.before', mode: 'read-only' },
+    (store) => ({
+      async request(request) {
+        const reply = await store.request(request);
+        if (request.action === 'readDraft' && request.draftId === holdDraft && !held) {
+          held = true;
+          entered();
+          await gate;
+        }
+        return reply;
+      },
+      dispose: () => store.dispose(),
+    }),
+  );
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const target = await draftTarget(manager);
+  const first = await manager.createLocalDraft(target);
+  const second = await manager.createLocalDraft(target);
+  const original = await manager.openDraftWriter(first.id);
+  holdDraft = second.id;
+  const opening = manager.openDraftWriter(second.id);
+  await waiting;
+  manager.editDraftWriter(original.writerId, 0, 'host-received input during draft switch');
+  release();
+  await expect(opening).rejects.toMatchObject({ code: 'DRAFT_SAVE_FAILED' });
+  expect(manager.readDraftWriter()).toMatchObject({
+    id: first.id,
+    body: 'host-received input during draft switch',
+    status: 'failed',
+  });
+  expect(await manager.readLocalDraft(first.id)).toMatchObject({ body: '', committedRevision: 0 });
+  expect(await manager.retryDraftWriter(original.writerId)).toBe(true);
+  expect((await manager.openDraftWriter(second.id)).id).toBe(second.id);
+  expect(await manager.readLocalDraft(first.id)).toMatchObject({
+    body: 'host-received input during draft switch',
+    committedRevision: 1,
+  });
+  await manager.releasePrivateStore();
+}, 20000);

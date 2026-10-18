@@ -585,6 +585,11 @@ export class ReviewManager {
               detail:
                 'The account or selected review changed while this source request was running. Its durable receipt was retained; reopen the verified overview before continuing.',
             },
+            // Fence presentation, not an already committed mutation outcome.
+            // These receipts contain identity/revisions only, never draft text.
+            ...((action === 'saveDraft' || action === 'discardDraft') && reply.draftCommit
+              ? { draftCommit: reply.draftCommit }
+              : {}),
           };
         return reply;
       } catch (error) {
