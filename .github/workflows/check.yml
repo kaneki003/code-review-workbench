@@ -24,11 +24,11 @@ jobs:
           version: 12.11.2
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:native
-      - name: Reproduce interrupted entry after its preceding scenarios
+      - name: Reproduce interrupted entry and record OS error
         run: |
-          for crw_attempt in {1..6}; do
-            pnpm exec vitest run tests/committed-source.test.ts > /tmp/crw22-repro.log 2>&1 || { cat /tmp/crw22-repro.log; exit 1; }
-            echo "Passed source suite $crw_attempt"
+          for crw_attempt in {1..150}; do
+            pnpm exec vitest run tests/committed-source.test.ts -t 'entry interruption before checkout' > /tmp/crw22-repro.log 2>&1 || { cat /tmp/crw22-repro.log; exit 1; }
+            if (( crw_attempt % 10 == 0 )); then echo "Passed $crw_attempt interrupted-entry attempts"; fi
           done
       - uses: actions/upload-artifact@v4
         if: always()

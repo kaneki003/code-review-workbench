@@ -311,7 +311,7 @@ napi_value GroupSettled(napi_env env, napi_callback_info info) {
 #else
   if (kill(-pid,0) == 0) settled = false;
   else if (errno == ESRCH) settled = true;
-  else return Error(env,"CHILD_UNKNOWN","Cannot inspect the recorded process group.");
+  else return Error(env,"CHILD_UNKNOWN",("Cannot inspect the recorded process group, errno=" + std::to_string(errno)).c_str());
 #endif
   napi_value result; napi_get_boolean(env,settled,&result); return result;
 }
