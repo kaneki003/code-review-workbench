@@ -217,6 +217,14 @@ export class ReviewManager {
     if (generation !== this.overviewGeneration) return staleOverview();
     if (registration.view.status !== 'owned')
       return { status: 'blocked', detail: registration.view.detail };
+    const retained = [baseRemote, headRemote].find(
+      (item) => item && item.identity.id === registration.registration?.repositoryId,
+    );
+    if (retained) {
+      candidate.localRepository.repositoryId = retained.identity.id;
+      candidate.localRepository.relation = retained === baseRemote ? 'base' : 'head';
+      candidate.localRepository.remote = retained.remote;
+    }
     if (!registration.registration) {
       const confirmed = await this.connections.confirmLocalRepository?.(candidate);
       if (generation !== this.overviewGeneration) return staleOverview();

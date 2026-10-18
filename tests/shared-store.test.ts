@@ -389,6 +389,16 @@ test('replacing a registered Git directory cannot silently inherit the local map
   });
 });
 
+test('adding an upstream remote retains the explicit fork registration', async () => {
+  const context = await overviewFixture();
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  context.git('remote', 'add', 'upstream', 'https://github.com/acme/export-service.git');
+  await expect(context.manager.openPullRequestOverview(context.url)).resolves.toMatchObject({
+    status: 'ready',
+    localRepository: { repositoryId: '4001', relation: 'head' },
+  });
+});
+
 test('a changed actor cannot inherit the old scope and explicit release permits a separate account', async () => {
   const context = await overviewFixture();
   expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
