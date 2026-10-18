@@ -321,9 +321,9 @@ suite('Installed readiness VSIX', () => {
   });
   test('installed committed documents preserve native diff sides, return range, readonly source and theme changes', async function () {
     // This case runs many real Git/SQLite/editor round trips. Windows CI
-    // exceeded the runner's 25-second whole-case bound; individual production
+    // exceeded the earlier whole-case bounds; individual production
     // fetch, source-read and focus deadlines remain unchanged.
-    this.timeout(process.platform === 'win32' ? 90000 : 25000);
+    this.timeout(process.platform === 'win32' ? 180000 : 25000);
     const extension = vscode.extensions.getExtension<{
       createManager(
         configuration: StoreConfiguration,

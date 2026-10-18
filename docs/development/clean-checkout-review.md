@@ -25,6 +25,8 @@ The final review found no missing requirements, incorrect implemented behavior o
 
 Self-review then tightened an ambiguous manual-switch outcome: Continue no longer completes Exit when an Active review has unexpectedly returned to its original checkout. It preserves Active recovery and requires explicit Restore. The public-manager regression verifies no implicit editor restoration and no repeated checkout; the spec reviewer confirmed the change.
 
+Final matrix validation exposed a macOS process-group race. An isolated [CI reproduction](https://github.com/kaneki003/code-review-workbench/actions/runs/39138689815) captured `CHILD_UNKNOWN` during recovery; an exiting-group harness then reproduced `EPERM` locally. [Apple's `killpg1` implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c#L1612) can return that result while a group has no signalable member. Both native polling and recovery now treat permission denial as **not settled**; only verified absence clears the barrier. The public-manager regression accepts only that specific blocked recovery while retrying, verifies retained pending state and unchanged HEAD history on each attempt, and still requires completion within five seconds. Both reviewers confirmed the fix preserves safety.
+
 **Final Spec: zero remaining findings.** Required platform validation is tracked separately from static review and must be green in the draft PR checks before acceptance.
 
 ## Validation
@@ -32,5 +34,7 @@ Self-review then tightened an ambiguous manual-switch outcome: Continue no longe
 The real-Git fixtures use the production SQLite worker and native guard. Installed-host fixtures exercise actual save behavior, text/diff/overview tab state, pinned tabs, reversed multiple selections, vertical position and owner recreation. See the [walkthrough's verification commands](clean-checkout.md#verification) and [draft PR #34](https://github.com/kaneki003/code-review-workbench/pull/34) for the exact final test counts and Windows x64, Linux x64 and macOS arm64 minimum/current VS Code matrix.
 
 Final local formatting/typechecking and all **168 tests across nine files** pass on macOS arm64 with developer Node 24.22.0 and Git 2.56.0. The installed minimum (VS Code 1.141.2) and current (1.142.0, embedded Node 24.21.0 / Electron 43.7.7) hosts each pass all six cases. A final host run exposed an immediate-focus assertion in the existing absent-diff-side fixture; the fixture now also checks the returned navigation anchor and observes actual native focus with its existing five-second bound. Follow-up Standards review confirmed that no behavioral assertion was removed or weakened.
+
+Windows stable also exceeded earlier whole-scenario test deadlines in multi-step Git/SQLite fixtures. The Windows integration and compound installed-host cases now allow 120 and 180 seconds respectively. Individual production deadlines and all behavioral assertions remain unchanged; review confirmed that distinction.
 
 Review totals: Standards — zero remaining findings (one P2 and two judgement calls resolved); Spec — zero remaining findings (checkpoint safety defects and availability edge resolved). Neither axis substitutes for execution-based evidence.

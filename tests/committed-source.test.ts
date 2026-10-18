@@ -25,7 +25,9 @@ import type { StorageDiagnostics } from '../src/connections/storage-diagnostics'
 import type { StoreConnection } from '../src/application/private-store';
 import type { CheckoutEditors } from '../src/application/checkout-review';
 
-const integrationTimeout = process.platform === 'win32' ? 60_000 : 20_000;
+// Whole scenarios include many real Git processes and durable worker round trips.
+// Slow Windows runners exceeded one minute; individual production deadlines stay bounded.
+const integrationTimeout = process.platform === 'win32' ? 120_000 : 20_000;
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -645,7 +647,15 @@ test(
       assertSaved() {},
       restore: async () => {},
     });
-    const restored = await recovered.recoverPullRequestCheckout('restore');
+    let restored = await recovered.recoverPullRequestCheckout('restore');
+    const settlementDeadline = Date.now() + 5000;
+    while (restored.status !== 'complete' && Date.now() < settlementDeadline) {
+      expect(restored.detail).toMatch(/recorded Git process or its descendants may still run/);
+      expect((await recovered.inspectPrivateStore()).checkoutPending).toBe(true);
+      expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(before);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      restored = await recovered.recoverPullRequestCheckout('restore');
+    }
     expect(restored, JSON.stringify(restored)).toMatchObject({ status: 'complete' });
     expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(before);
     expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
