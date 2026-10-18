@@ -1,7 +1,7 @@
 {
   "name": "code-review-workbench",
   "displayName": "Code Review Workbench",
-  "description": "Personal-local code review workbench: readiness and shared private-store ownership.",
+  "description": "Personal-local code review workbench: verified read-only PR overviews and shared private storage.",
   "version": "0.0.1",
   "publisher": "kaneki003",
   "private": true,
@@ -70,6 +70,7 @@
     "package": "pnpm run build && node scripts/package.mjs"
   },
   "dependencies": {
+    "markdown-it": "14.1.0",
     "octokit": "5.0.5",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -78,6 +79,7 @@
     "@tailwindcss/cli": "4.3.3",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
+    "@types/markdown-it": "14.1.2",
     "@types/mocha": "10.0.10",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",

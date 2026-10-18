@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import {
   ReviewManager,
   type HostEnvironment,
-  type ReadinessConnections,
+  type ReviewConnections,
 } from './application/review-manager';
 import { probeGit } from './connections/git-readiness';
 import { probeSqlite } from './connections/sqlite-readiness';
@@ -11,30 +11,43 @@ import { createReadinessPanel } from './vscode/readiness-panel';
 import { createStoreConnection } from './connections/shared-store';
 import { resolveStoreConfiguration } from './connections/store-location';
 import type { StoreConfiguration } from './application/private-store';
-import { createOctokitGitHubConnection } from './connections/github';
+import { createGitHubConnection } from './connections/github';
 import { createLocalRepositoryConnection } from './connections/local-repository';
-import { createPullRequestOverviewMarkdown } from './vscode/pull-request-overview';
+import { createOverviewDocuments } from './vscode/overview-documents';
+import type { ReviewCandidate } from './application/pull-request';
 
 let activeManager: ReviewManager | undefined;
-let activeAccountManager: ReviewManager | undefined;
-let activeAccountId: string | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const workerPath = vscode.Uri.joinPath(
-    context.extensionUri,
-    'dist',
-    'readiness-worker.cjs',
-  ).fsPath;
-  // This host-only factory is also the installed-host integration seam. Tests
-  // supply an isolated OS-user home; production resolves it from os.userInfo.
+  let requestingSession = false;
+  const github = createGitHubConnection({
+    getSession: async (forceNewSession) => {
+      requestingSession = true;
+      try {
+        const session = await vscode.authentication.getSession(
+          'github',
+          ['repo'],
+          forceNewSession ? { forceNewSession: true } : { createIfNone: true },
+        );
+        return session ? { accessToken: session.accessToken } : undefined;
+      } finally {
+        requestingSession = false;
+      }
+    },
+  });
+  // The installed-host seam uses isolated storage and controlled external reads.
+  // Production and host tests still exercise the same public manager/actions.
   function createManager(
     configuration: StoreConfiguration,
-    reviewConnections: Pick<ReadinessConnections, 'account' | 'github' | 'repository'> = {},
+    review: Pick<ReviewConnections, 'github' | 'repository' | 'account'> = {},
   ) {
     return new ReviewManager({
       environment: readHostEnvironment,
       git: probeGit,
-      sqlite: () => probeSqlite(workerPath),
+      sqlite: () =>
+        probeSqlite(
+          vscode.Uri.joinPath(context.extensionUri, 'dist', 'readiness-worker.cjs').fsPath,
+        ),
       native: () =>
         probeNativeGuard(
           vscode.Uri.joinPath(context.extensionUri, 'dist', 'native-probe-worker.cjs').fsPath,
@@ -43,7 +56,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.Uri.joinPath(context.extensionUri, 'dist', 'store-worker.cjs').fsPath,
         configuration,
       ),
-      ...reviewConnections,
+      github,
+      repository: createLocalRepositoryConnection(),
+      ...(configuration.actor ? { account: configuration.actor } : {}),
+      ...review,
     });
   }
   const location =
@@ -51,14 +67,12 @@ export function activate(context: vscode.ExtensionContext) {
   const manager = createManager(resolveStoreConfiguration(location));
   activeManager = manager;
   const panel = createReadinessPanel(context.extensionUri, () => manager.checkReadiness());
-  const github = createOctokitGitHubConnection(async () => {
-    const session = await vscode.authentication.getSession('github', ['repo'], {
-      createIfNone: true,
-    });
-    return session ? { accessToken: session.accessToken } : undefined;
-  });
+  const documents = createOverviewDocuments();
+  let selection = 0;
+  let lastUrl = '';
   context.subscriptions.push(
     panel,
+    documents,
     vscode.commands.registerCommand('codeReviewWorkbench.checkReadiness', () => panel.show()),
     vscode.commands.registerCommand('codeReviewWorkbench.openPrivateStore', async () => {
       const view = await manager.openPrivateStore();
@@ -66,6 +80,8 @@ export function activate(context: vscode.ExtensionContext) {
       return view;
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.releasePrivateStore', async () => {
+      selection += 1;
+      manager.fencePullRequestOverview();
       const view = await manager.releasePrivateStore();
       void vscode.window.showInformationMessage(view.detail);
       return view;
@@ -77,80 +93,85 @@ export function activate(context: vscode.ExtensionContext) {
     }),
     vscode.commands.registerCommand(
       'codeReviewWorkbench.openPullRequestOverview',
-      async (providedUrl?: string) => {
+      async (providedUrl?: unknown) => {
+        const selected = ++selection;
+        manager.fencePullRequestOverview();
         const url =
-          providedUrl ??
-          (await vscode.window.showInputBox({
-            title: 'Open a verified PR overview',
-            prompt: 'Paste a complete GitHub.com pull request URL',
-            placeHolder: 'https://github.com/owner/repository/pull/123',
-            ignoreFocusOut: true,
-          }));
-        if (!url) return undefined;
-        const initial = await github.resolvePullRequest(url);
-        if (initial.status !== 'ready') {
-          void vscode.window.showWarningMessage(initial.detail);
-          return initial;
-        }
-        if (activeAccountId && activeAccountId !== initial.account.userId) {
-          const blocked = {
-            status: 'blocked' as const,
-            detail:
-              "A different GitHub account owns this window's private review state. Return to that account or release the private store explicitly; no review identity was transferred.",
-          };
-          void vscode.window.showWarningMessage(blocked.detail);
-          return blocked;
-        }
-        if (!activeAccountManager) {
-          const configuration = {
-            ...resolveStoreConfiguration(location),
-            actor: { host: initial.account.host, userId: initial.account.userId },
-          };
-          activeAccountManager = createManager(configuration, {
-            account: configuration.actor,
-            github,
-            repository: createLocalRepositoryConnection(github),
-          });
-          activeAccountId = initial.account.userId;
-        }
-        const overview = await activeAccountManager.openPullRequestOverview(url);
+          typeof providedUrl === 'string'
+            ? providedUrl
+            : await vscode.window.showInputBox({
+                title: 'Open a verified PR overview',
+                prompt: 'Paste a GitHub.com PR URL for this existing local repository',
+                placeHolder: 'https://github.com/owner/repository/pull/123',
+                value: lastUrl,
+                ignoreFocusOut: true,
+              });
+        if (!url || selected !== selection) return undefined;
+        lastUrl = url;
+        const overview = await manager.openPullRequestOverview(url);
+        if (selected !== selection || overview.status === 'stale') return overview;
         if (overview.status !== 'ready') {
-          void vscode.window.showWarningMessage(overview.detail);
+          const delay =
+            'retryAfter' in overview && overview.retryAfter
+              ? ` Retry after ${Math.ceil(overview.retryAfter / 1000)} seconds.`
+              : '';
+          void vscode.window.showWarningMessage(overview.detail + delay, 'Retry').then((action) => {
+            if (action === 'Retry' && selected === selection)
+              void vscode.commands.executeCommand(
+                'codeReviewWorkbench.openPullRequestOverview',
+                url,
+              );
+          });
           return overview;
         }
-        const document = await vscode.workspace.openTextDocument({
-          language: 'markdown',
-          content: createPullRequestOverviewMarkdown(overview),
-        });
-        await vscode.window.showTextDocument(document, { preview: false });
-        await vscode.commands.executeCommand('markdown.showPreview', document.uri);
+        await documents.show(overview, () => selected === selection);
         return overview;
       },
     ),
     vscode.authentication.onDidChangeSessions((event) => {
       if (event.provider.id !== 'github') return;
-      activeAccountManager?.fencePullRequestOverview();
-      if (activeAccountManager) {
-        void vscode.window.showWarningMessage(
-          'The GitHub session changed. Saved review identity remains with its original account; reconnect that account before retrying.',
-        );
+      if (manager.handleGitHubSessionChange(requestingSession)) {
+        const changed = ++selection;
+        void vscode.window
+          .showWarningMessage(
+            'The GitHub session changed. Saved PR identity remains with its original account. Retry to verify that account again.',
+            'Retry',
+          )
+          .then((action) => {
+            if (action === 'Retry' && changed === selection && lastUrl)
+              void vscode.commands.executeCommand(
+                'codeReviewWorkbench.openPullRequestOverview',
+                lastUrl,
+              );
+          });
       }
     }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      selection += 1;
+      manager.fencePullRequestOverview();
+    }),
   );
-  return { createManager };
+  return {
+    createManager,
+    showOverview: (candidate: ReviewCandidate) => documents.show(candidate),
+    // A silent probe proves routing to the built-in provider without triggering
+    // interactive login in an unattended host fixture.
+    probeGitHubSignIn: async () => ({
+      provider: 'github',
+      scopes: ['repo'],
+      sessionAvailable: Boolean(
+        await vscode.authentication.getSession('github', ['repo'], { silent: true }),
+      ),
+    }),
+  };
 }
 
 export async function deactivate() {
-  await activeAccountManager?.dispose();
-  activeAccountManager = undefined;
-  activeAccountId = undefined;
   await activeManager?.dispose();
   activeManager = undefined;
 }
 
 function readHostEnvironment(): HostEnvironment {
-  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-
   return {
     vscode: vscode.version,
     node: process.versions.node,
@@ -161,7 +182,7 @@ function readHostEnvironment(): HostEnvironment {
     desktop: vscode.env.uiKind === vscode.UIKind.Desktop,
     trusted: vscode.workspace.isTrusted,
     remote: vscode.env.remoteName,
-    folders: workspaceFolders.map((folder) => ({
+    folders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
       scheme: folder.uri.scheme,
       path: folder.uri.fsPath,
     })),

@@ -1,46 +1,52 @@
-import type { PullRequestOverview } from '../application/review-manager';
+import MarkdownIt from 'markdown-it';
+import type { ReviewCandidate } from '../application/pull-request';
 
-type ReadyOverview = Extract<PullRequestOverview, { status: 'ready' }>;
+const authorMarkdown = new MarkdownIt({ html: false, linkify: false });
+// Author content keeps Markdown structure but cannot create any navigation or
+// resource load. Only the separately generated GitHub link is actionable.
+authorMarkdown.renderer.rules.link_open = () => '';
+authorMarkdown.renderer.rules.link_close = () => '';
+authorMarkdown.renderer.rules.image = (tokens, index) =>
+  `${authorMarkdown.utils.escapeHtml(tokens[index]!.content)} [image omitted]`;
 
-export function createPullRequestOverviewMarkdown(overview: ReadyOverview): string {
-  const pull = overview.pullRequest;
-  const local = overview.localRepository;
+export function createPullRequestOverviewMarkdown(overview: ReviewCandidate): string {
+  const { pullRequest: pull, account, localRepository: local } = overview;
   return [
-    `# ${inline(pull.title)}`,
+    `# ${literal(pull.title)}`,
     '',
-    `**${pull.base.repository.fullName} #${pull.number}** · ${pull.state}${pull.draft ? ' · draft' : ''}`,
+    `${literal(pull.base.repository.fullName)} #${pull.number} · ${pull.state}${pull.draft ? ' · draft' : ''}`,
     '',
-    `Signed in as \`${inline(overview.account.login)}\` · Author \`${inline(pull.author.login)}\``,
+    `Signed in as ${code(account.login)} · GitHub user ID ${code(account.userId)}`,
     '',
-    `Base: \`${inline(pull.base.ref)}\` at \`${pull.base.oid}\`  `,
-    `Head: \`${inline(pull.head.repository.fullName)}:${inline(pull.head.ref)}\` at \`${pull.head.oid}\``,
+    `Author: ${pull.author ? code(pull.author.login) : 'Deleted account'}`,
+    '',
+    `Base: ${code(pull.base.repository.fullName)} / ${code(pull.base.ref)} at ${code(pull.base.oid)}  `,
+    `Head: ${pull.head.repository ? code(pull.head.repository.fullName) : 'Fork unavailable'} / ${code(pull.head.ref)} at ${code(pull.head.oid)}`,
     '',
     '## Author description',
     '',
-    safeAuthorMarkdown(pull.body || '_No author description was provided._'),
+    '_Author links and images are disabled in this overview._',
     '',
-    '## Local registration',
+    authorMarkdown.render(pull.body || '*No author description was provided.*'),
     '',
-    `Verified ${local.relation} repository ID \`${local.repositoryId}\` at \`${inline(local.path)}\` using the existing ${local.transport.toUpperCase()} Git transport configuration.`,
+    '## Selected local copy',
     '',
-    '> This is a read-only PR overview. No branch was switched, no source was fetched or cloned, and no GitHub content was changed. Full source availability, discussion, checkout, and generated review content are not available at this stage.',
+    `${code(local.facts.worktree.path)} · ${local.relation} repository ID ${code(local.repositoryId)}`,
     '',
-    `PR: ${pull.url}`,
+    `Configured Git transport: ${local.remote.transport.toUpperCase()}. Git authentication has not been tested. API sign-in does not configure Git's HTTPS credential helper or SSH keys.`,
+    '',
+    '> Read-only metadata overview. Checkout, full source availability, discussion and AI content are unavailable at this stage. No branch was switched or source fetched.',
+    '',
+    `[Open PR on GitHub](${pull.url})`,
     '',
   ].join('\n');
 }
 
-function inline(value: string): string {
+function literal(value: string): string {
   return value
-    .replaceAll('\\', '\\\\')
-    .replaceAll('`', '\\`')
-    .replace(/[\r\n]+/g, ' ');
+    .replace(/[\r\n\u0000-\u001f]/g, ' ')
+    .replace(/[\\`*_{}\[\]()#+.!|<>~&]/g, (character) => `&#${character.charCodeAt(0)};`);
 }
-
-function safeAuthorMarkdown(value: string): string {
-  return value
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replace(/!\[/g, '\\![')
-    .replace(/\]\(\s*(?:command|vscode|javascript|data):/gi, '](_blocked_:');
+function code(value: string): string {
+  return `<code>${authorMarkdown.utils.escapeHtml(value.replace(/[\r\n\u0000-\u001f]/g, ' '))}</code>`;
 }

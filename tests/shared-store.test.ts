@@ -13,7 +13,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
-import { ReviewManager, type ReadinessConnections } from '../src/application/review-manager';
+import { ReviewManager, type ReviewConnections } from '../src/application/review-manager';
 import { createStoreConnection } from '../src/connections/shared-store';
 import type {
   StoreConfiguration,
@@ -27,7 +27,8 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import { createRequire } from 'node:module';
-import { DatabaseSync } from 'node:sqlite';
+import { createGitHubConnection } from '../src/connections/github';
+import { createLocalRepositoryConnection } from '../src/connections/local-repository';
 import type { NativeStore } from '../src/connections/store-records';
 
 // One integration case builds its fixture, starts real hosts/workers and runs
@@ -127,7 +128,7 @@ async function fixture() {
     data = 'data-A',
     actor?: StoreConfiguration['actor'],
     wrap: (connection: StoreConnection) => StoreConnection = (connection) => connection,
-    review: Pick<ReadinessConnections, 'github' | 'repository'> = {},
+    review: Pick<ReviewConnections, 'github' | 'repository'> = {},
   ) {
     const store = wrap(
       createStoreConnection(worker, {
@@ -176,8 +177,8 @@ async function fixture() {
 
 test('an account owner durably saves a verified PR candidate and local registration', async () => {
   const context = await fixture();
-  const location = join(context.directory, 'repository');
-  await mkdir(location);
+  const { repository: location, git } = await repositoryFixture(context.directory);
+  git('remote', 'add', 'fork-copy', 'git@github.com:fork/export-service.git');
   const actor = { host: 'github.com' as const, userId: '1001' };
   const pullRequest = {
     id: '9001',
@@ -189,12 +190,12 @@ test('an account owner durably saves a verified PR candidate and local registrat
     url: 'https://github.com/acme/export-service/pull/248',
     author: { userId: '2001', login: 'author' },
     base: {
-      repository: { id: '3001', name: 'export-service', fullName: 'acme/export-service' },
+      repository: { id: '3001', fullName: 'acme/export-service' },
       ref: 'main',
       oid: 'a'.repeat(40),
     },
     head: {
-      repository: { id: '4001', name: 'export-service', fullName: 'fork/export-service' },
+      repository: { id: '4001', fullName: 'fork/export-service' },
       ref: 'feature',
       oid: 'b'.repeat(40),
     },
@@ -205,12 +206,16 @@ test('an account owner durably saves a verified PR candidate and local registrat
         status: 'ready' as const,
         account: { ...actor, login: 'reviewer' },
         pullRequest,
+        repositories: [
+          {
+            identity: pullRequest.head.repository,
+            remote: { owner: 'fork', repository: 'export-service', transport: 'ssh' as const },
+          },
+        ],
       }),
-      resolveRepository: async () => undefined,
+      sessionChanged() {},
     },
-    repository: {
-      inspect: async () => ({ path: location, repositoryIds: ['4001'], transport: 'ssh' as const }),
-    },
+    repository: createLocalRepositoryConnection(),
   };
   const first = context.manager('repository', 'data-A', actor, (connection) => connection, review);
 
@@ -220,30 +225,164 @@ test('an account owner durably saves a verified PR candidate and local registrat
     localRepository: { repositoryId: '4001', relation: 'head' },
   });
   await first.releasePrivateStore();
-  const database = new DatabaseSync(join(context.home, 'data-A', 'review.sqlite'), {
-    readOnly: true,
-  });
-  try {
-    const row = database
-      .prepare(
-        'SELECT candidate FROM review_candidates WHERE base_repository_id=? AND pull_number=?',
-      )
-      .get('3001', 248);
-    expect(JSON.parse(String(row?.candidate))).toMatchObject({
-      account: actor,
-      localRepository: { path: location, repositoryId: '4001', relation: 'head' },
-    });
-    expect(String(row?.candidate)).not.toContain('secret');
-  } finally {
-    database.close();
-  }
-
   const second = context.manager('repository', 'data-A', actor, (connection) => connection, review);
-  const secondOverview = await second.openPullRequestOverview(pullRequest.url);
-  expect(secondOverview, JSON.stringify(secondOverview)).toMatchObject({
-    status: 'ready',
-    localRepository: { repositoryId: '4001', relation: 'head' },
+  await second.openPrivateStore();
+  await expect(second.readSavedPullRequest('3001', 248)).resolves.toMatchObject({
+    account: actor,
+    pullRequest,
+    localRepository: {
+      repositoryId: '4001',
+      relation: 'head',
+      facts: {
+        worktree: { path: location },
+        gitDirectory: { path: join(location, '.git') },
+        commonDirectory: { path: join(location, '.git') },
+      },
+    },
   });
+  // Reuse of the same fork name is a different immutable repository. It cannot
+  // overwrite the mapping or carry old private data into that repository.
+  pullRequest.head.repository.id = '4999';
+  await expect(second.openPullRequestOverview(pullRequest.url)).resolves.toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('previously registered'),
+  });
+  await expect(second.readSavedPullRequest('3001', 248)).resolves.toMatchObject({
+    localRepository: { repositoryId: '4001' },
+    pullRequest: { head: { repository: { id: '4001' } } },
+  });
+});
+
+async function overviewFixture() {
+  const context = await fixture();
+  const { repository, git, oid } = await repositoryFixture(context.directory);
+  git('remote', 'add', 'arbitrary-alias', 'git@github.com:fork/export-service.git');
+  const state = {
+    userId: 1001,
+    failure: 0,
+    headId: 4001,
+    delayed: undefined as undefined | (() => Promise<void>),
+    duringConsent: undefined as undefined | (() => void),
+  };
+  const github = createGitHubConnection({
+    getSession: async () => {
+      state.duringConsent?.();
+      return { accessToken: 'synthetic-token-outside-records' };
+    },
+    fetch: async (input) => {
+      const url = String(input);
+      if (state.failure)
+        return new Response('{}', {
+          status: state.failure,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (url.includes('/pulls/')) await state.delayed?.();
+      const data = url.endsWith('/user')
+        ? { id: state.userId, login: 'reviewer' }
+        : url.includes('/pulls/')
+          ? {
+              id: 9001,
+              number: 248,
+              title: 'Verified candidate',
+              body: 'Saved private work',
+              state: 'open',
+              merged: false,
+              draft: false,
+              html_url: 'https://github.com/acme/export-service/pull/248',
+              user: { id: 2001, login: 'author' },
+              base: { ref: 'main', sha: oid, repo: { id: 3001, full_name: 'acme/export-service' } },
+              head: {
+                ref: 'feature',
+                sha: oid,
+                repo: { id: state.headId, full_name: 'fork/export-service' },
+              },
+            }
+          : {
+              id: url.includes('/fork/') ? state.headId : 3001,
+              full_name: url.includes('/fork/') ? 'fork/export-service' : 'acme/export-service',
+            };
+      return new Response(JSON.stringify(data), {
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+  const manager = context.manager('repository', 'data-A', undefined, (connection) => connection, {
+    github,
+    repository: createLocalRepositoryConnection(),
+  });
+  return {
+    ...context,
+    repository,
+    git,
+    manager,
+    state,
+    url: 'https://github.com/acme/export-service/pull/248',
+  };
+}
+
+test('API access loss preserves a saved candidate and the exact local index, files and refs', async () => {
+  const context = await overviewFixture();
+  const index = await readFile(join(context.repository, '.git', 'index'));
+  const refs = context.git('show-ref');
+  const files = await readFile(join(context.repository, 'tracked.txt'));
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  context.state.failure = 404;
+  await expect(context.manager.openPullRequestOverview(context.url)).resolves.toMatchObject({
+    status: 'unavailable',
+    detail: expect.stringContaining('private'),
+  });
+  await expect(context.manager.readSavedPullRequest('3001', 248)).resolves.toMatchObject({
+    pullRequest: { body: 'Saved private work' },
+    account: { userId: '1001' },
+  });
+  expect(await readFile(join(context.repository, '.git', 'index'))).toEqual(index);
+  expect(await readFile(join(context.repository, 'tracked.txt'))).toEqual(files);
+  expect(context.git('show-ref')).toBe(refs);
+});
+
+test('first-time sign-in can finish after the provider announces its new session', async () => {
+  const context = await overviewFixture();
+  context.state.duringConsent = () => {
+    context.manager.handleGitHubSessionChange(true);
+  };
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+});
+
+test('a changed actor cannot inherit the old scope and explicit release permits a separate account', async () => {
+  const context = await overviewFixture();
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  context.state.userId = 1002;
+  context.manager.handleGitHubSessionChange(false);
+  await expect(context.manager.openPullRequestOverview(context.url)).resolves.toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('another GitHub account'),
+  });
+  expect((await context.manager.inspectPrivateStore()).status).toBe('owned');
+  expect((await context.manager.releasePrivateStore()).status).toBe('closed');
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  const saved = await context.manager.readSavedPullRequest('3001', 248);
+  expect(saved?.account.userId).toBe('1002');
+  expect(JSON.stringify(saved)).not.toContain('synthetic-token-outside-records');
+});
+
+test('a superseded target cannot save a late PR result', async () => {
+  const context = await overviewFixture();
+  let finish!: () => void;
+  let began = false;
+  context.state.delayed = async () => {
+    began = true;
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+  };
+  const old = context.manager.openPullRequestOverview(context.url);
+  await vi.waitFor(() => expect(began).toBe(true));
+  context.state.failure = 404;
+  const current = context.manager.openPullRequestOverview(context.url);
+  finish();
+  await expect(old).resolves.toMatchObject({ status: 'stale' });
+  await expect(current).resolves.toMatchObject({ status: 'unavailable' });
+  expect((await context.manager.inspectPrivateStore()).status).toBe('closed');
 });
 
 async function repositoryFixture(directory: string) {

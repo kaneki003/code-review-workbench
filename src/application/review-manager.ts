@@ -8,14 +8,15 @@ import {
   type StoreView,
   type StoreReply,
   type StoreHandoff,
-  type ReviewCandidate,
 } from './private-store';
-import type {
+import {
+  sameLocalRepository,
   GitHubAccount,
   GitHubConnection,
-  PullRequestRecord,
-  PullRequestResolution,
-} from '../connections/github';
+  type LocalRepositoryConnection,
+  type PullRequestOverview,
+  type ReviewCandidate,
+} from './pull-request';
 
 export interface HostEnvironment {
   vscode: string;
@@ -30,7 +31,7 @@ export interface HostEnvironment {
   folders: { scheme: string; path: string }[];
 }
 
-export interface ReadinessConnections {
+export interface ReviewConnections {
   environment(): HostEnvironment;
   git(folder: string): Promise<Capability>;
   sqlite(): Promise<Capability>;
@@ -41,39 +42,15 @@ export interface ReadinessConnections {
   repository?: LocalRepositoryConnection;
 }
 
-export interface LocalRepositoryInspection {
-  path: string;
-  repositoryIds: string[];
-  transport: 'https' | 'ssh';
-}
-
-export interface LocalRepositoryConnection {
-  inspect(path: string): Promise<LocalRepositoryInspection>;
-}
-
-export type PullRequestOverview =
-  | {
-      status: 'ready';
-      account: GitHubAccount;
-      pullRequest: PullRequestRecord;
-      localRepository: {
-        path: string;
-        repositoryId: string;
-        relation: 'base' | 'head';
-        transport: 'https' | 'ssh';
-      };
-    }
-  | Exclude<PullRequestResolution, { status: 'ready' }>
-  | { status: 'stale'; detail: string }
-  | { status: 'local-required'; detail: string }
-  | { status: 'blocked'; detail: string };
-
-// This public action only inspects capabilities. It never acquires review ownership.
+// The owning manager coordinates actions independently of editor/view lifetime.
 export class ReviewManager {
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
   private overviewGeneration = 0;
-  constructor(private readonly connections: ReadinessConnections) {}
+  private account: Pick<GitHubAccount, 'host' | 'userId'> | undefined;
+  constructor(private readonly connections: ReviewConnections) {
+    this.account = connections.account;
+  }
   async dispose(): Promise<void> {
     try {
       if (this.storeLease) await this.releasePrivateStore();
@@ -86,6 +63,7 @@ export class ReviewManager {
     return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
   }
   releasePrivateStore(): Promise<StoreView> {
+    this.fencePullRequestOverview();
     return this.storeAction('release');
   }
   inspectPrivateStore(): Promise<StoreView> {
@@ -117,6 +95,25 @@ export class ReviewManager {
 
   fencePullRequestOverview(): void {
     this.overviewGeneration += 1;
+    this.connections.github?.sessionChanged();
+  }
+
+  handleGitHubSessionChange(requestingFirstSession: boolean): boolean {
+    // First-time consent adds a session before /user can establish an actor.
+    // There is no old private identity to fence in that specific state.
+    if (requestingFirstSession && !this.account && !this.storeLease) return false;
+    this.fencePullRequestOverview();
+    return true;
+  }
+
+  async readSavedPullRequest(
+    baseRepositoryId: string,
+    pullNumber: number,
+  ): Promise<ReviewCandidate | undefined> {
+    const reply = await this.storeRequest('readCandidate', {
+      candidateKey: { baseRepositoryId, pullNumber },
+    });
+    return reply.candidate;
   }
 
   async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
@@ -125,20 +122,6 @@ export class ReviewManager {
     const repository = this.connections.repository;
     if (!github || !repository) {
       return { status: 'blocked', detail: 'This installation has no GitHub PR connection.' };
-    }
-    const resolved = await github.resolvePullRequest(url);
-    if (generation !== this.overviewGeneration) return staleOverview();
-    if (resolved.status !== 'ready') return resolved;
-    if (
-      !this.connections.account ||
-      this.connections.account.host !== resolved.account.host ||
-      this.connections.account.userId !== resolved.account.userId
-    ) {
-      return {
-        status: 'blocked',
-        detail:
-          'The verified GitHub account changed. Reopen this PR with that account; private review identity was not transferred.',
-      };
     }
     const host = this.connections.environment();
     if (
@@ -154,22 +137,41 @@ export class ReviewManager {
         detail: 'Use a trusted supported local desktop workspace to register this PR.',
       };
     }
-    let local: LocalRepositoryInspection;
+    let local;
     try {
       local = await repository.inspect(host.folders[0]!.path);
     } catch {
       return {
         status: 'local-required',
         detail:
-          'The selected folder has no verified GitHub base or fork remote. Open an existing local copy and configure its HTTPS helper or SSH transport, then retry. Nothing was cloned or switched.',
+          'Select an existing local Git repository root. Git could not inspect this folder safely. Check Git installation, folder access and safe.directory, then Retry. Nothing was cloned or switched.',
       };
     }
     if (generation !== this.overviewGeneration) return staleOverview();
-    const relation = local.repositoryIds.includes(resolved.pullRequest.base.repository.id)
-      ? ('base' as const)
-      : local.repositoryIds.includes(resolved.pullRequest.head.repository.id)
-        ? ('head' as const)
-        : undefined;
+    const resolved = await github.resolvePullRequest(url, local.remotes);
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (resolved.status !== 'ready') return resolved;
+    if (this.account && this.account.userId !== resolved.account.userId) {
+      return {
+        status: 'blocked',
+        detail:
+          'The private store belongs to another GitHub account or local scope. Reconnect its original account or explicitly Release Private Store before selecting this account. Saved identity was retained.',
+      };
+    }
+    if (this.storeLease && !this.account)
+      return {
+        status: 'blocked',
+        detail:
+          'This window owns the private store in its local scope. Explicitly Release Private Store, then Retry to open it for the verified GitHub account.',
+      };
+    const baseRemote = resolved.repositories.find(
+      (item) => item.identity.id === resolved.pullRequest.base.repository.id,
+    );
+    const headRemote = resolved.repositories.find(
+      (item) => item.identity.id === resolved.pullRequest.head.repository?.id,
+    );
+    const selected = baseRemote ?? headRemote;
+    const relation = baseRemote ? ('base' as const) : headRemote ? ('head' as const) : undefined;
     if (!relation) {
       return {
         status: 'local-required',
@@ -177,30 +179,39 @@ export class ReviewManager {
           "The selected local folder is not a verified copy of this pull request's base or head repository. Open an existing local copy; nothing was cloned or switched.",
       };
     }
-    const ownership = await this.openPrivateStore();
+    let current;
+    try {
+      current = await repository.inspect(host.folders[0]!.path);
+    } catch {
+      return {
+        status: 'local-required',
+        detail: 'The selected local repository became unavailable. Restore access and Retry.',
+      };
+    }
+    if (!sameLocalRepository(local, current) || generation !== this.overviewGeneration)
+      return staleOverview();
+    const actor = { host: resolved.account.host, userId: resolved.account.userId };
+    const ownership = await this.storeRequest('open', { actor }, generation);
+    if (ownership.view.status === 'owned') this.account = actor;
     if (generation !== this.overviewGeneration) return staleOverview();
-    if (ownership.status !== 'owned') return { status: 'blocked', detail: ownership.detail };
-    const repositoryId =
-      relation === 'base'
-        ? resolved.pullRequest.base.repository.id
-        : resolved.pullRequest.head.repository.id;
-    const candidate = candidateRecord(resolved.account, resolved.pullRequest, {
-      path: local.path,
-      repositoryId,
-      relation,
-      transport: local.transport,
-    });
-    const saved = await this.storeRequest('saveCandidate', { candidate });
+    if (ownership.view.status !== 'owned')
+      return { status: 'blocked', detail: ownership.view.detail };
+    const candidate: ReviewCandidate = {
+      account: resolved.account,
+      pullRequest: resolved.pullRequest,
+      localRepository: {
+        facts: local,
+        repositoryId: selected!.identity.id,
+        relation,
+        remote: selected!.remote,
+      },
+    };
+    const saved = await this.storeRequest('saveCandidate', { candidate }, generation);
     if (generation !== this.overviewGeneration) return staleOverview();
     if (saved.view.status !== 'owned' || !saved.candidate) {
       return { status: 'blocked', detail: saved.view.detail };
     }
-    return {
-      status: 'ready',
-      account: resolved.account,
-      pullRequest: resolved.pullRequest,
-      localRepository: candidate.localRepository,
-    };
+    return { status: 'ready', ...saved.candidate };
   }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
@@ -211,10 +222,24 @@ export class ReviewManager {
     action: StoreRequest['action'],
     fields: Pick<
       StoreRequest,
-      'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId' | 'candidate'
+      | 'handoff'
+      | 'targetWindowId'
+      | 'refUpdate'
+      | 'operationId'
+      | 'candidate'
+      | 'actor'
+      | 'candidateKey'
     > = {},
+    overviewGeneration?: number,
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
+      if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
+        return {
+          view: {
+            status: 'blocked',
+            detail: 'This overview request was superseded before storage dispatch.',
+          },
+        };
       const host = this.connections.environment();
       if (
         [
@@ -249,6 +274,13 @@ export class ReviewManager {
             },
           };
         }
+        if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
+          return {
+            view: {
+              status: 'blocked',
+              detail: 'This overview request was superseded before storage dispatch.',
+            },
+          };
         const request: StoreRequest = {
           protocol: 1,
           id: randomUUID(),
@@ -265,6 +297,7 @@ export class ReviewManager {
           reply.lease.revision >= this.storeLease.revision
         )
           this.storeLease = reply.lease;
+        if (action === 'release' && reply.view.status === 'closed') this.account = undefined;
         return reply;
       } catch (error) {
         return {
@@ -423,34 +456,5 @@ function staleOverview(): PullRequestOverview {
   return {
     status: 'stale',
     detail: 'A newer account or pull request selection replaced this read. Its result was ignored.',
-  };
-}
-
-function candidateRecord(
-  account: GitHubAccount,
-  pullRequest: PullRequestRecord,
-  localRepository: ReviewCandidate['localRepository'],
-): ReviewCandidate {
-  return {
-    account: { host: account.host, userId: account.userId },
-    baseRepositoryId: pullRequest.base.repository.id,
-    pullRequestId: pullRequest.id,
-    pullNumber: pullRequest.number,
-    localRepository,
-    record: {
-      title: pullRequest.title,
-      body: pullRequest.body,
-      state: pullRequest.state,
-      draft: pullRequest.draft,
-      url: pullRequest.url,
-      author: pullRequest.author,
-      baseFullName: pullRequest.base.repository.fullName,
-      baseRef: pullRequest.base.ref,
-      baseOid: pullRequest.base.oid,
-      headRepositoryId: pullRequest.head.repository.id,
-      headFullName: pullRequest.head.repository.fullName,
-      headRef: pullRequest.head.ref,
-      headOid: pullRequest.head.oid,
-    },
   };
 }

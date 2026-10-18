@@ -1,18 +1,18 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { GitHubConnection } from './github';
+import { realpath, stat } from 'node:fs/promises';
 import type {
+  DirectoryIdentity,
+  GitHubRemote,
   LocalRepositoryConnection,
-  LocalRepositoryInspection,
-} from '../application/review-manager';
+} from '../application/pull-request';
 
 const execFileAsync = promisify(execFile);
 
-export function createLocalRepositoryConnection(
-  github: GitHubConnection,
-): LocalRepositoryConnection {
+export function createLocalRepositoryConnection(): LocalRepositoryConnection {
   return {
-    async inspect(path): Promise<LocalRepositoryInspection> {
+    async inspect(folder) {
+      const path = await realpath(folder);
       const environment = Object.fromEntries(
         Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')),
       );
@@ -23,90 +23,67 @@ export function createLocalRepositoryConnection(
         maxBuffer: 64 * 1024,
         windowsHide: true,
       };
-      const remoteNames = await execFileAsync(
-        'git',
-        ['--no-optional-locks', '-c', 'core.fsmonitor=false', 'remote'],
-        commandOptions,
-      );
-      const remoteUrls = (
-        await Promise.all(
-          remoteNames.stdout
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .map((name) =>
-              execFileAsync(
-                'git',
-                [
-                  '--no-optional-locks',
-                  '-c',
-                  'core.fsmonitor=false',
-                  'remote',
-                  'get-url',
-                  '--all',
-                  name,
-                ],
-                commandOptions,
-              ).then((result) => result.stdout.split(/\r?\n/).filter(Boolean)),
-            ),
-        )
-      ).flat();
-      const coordinates = new Map<
-        string,
-        { owner: string; repository: string; transport: 'https' | 'ssh' }
-      >();
-      for (const remote of remoteUrls) {
-        const parsed = parseGitHubRemote(remote);
-        if (parsed)
-          coordinates.set(
-            `${parsed.owner.toLowerCase()}/${parsed.repository.toLowerCase()}`,
-            parsed,
-          );
-      }
-      const resolved = await Promise.all(
-        [...coordinates.values()].map(async (remote) => ({
-          remote,
-          repository: await github.resolveRepository(remote.owner, remote.repository),
-        })),
-      );
-      const repositories = resolved.filter(
-        (item): item is typeof item & { repository: NonNullable<typeof item.repository> } =>
-          Boolean(item.repository),
-      );
-      if (repositories.length === 0) {
-        throw new Error(
-          'No GitHub.com remote in the selected folder could be verified. Configure existing HTTPS-helper or SSH Git transport, then retry.',
-        );
+      const read = async (args: string[]) =>
+        (
+          await execFileAsync(
+            'git',
+            ['--no-optional-locks', '-c', 'core.fsmonitor=false', ...args],
+            commandOptions,
+          )
+        ).stdout.trimEnd();
+      const roots = (
+        await read([
+          'rev-parse',
+          '--path-format=absolute',
+          '--show-toplevel',
+          '--absolute-git-dir',
+          '--git-common-dir',
+        ])
+      ).split(/\r?\n/);
+      if (roots.length !== 3 || (await realpath(roots[0]!)) !== path)
+        throw new Error('Select the repository root.');
+      const remoteNames = (await read(['remote'])).split(/\r?\n/).filter(Boolean);
+      if (remoteNames.length > 16) throw new Error('Too many remotes.');
+      const remotes: GitHubRemote[] = [];
+      // Read raw config URLs; Git's insteadOf-expanded URLs can contain secrets.
+      // No URL is ever placed in argv, a log, or an application record.
+      for (const name of remoteNames) {
+        const values = (await read(['config', '--null', '--get-all', `remote.${name}.url`]))
+          .split('\0')
+          .filter(Boolean);
+        for (const value of values) {
+          const remote = parseRemote(value);
+          if (remote && !remotes.some((item) => JSON.stringify(item) === JSON.stringify(remote)))
+            remotes.push(remote);
+        }
       }
       return {
-        path,
-        repositoryIds: [...new Set(repositories.map((item) => item.repository.id))],
-        transport: repositories.some((item) => item.remote.transport === 'ssh') ? 'ssh' : 'https',
+        worktree: await directoryIdentity(path),
+        gitDirectory: await directoryIdentity(roots[1]!),
+        commonDirectory: await directoryIdentity(roots[2]!),
+        remotes,
       };
     },
   };
 }
 
-function parseGitHubRemote(
-  input: string,
-): { owner: string; repository: string; transport: 'https' | 'ssh' } | undefined {
-  const ssh = /^(?:ssh:\/\/)?git@github\.com(?::|\/)([^/]+)\/([^/]+?)(?:\.git)?$/.exec(input);
+async function directoryIdentity(input: string): Promise<DirectoryIdentity> {
+  const path = await realpath(input);
+  const metadata = await stat(path, { bigint: true });
+  if (!metadata.isDirectory() || metadata.ino < 1n) throw new Error('Unsupported local directory.');
+  return { path, device: String(metadata.dev), inode: String(metadata.ino) };
+}
+
+function parseRemote(value: string): GitHubRemote | undefined {
+  const ssh =
+    /^(?:ssh:\/\/)?git@github\.com(?::|\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(
+      value,
+    );
   if (ssh) return { owner: ssh[1]!, repository: ssh[2]!, transport: 'ssh' };
-  let url: URL;
-  try {
-    url = new URL(input);
-  } catch {
-    return undefined;
-  }
-  if (
-    url.protocol !== 'https:' ||
-    url.hostname.toLowerCase() !== 'github.com' ||
-    url.username ||
-    url.password ||
-    url.port ||
-    url.search ||
-    url.hash
-  )
-    return undefined;
-  const match = /^\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.pathname);
-  return match ? { owner: match[1]!, repository: match[2]!, transport: 'https' } : undefined;
+  // Strict raw syntax rejects credential URLs, rewrites, options and encoded paths.
+  const https = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(
+    value,
+  );
+  if (!https) return undefined;
+  return { owner: https[1]!, repository: https[2]!, transport: 'https' };
 }

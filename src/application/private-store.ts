@@ -48,13 +48,16 @@ export interface StoreRequest {
     | 'executeOperation'
     | 'recover'
     | 'inspectOperation'
-    | 'saveCandidate';
+    | 'saveCandidate'
+    | 'readCandidate';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
   refUpdate?: { ref: string; newOid: string };
   operationId?: string;
   candidate?: ReviewCandidate;
+  actor?: Pick<GitHubAccount, 'host' | 'userId'>;
+  candidateKey?: { baseRepositoryId: string; pullNumber: number };
   workspacePath?: string;
 }
 
@@ -79,34 +82,6 @@ export interface StoreReply {
   candidate?: ReviewCandidate;
 }
 
-export interface ReviewCandidate {
-  account: { host: 'github.com'; userId: string };
-  baseRepositoryId: string;
-  pullRequestId: string;
-  pullNumber: number;
-  localRepository: {
-    path: string;
-    repositoryId: string;
-    relation: 'base' | 'head';
-    transport: 'https' | 'ssh';
-  };
-  record: {
-    title: string;
-    body: string;
-    state: 'open' | 'closed';
-    draft: boolean;
-    url: string;
-    author: { userId: string; login: string };
-    baseFullName: string;
-    baseRef: string;
-    baseOid: string;
-    headRepositoryId: string;
-    headFullName: string;
-    headRef: string;
-    headOid: string;
-  };
-}
-
 export interface StoreConnection {
   request(message: StoreRequest): Promise<StoreReply>;
   dispose(): Promise<void>;
@@ -120,3 +95,4 @@ export class StoreError extends Error {
     super(message);
   }
 }
+import type { GitHubAccount, ReviewCandidate } from './pull-request';

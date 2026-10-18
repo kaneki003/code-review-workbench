@@ -1,341 +1,408 @@
-export interface GitHubAccount {
-  host: 'github.com';
-  userId: string;
-  login: string;
+import { Octokit } from 'octokit';
+import type {
+  AccessFailure,
+  GitHubConnection,
+  GitHubRemote,
+  GitHubRepositoryIdentity,
+  PullRequestRecord,
+  PullRequestResolution,
+  PullRequestRevision,
+} from '../application/pull-request';
+
+interface GitHubOptions {
+  getSession(forceNewSession?: boolean): Promise<{ accessToken: string } | undefined>;
+  fetch?: typeof globalThis.fetch;
+  sleep?: (milliseconds: number) => Promise<void>;
+  now?: () => number;
 }
 
-export interface GitHubRepositoryIdentity {
-  id: string;
-  name: string;
-  fullName: string;
-}
-
-export interface PullRequestRevision {
-  repository: GitHubRepositoryIdentity;
-  ref: string;
-  oid: string;
-}
-
-export interface PullRequestRecord {
-  id: string;
-  number: number;
-  title: string;
-  body: string;
-  state: 'open' | 'closed';
-  draft: boolean;
-  url: string;
-  author: { userId: string; login: string };
-  base: PullRequestRevision;
-  head: PullRequestRevision;
-}
-
-export type PullRequestResolution =
-  | { status: 'ready'; account: GitHubAccount; pullRequest: PullRequestRecord }
-  | { status: 'unsupported'; detail: string }
-  | { status: 'reconnect'; detail: string }
-  | { status: 'unavailable'; detail: string; retryAfter?: number };
-
-interface Session {
-  accessToken: string;
-}
-
-interface GitHubResponse {
-  data: unknown;
-  headers: Record<string, unknown>;
-}
-
-interface GitHubClient {
-  request(route: string, parameters?: Record<string, unknown>): Promise<GitHubResponse>;
-}
-
-interface GitHubConnectionOptions {
-  getSession(): Promise<Session | undefined>;
-  createClient(accessToken: string): GitHubClient;
-  sleep(milliseconds: number): Promise<void>;
-}
-
-export interface GitHubConnection {
-  resolvePullRequest(url: string): Promise<PullRequestResolution>;
-  resolveRepository(
-    owner: string,
-    repository: string,
-  ): Promise<GitHubRepositoryIdentity | undefined>;
-}
-
-export function createOctokitGitHubConnection(
-  getSession: () => Promise<Session | undefined>,
-): GitHubConnection {
-  return createGitHubConnection({
-    getSession,
-    createClient: (accessToken) => {
-      const client = new Octokit({
-        auth: accessToken,
-        userAgent: 'code-review-workbench/0.0.1',
-        request: { headers: { 'X-GitHub-Api-Version': '2026-03-10' } },
-      });
-      return {
-        request: (route, parameters) =>
-          client.request(route as never, parameters as never) as Promise<GitHubResponse>,
-      };
-    },
-    sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  });
-}
-
-export function createGitHubConnection(options: GitHubConnectionOptions): GitHubConnection {
+// Only this connection sees credentials or SDK response/error objects.
+export function createGitHubConnection(options: GitHubOptions): GitHubConnection {
+  let generation = 0;
+  let reconnect = false;
+  const pending = new Set<AbortController>();
   return {
-    async resolvePullRequest(url) {
-      const target = parsePullRequestUrl(url);
-      if (!target) {
+    sessionChanged() {
+      generation += 1;
+      for (const controller of pending) controller.abort();
+    },
+    async resolvePullRequest(input, remotes): Promise<PullRequestResolution> {
+      const target = parsePullRequestUrl(input);
+      if (!target)
         return {
           status: 'unsupported',
           detail:
             'Paste a complete GitHub.com pull request URL such as https://github.com/owner/repository/pull/123.',
         };
-      }
-
-      let session: Session | undefined;
+      let session;
       try {
-        session = await options.getSession();
+        session = await options.getSession(reconnect);
+        reconnect = false;
       } catch {
         return {
           status: 'reconnect',
-          detail: 'GitHub sign-in was not completed. Saved work is unchanged; sign in and retry.',
+          detail:
+            'GitHub sign-in was not completed. Sign in through VS Code and Retry. Saved work is unchanged.',
         };
       }
-      if (!session) {
-        return { status: 'reconnect', detail: 'Sign in to GitHub in VS Code, then try again.' };
-      }
-      const client = options.createClient(session.accessToken);
-      try {
-        const actorResponse = await readWithRetry(options, () => client.request('GET /user'));
-        const actor = actorRecord(actorResponse.data);
-        const pullResponse = await readWithRetry(options, () =>
-          client.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', target),
-        );
+      if (!session)
         return {
-          status: 'ready',
-          account: { host: 'github.com', ...actor },
-          pullRequest: pullRequestRecord(pullResponse.data),
+          status: 'reconnect',
+          detail: 'Sign in to GitHub through VS Code and Retry. Saved work is unchanged.',
         };
-      } catch (error) {
-        return githubFailure(error);
+      // A consent-driven session event can occur during getSession. Verify that
+      // returned session; subsequent session changes abort this operation.
+      const sessionGeneration = generation;
+      const controller = new AbortController();
+      const operationSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+      pending.add(controller);
+      const client = new Octokit({
+        auth: session.accessToken,
+        userAgent: 'code-review-workbench/0.0.1',
+        retry: { enabled: false },
+        throttle: { enabled: false },
+        log: { debug() {}, info() {}, warn() {}, error() {} },
+        request: {
+          fetch: boundedFetch(options.fetch ?? globalThis.fetch),
+          signal: operationSignal,
+          headers: { 'x-github-api-version': '2026-03-10', accept: 'application/vnd.github+json' },
+        },
+      });
+      async function read(route: string, parameters: Record<string, unknown> = {}) {
+        for (let attempt = 0; ; attempt += 1) {
+          if (controller.signal.aborted || generation !== sessionGeneration)
+            throw new AccessError(staleRead());
+          try {
+            const response = await client.request(route, {
+              ...parameters,
+              headers: {
+                'x-github-api-version': '2026-03-10',
+                accept: 'application/vnd.github+json',
+              },
+              request: {
+                signal: AbortSignal.any([operationSignal, AbortSignal.timeout(5_000)]),
+              },
+            });
+            if (generation !== sessionGeneration || controller.signal.aborted)
+              throw new AccessError(staleRead());
+            return response.data as unknown;
+          } catch (error) {
+            if (error instanceof AccessError) throw error;
+            if (error instanceof Error && error.cause instanceof AccessError) throw error.cause;
+            const failure = classify(error, options.now?.() ?? Date.now());
+            // Honor long server delays by returning a Retry state, never retry
+            // earlier than Retry-After/reset or let SDK plugins wait indefinitely.
+            if (
+              operationSignal.aborted ||
+              attempt >= 2 ||
+              !failure.retryable ||
+              (failure.result.retryAfter ?? 0) > 2_000
+            ) {
+              throw new AccessError(failure.result);
+            }
+            const delay = failure.result.retryAfter ?? [250, 1_000][attempt]!;
+            await (options.sleep ?? sleep)(delay);
+          }
+        }
       }
-    },
-    async resolveRepository(owner, repository) {
-      if (!safeSegment(owner) || !safeSegment(repository)) return undefined;
-      const session = await options.getSession();
-      if (!session) return undefined;
       try {
-        const client = options.createClient(session.accessToken);
-        const response = await readWithRetry(options, () =>
-          client.request('GET /repos/{owner}/{repo}', { owner, repo: repository }),
+        const user = object(await read('GET /user'));
+        const account = {
+          host: 'github.com' as const,
+          userId: identifier(user.id),
+          login: nonempty(user.login, 'account login', 128),
+        };
+        const base = repositoryRecord(
+          await read('GET /repos/{owner}/{repo}', { owner: target.owner, repo: target.repo }),
         );
-        return repositoryRecord(response.data);
-      } catch {
-        return undefined;
+        const pull = pullRequestRecord(
+          await read('GET /repos/{owner}/{repo}/pulls/{pull_number}', target),
+        );
+        if (
+          pull.base.repository.id !== base.id ||
+          pull.number !== target.pull_number ||
+          pull.base.repository.fullName !== base.fullName
+        )
+          incomplete('repository/PR identity');
+        const repositories: Extract<PullRequestResolution, { status: 'ready' }>['repositories'] =
+          [];
+        if (remotes.length > 16)
+          return {
+            status: 'unsupported',
+            detail:
+              'This repository has too many GitHub remotes for a bounded overview read. Keep at most 16 relevant GitHub remotes and Retry.',
+          };
+        for (const remote of remotes) {
+          const fullName = `${remote.owner}/${remote.repository}`;
+          const identity =
+            fullName.toLowerCase() === base.fullName.toLowerCase()
+              ? base
+              : repositoryRecord(
+                  await read('GET /repos/{owner}/{repo}', {
+                    owner: remote.owner,
+                    repo: remote.repository,
+                  }),
+                );
+          repositories.push({ identity, remote });
+        }
+        if (generation !== sessionGeneration) return staleRead();
+        return { status: 'ready', account, pullRequest: pull, repositories };
+      } catch (error) {
+        if (generation !== sessionGeneration || controller.signal.aborted) return staleRead();
+        if (error instanceof AccessError) {
+          if (error.failure.status === 'reconnect') reconnect = true;
+          return error.failure;
+        }
+        return {
+          status: 'incomplete',
+          detail:
+            'GitHub returned incomplete or inconsistent account/PR metadata. Saved work is unchanged. Retry this read.',
+        };
+      } finally {
+        pending.delete(controller);
+        // Do not retain SDK clients or access tokens between operations.
       }
     },
   };
 }
 
-function parsePullRequestUrl(
+function boundedFetch(fetch: typeof globalThis.fetch): typeof globalThis.fetch {
+  return async (input, init) => {
+    const response = await fetch(input, init);
+    const reader = response.body?.getReader();
+    if (!reader) return response;
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const item = await reader.read();
+      if (item.done) break;
+      size += item.value.byteLength;
+      if (size > 8 * 1024 * 1024) {
+        await reader.cancel();
+        throw new AccessError({
+          status: 'incomplete',
+          detail:
+            'GitHub metadata exceeded the bounded read size. No truncated metadata was saved.',
+        });
+      }
+      chunks.push(item.value);
+    }
+    return new Response(Buffer.concat(chunks), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+}
+
+export function parsePullRequestUrl(
   input: string,
 ): { owner: string; repo: string; pull_number: number } | undefined {
   let url: URL;
   try {
-    url = new URL(input);
+    url = new URL(input.trim());
   } catch {
     return undefined;
   }
   if (
     url.protocol !== 'https:' ||
-    url.hostname.toLowerCase() !== 'github.com' ||
+    url.hostname !== 'github.com' ||
     url.username ||
     url.password ||
     url.port ||
     url.search ||
     url.hash
-  ) {
+  )
     return undefined;
-  }
-  const match = /^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/.exec(url.pathname);
-  if (!match || !safeSegment(match[1]!) || !safeSegment(match[2]!)) return undefined;
-  const pullNumber = Number(match[3]);
-  if (!Number.isSafeInteger(pullNumber) || pullNumber < 1) return undefined;
-  return { owner: match[1]!, repo: match[2]!, pull_number: pullNumber };
-}
-
-function safeSegment(value: string): boolean {
-  return /^[A-Za-z0-9_.-]+$/.test(value) && value !== '.' && value !== '..';
-}
-
-function actorRecord(value: unknown): { userId: string; login: string } {
-  const actor = object(value);
-  return { userId: identifier(actor.id), login: string(actor.login, 'actor login') };
+  const match = /^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/([1-9]\d*)\/?$/.exec(url.pathname);
+  if (!match || ['.', '..'].includes(match[1]!) || ['.', '..'].includes(match[2]!))
+    return undefined;
+  const pull_number = Number(match[3]);
+  return Number.isSafeInteger(pull_number)
+    ? { owner: match[1]!, repo: match[2]!, pull_number }
+    : undefined;
 }
 
 function repositoryRecord(value: unknown): GitHubRepositoryIdentity {
   const repository = object(value);
-  return {
-    id: identifier(repository.id),
-    name: string(repository.name, 'repository name'),
-    fullName: string(repository.full_name, 'repository full name'),
-  };
+  const fullName = nonempty(repository.full_name, 'repository name', 256);
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName)) incomplete('repository name');
+  return { id: identifier(repository.id), fullName };
 }
 
-function revisionRecord(value: unknown): PullRequestRevision {
+function revisionRecord(value: unknown, allowMissing: boolean): PullRequestRevision {
   const revision = object(value);
+  const oid = nonempty(revision.sha, 'commit identity', 64);
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(oid)) incomplete('commit identity');
   return {
-    repository: repositoryRecord(revision.repo),
-    ref: string(revision.ref, 'Git ref'),
-    oid: oid(revision.sha),
+    repository: allowMissing && revision.repo === null ? null : repositoryRecord(revision.repo),
+    ref: nonempty(revision.ref, 'ref', 1024),
+    oid,
   };
 }
 
 function pullRequestRecord(value: unknown): PullRequestRecord {
   const pull = object(value);
-  const author = object(pull.user);
-  if (pull.state !== 'open' && pull.state !== 'closed') incomplete('pull request state');
+  if (
+    !Number.isSafeInteger(pull.number) ||
+    Number(pull.number) < 1 ||
+    !['open', 'closed'].includes(String(pull.state)) ||
+    typeof pull.draft !== 'boolean' ||
+    typeof pull.merged !== 'boolean'
+  )
+    incomplete('PR state');
+  const base = revisionRecord(pull.base, false);
+  if (!base.repository) incomplete('base repository');
+  const url = nonempty(pull.html_url, 'PR URL', 1024);
+  const target = parsePullRequestUrl(url);
+  if (
+    !target ||
+    target.pull_number !== pull.number ||
+    `${target.owner}/${target.repo}`.toLowerCase() !== base.repository.fullName.toLowerCase()
+  )
+    incomplete('PR destination');
+  const author = pull.user === null ? null : object(pull.user);
   return {
     id: identifier(pull.id),
-    number: positiveInteger(pull.number, 'pull request number'),
-    title: string(pull.title, 'pull request title'),
-    body: pull.body === null ? '' : string(pull.body, 'author description'),
-    state: pull.state,
-    draft: boolean(pull.draft, 'draft state'),
-    url: githubUrl(pull.html_url),
-    author: {
-      userId: identifier(author.id),
-      login: string(author.login, 'author login'),
-    },
-    base: revisionRecord(pull.base),
-    head: revisionRecord(pull.head),
+    number: Number(pull.number),
+    title: nonempty(pull.title, 'title', 16_384),
+    body: pull.body === null ? '' : boundedText(pull.body, 'author description', 1_048_576),
+    state: pull.merged ? 'merged' : (pull.state as 'open' | 'closed'),
+    draft: pull.draft,
+    url,
+    author: author
+      ? { userId: identifier(author.id), login: nonempty(author.login, 'author login', 128) }
+      : null,
+    base: { ...base, repository: base.repository },
+    head: revisionRecord(pull.head, true),
   };
 }
 
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) incomplete('response object');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) incomplete('object');
   return value as Record<string, unknown>;
 }
-
-function string(value: unknown, field: string): string {
-  if (typeof value !== 'string') incomplete(field);
+function boundedText(value: unknown, field: string, limit: number): string {
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > limit || value.includes('\0'))
+    incomplete(field);
   return value;
 }
-
-function boolean(value: unknown, field: string): boolean {
-  if (typeof value !== 'boolean') incomplete(field);
-  return value;
+function nonempty(value: unknown, field: string, limit: number): string {
+  const result = boundedText(value, field, limit);
+  if (!result) incomplete(field);
+  return result;
 }
-
 function identifier(value: unknown): string {
-  if ((typeof value !== 'number' && typeof value !== 'string') || !/^\d+$/.test(String(value)))
-    incomplete('immutable identity');
+  if (
+    typeof value === 'number'
+      ? !Number.isSafeInteger(value) || value < 1
+      : typeof value !== 'string' || !/^[1-9]\d{0,19}$/.test(value)
+  )
+    incomplete('immutable ID');
   return String(value);
 }
-
-function positiveInteger(value: unknown, field: string): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) incomplete(field);
-  return value;
-}
-
-function oid(value: unknown): string {
-  const result = string(value, 'commit identity');
-  if (!/^[0-9a-f]{40,64}$/i.test(result)) incomplete('commit identity');
-  return result;
-}
-
-function githubUrl(value: unknown): string {
-  const result = string(value, 'pull request URL');
-  if (!parsePullRequestUrl(result)) incomplete('pull request URL');
-  return result;
-}
-
 function incomplete(field: string): never {
-  throw new Error(`GitHub returned an incomplete ${field}.`);
+  throw new Error(`Incomplete ${field}`);
 }
-
-function githubFailure(error: unknown): PullRequestResolution {
-  const status =
-    error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
-      ? error.status
-      : undefined;
-  if (status === 401) {
-    return {
-      status: 'reconnect',
-      detail: 'The GitHub session expired. Sign in again, then retry.',
-    };
+class AccessError extends Error {
+  constructor(readonly failure: AccessFailure) {
+    super(failure.status);
   }
-  const headers = errorHeaders(error);
-  const sso = typeof headers['x-github-sso'] === 'string' ? headers['x-github-sso'] : undefined;
-  if (status === 403 && sso) {
-    return {
-      status: 'unavailable',
-      detail:
-        'This GitHub organization requires authorization or SSO for the signed-in account. Authorize it in GitHub, then retry; saved work is unchanged.',
-    };
-  }
-  if (status === 403 || status === 429) {
-    return {
-      status: 'unavailable',
-      detail:
-        'GitHub is throttling this read or the account lacks access. Wait for the shown GitHub limit or check organization policy, then retry; saved work is unchanged.',
-      ...retryAfter(error),
-    };
-  }
+}
+function staleRead(): AccessFailure {
   return {
     status: 'unavailable',
     detail:
-      status === 404
-        ? 'GitHub could not expose this pull request. A private resource may look missing when this account lacks access. Check access in GitHub, then retry.'
-        : error instanceof Error && error.message.startsWith('GitHub returned an incomplete')
-          ? `${error.message} Saved work is unchanged; retry the read.`
-          : 'GitHub could not complete this read. Saved work is unchanged; check access or connectivity, then retry.',
+      'The GitHub session changed during this read. Reconnect the original account and Retry.',
   };
 }
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
-async function readWithRetry(
-  options: GitHubConnectionOptions,
-  read: () => Promise<GitHubResponse>,
-): Promise<GitHubResponse> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await read();
-    } catch (error) {
-      lastError = error;
-      if (!retryableRead(error) || attempt === 2) throw error;
-      const wait = retryAfter(error).retryAfter ?? [100, 250][attempt]!;
-      await options.sleep(Math.min(wait, 5_000));
-    }
+function classify(error: unknown, now: number): { result: AccessFailure; retryable: boolean } {
+  const value = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
+  const response =
+    value.response && typeof value.response === 'object'
+      ? (value.response as Record<string, unknown>)
+      : {};
+  const headers =
+    response.headers && typeof response.headers === 'object'
+      ? (response.headers as Record<string, unknown>)
+      : {};
+  const status = typeof value.status === 'number' ? value.status : 0;
+  if (status === 401)
+    return {
+      result: {
+        status: 'reconnect',
+        detail:
+          'The GitHub session expired. Sign in through VS Code and Retry; saved work is unchanged.',
+      },
+      retryable: false,
+    };
+  if (status === 403 && headers['x-github-sso'])
+    return {
+      result: {
+        status: 'policy',
+        detail:
+          'GitHub organization SSO authorization is required. Authorize this account in GitHub, then Retry.',
+      },
+      retryable: false,
+    };
+  const throttled =
+    status === 429 ||
+    (status === 403 &&
+      (headers['retry-after'] !== undefined ||
+        String(headers['x-ratelimit-remaining']) === '0' ||
+        /secondary rate limit/i.test(
+          String((response.data as { message?: unknown } | undefined)?.message ?? '').slice(
+            0,
+            4096,
+          ),
+        )));
+  if (throttled) {
+    const seconds = Number(headers['retry-after']);
+    const reset = Number(headers['x-ratelimit-reset']);
+    const delay =
+      Number.isFinite(seconds) && seconds >= 0
+        ? seconds * 1000
+        : Number.isFinite(reset)
+          ? Math.max(0, reset * 1000 - now)
+          : 60_000;
+    return {
+      result: {
+        status: 'throttled',
+        detail:
+          'GitHub throttled this metadata read. Wait for the retry delay, then Retry. Saved work is unchanged.',
+        retryAfter: delay,
+      },
+      retryable: true,
+    };
   }
-  throw lastError;
+  if (status === 403)
+    return {
+      result: {
+        status: 'policy',
+        detail:
+          'GitHub denied this metadata read. Check repository permissions and organization policy for this account, then Retry.',
+      },
+      retryable: false,
+    };
+  if (status === 404)
+    return {
+      result: {
+        status: 'unavailable',
+        detail:
+          'GitHub could not expose this resource. A private repository or PR may return 404 when this account lacks access; this does not establish deletion. Check access in GitHub and Retry.',
+      },
+      retryable: false,
+    };
+  return {
+    result: {
+      status: 'unavailable',
+      detail:
+        'GitHub could not complete this metadata read within its time limit. Check API connectivity and Retry; saved work is unchanged.',
+    },
+    retryable: status === 0 || status === 408 || status >= 500,
+  };
 }
-
-function retryableRead(error: unknown): boolean {
-  const status =
-    error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
-      ? error.status
-      : undefined;
-  if (status === undefined || status === 408 || status === 429 || status >= 500) return true;
-  if (status !== 403) return false;
-  const headers = errorHeaders(error);
-  return headers['retry-after'] !== undefined || String(headers['x-ratelimit-remaining']) === '0';
-}
-
-function retryAfter(error: unknown): { retryAfter?: number } {
-  const value = errorHeaders(error)['retry-after'];
-  const seconds =
-    typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : NaN;
-  return Number.isFinite(seconds) && seconds >= 0 ? { retryAfter: seconds * 1000 } : {};
-}
-
-function errorHeaders(error: unknown): Record<string, unknown> {
-  if (!error || typeof error !== 'object' || !('response' in error)) return {};
-  const response = error.response;
-  if (!response || typeof response !== 'object' || !('headers' in response)) return {};
-  const headers = response.headers;
-  return headers && typeof headers === 'object' ? (headers as Record<string, unknown>) : {};
-}
-import { Octokit } from 'octokit';
