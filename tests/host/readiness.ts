@@ -443,6 +443,13 @@ suite('Installed readiness VSIX', () => {
       const result = await manager.inspectPullRequestSource('3001', 20);
       assert.equal(result.status, 'ready', JSON.stringify(result));
       const source = result.source;
+      async function waitForActiveEditor(uri: vscode.Uri) {
+        const deadline = Date.now() + 5000;
+        while (vscode.window.activeTextEditor?.document.uri.toString() !== uri.toString()) {
+          if (Date.now() > deadline) throw new Error(`The native editor did not focus ${uri.path}`);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      }
       await api.showCommittedSource(source, manager);
       const target = {
         sourceId: source.id,
@@ -487,7 +494,12 @@ suite('Installed readiness VSIX', () => {
         opened.modified.toString(),
       );
       assert.deepEqual(vscode.window.activeTextEditor!.selection, new vscode.Selection(1, 0, 1, 5));
-      await vscode.commands.executeCommand('diffEditor.switchSide');
+      for (let attempt = 0; attempt < 7; attempt += 1) {
+        await vscode.commands.executeCommand('diffEditor.switchSide');
+        const desired = attempt % 2 === 0 ? opened.original : opened.modified;
+        await waitForActiveEditor(desired);
+        assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), desired.toString());
+      }
       assert.equal(
         vscode.window.activeTextEditor!.document.uri.toString(),
         opened.original.toString(),
@@ -533,6 +545,7 @@ suite('Installed readiness VSIX', () => {
         const emptyUri = absentDiff[emptySide];
         if (vscode.window.activeTextEditor?.document.uri.toString() !== emptyUri.toString())
           await vscode.commands.executeCommand('diffEditor.switchSide');
+        await waitForActiveEditor(emptyUri);
         assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), emptyUri.toString());
         assert.equal(vscode.window.activeTextEditor!.document.getText(), '');
         const navigated = await vscode.commands.executeCommand(

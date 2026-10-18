@@ -43,6 +43,24 @@ export function createCommittedReview(initialManager: ReviewManager) {
     if (expected !== presentation)
       throw new Error('The selected review changed. Reopen the verified source before navigating.');
   }
+  async function waitForEditor(
+    uri: vscode.Uri,
+    expectedPresentation: number,
+  ): Promise<vscode.TextEditor> {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      assertPresentation(expectedPresentation);
+      const editor = vscode.window.activeTextEditor;
+      if (editor?.document.uri.toString() === uri.toString()) return editor;
+      if (Date.now() > deadline)
+        throw new Error(
+          'The native diff could not focus the original source side. Its saved return target is retained.',
+        );
+      // Native command completion can precede the active-editor event sent
+      // back to the extension host. Observe the side before selecting its range.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
   const changed = new vscode.EventEmitter<void>();
   const provider: vscode.TreeDataProvider<FileTarget> = {
     getParent: () => undefined,
@@ -190,14 +208,11 @@ export function createCommittedReview(initialManager: ReviewManager) {
     );
     if (navigation) {
       assertPresentation(expectedPresentation);
+      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
       const desired = navigation.anchor.side === 'old' ? oldUri : newUri;
       if (vscode.window.activeTextEditor?.document.uri.toString() !== desired.toString())
         await vscode.commands.executeCommand('diffEditor.switchSide');
-      const editor = vscode.window.activeTextEditor;
-      if (!editor || editor.document.uri.toString() !== desired.toString())
-        throw new Error(
-          'The native diff could not focus the original source side. Its saved return target is retained.',
-        );
+      const editor = await waitForEditor(desired, expectedPresentation);
       const selection = range(navigation.anchor.range);
       editor.selection = new vscode.Selection(selection.start, selection.end);
       editor.revealRange(selection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);

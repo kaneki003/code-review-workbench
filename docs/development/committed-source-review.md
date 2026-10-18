@@ -8,6 +8,8 @@ The initial review found three documented-contract defects: a fetch prepared bef
 
 The follow-up report confirmed all fixes. Source inspection carries its captured generation through fetch dispatch, queues and delayed replies are fenced while actual receipts/leases remain retained, Git comparison overrides submodule ignore settings, and the provider validates the canonical document URI. Manager authorization and worker routing now share the source-action list. No new actionable Standards or correctness finding remained. The reviewer inspected the regression tests and did not run them independently.
 
+The first CI matrix additionally exposed native editor-focus timing on current macOS VS Code. Repeating Switch Side reproduced the failure locally. Waiting for the active-editor update alone still failed; explicitly focusing the editor group made the same loop pass. Return now restores that native focus before switching and waits for the requested side before selecting its range. The installed-host regression repeats side switching and checks actual editor state.
+
 ## Spec
 
 The initial review found that inspecting PR B between two inspections of unchanged PR A discarded A's explicit Reviewed marks, and that an intentionally absent addition/deletion diff side blocked subsequent navigation. It also identified incomplete keyboard/focus and narrow-layout evidence.
