@@ -459,7 +459,8 @@ test.each([
     const resumed = await recovered.recoverPullRequestCheckout('continue');
     expect(resumed, JSON.stringify(resumed)).toMatchObject({ status: 'active' });
     expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
-    expect(await recovered.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
+    const exitedReview = await recovered.exitPullRequestCheckout();
+    expect(exitedReview, JSON.stringify(exitedReview)).toMatchObject({ status: 'complete' });
     expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
     await recovered.releasePrivateStore();
   },
@@ -998,7 +999,8 @@ test(
     context.git('commit', '-m', 'detached user work');
     const original = context.git('rev-parse', 'HEAD');
     const manager = context.manager();
-    await manager.openPullRequestOverview(context.pullRequest.url);
+    const overview = await manager.openPullRequestOverview(context.pullRequest.url);
+    expect(overview, JSON.stringify(overview)).toMatchObject({ status: 'ready' });
     const source = await manager.inspectPullRequestSource('3001', 20);
     if (source.status !== 'ready') throw new Error(source.detail);
     const entry = await manager.prepareCleanCheckout(source.source.id);

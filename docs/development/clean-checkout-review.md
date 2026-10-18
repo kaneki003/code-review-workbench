@@ -35,6 +35,18 @@ The real-Git fixtures use the production SQLite worker and native guard. Install
 
 Final local formatting/typechecking and all **168 tests across nine files** pass on macOS arm64 with developer Node 24.22.0 and Git 2.56.0. The installed minimum (VS Code 1.141.2) and current (1.142.0, embedded Node 24.21.0 / Electron 43.7.7) hosts each pass all six cases. A final host run exposed an immediate-focus assertion in the existing absent-diff-side fixture; the fixture now also checks the returned navigation anchor and observes actual native focus with its existing five-second bound. Follow-up Standards review confirmed that no behavioral assertion was removed or weakened.
 
-Windows stable also exceeded earlier whole-scenario test deadlines in multi-step Git/SQLite fixtures. The Windows integration and compound installed-host cases now allow 120 and 180 seconds respectively. Individual production deadlines and all behavioral assertions remain unchanged; review confirmed that distinction.
+Windows stable also exceeded earlier whole-scenario test deadlines in multi-step Git/SQLite fixtures. The Windows integration and compound installed-host cases now allow 120 and 180 seconds respectively. Git execution and native focus deadlines remain unchanged. Restoration preparation now shares entry preparation's bounded 45-second client acknowledgement allowance instead of the default ten seconds; timeout uncertainty and recovery barriers are unchanged. Review confirmed these changes.
+
+### Remaining Windows validation
+
+Both Linux and both macOS minimum/current cells pass in [run 39139619574](https://github.com/kaneki003/code-review-workbench/actions/runs/39139619574). Its Windows stable cell failed before checkout with a storage-connection failure; its minimum-version cell returned recovery during Exit. The final fixture assertions expose the overview prerequisite and actual Exit result instead of hiding the earlier failure. The acknowledgement-budget alignment has not been established as the cause or a verified fix for those Windows results.
+
+[New diagnostic jobs](https://github.com/kaneki003/code-review-workbench/actions/runs/39141712137) were refused before starting because GitHub reported failed account payments or a spending limit. The owner chose **finish local work; leave CI blocked**. Windows acceptance remains incomplete. No merge or issue closure is authorized by these local results.
+
+After Actions availability is restored, run the full matrix against the feature branch:
+
+```sh
+gh workflow run check.yml --repo kaneki003/code-review-workbench --ref feat/22-clean-pr-checkout
+```
 
 Review totals: Standards — zero remaining findings (one P2 and two judgement calls resolved); Spec — zero remaining findings (checkpoint safety defects and availability edge resolved). Neither axis substitutes for execution-based evidence.

@@ -115,6 +115,7 @@ export function createStoreConnection(
             ? 60_000
             : message.action === 'publishSource' ||
                 message.action === 'prepareCleanCheckout' ||
+                message.action === 'prepareCleanRestore' ||
                 isCheckoutAction(message.action)
               ? 45_000
               : 10_000,
