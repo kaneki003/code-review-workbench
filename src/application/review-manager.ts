@@ -40,6 +40,7 @@ export interface ReviewConnections {
   account?: Pick<GitHubAccount, 'host' | 'userId'>;
   github?: GitHubConnection;
   repository?: LocalRepositoryConnection;
+  confirmLocalRepository?(candidate: ReviewCandidate): Promise<boolean>;
 }
 
 // The owning manager coordinates actions independently of editor/view lifetime.
@@ -200,12 +201,32 @@ export class ReviewManager {
       account: resolved.account,
       pullRequest: resolved.pullRequest,
       localRepository: {
+        confirmation: 'user-confirmed',
+        ...(resolved.unverifiedRemotes ? { unverifiedRemotes: true as const } : {}),
         facts: local,
         repositoryId: selected!.identity.id,
         relation,
         remote: selected!.remote,
       },
     };
+    const registration = await this.storeRequest(
+      'readRegistration',
+      { registrationPath: local.worktree.path },
+      generation,
+    );
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (registration.view.status !== 'owned')
+      return { status: 'blocked', detail: registration.view.detail };
+    if (!registration.registration) {
+      const confirmed = await this.connections.confirmLocalRepository?.(candidate);
+      if (generation !== this.overviewGeneration) return staleOverview();
+      if (!confirmed)
+        return {
+          status: 'local-required',
+          detail:
+            'First registration requires confirmation of this local copy and the verified GitHub repository ID. A remote name cannot prove clone origin. No candidate was saved; Retry to select and confirm the copy.',
+        };
+    }
     const saved = await this.storeRequest('saveCandidate', { candidate }, generation);
     if (generation !== this.overviewGeneration) return staleOverview();
     if (saved.view.status !== 'owned' || !saved.candidate) {
@@ -229,6 +250,7 @@ export class ReviewManager {
       | 'candidate'
       | 'actor'
       | 'candidateKey'
+      | 'registrationPath'
     > = {},
     overviewGeneration?: number,
   ): Promise<StoreReply> {

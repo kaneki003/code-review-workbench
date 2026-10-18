@@ -230,7 +230,7 @@ suite('Installed readiness VSIX', () => {
     const extension = vscode.extensions.getExtension<{
       createManager(
         configuration: StoreConfiguration,
-        review?: Pick<ReviewConnections, 'github' | 'repository'>,
+        review?: Pick<ReviewConnections, 'github' | 'repository' | 'confirmLocalRepository'>,
       ): ReviewManager;
       showOverview(candidate: ReviewCandidate): Promise<vscode.Uri>;
       probeGitHubSignIn(): Promise<{
@@ -279,6 +279,7 @@ suite('Installed readiness VSIX', () => {
     const manager = api.createManager(
       { osHome: home, candidateRoot: join(home, 'data'), location, windowId: 'overview-host' },
       {
+        confirmLocalRepository: async () => true,
         github: {
           sessionChanged() {},
           resolvePullRequest: async () => ({

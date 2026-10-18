@@ -10,6 +10,7 @@ import {
   readFile,
   symlink,
   link,
+  rename,
 } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -128,7 +129,7 @@ async function fixture() {
     data = 'data-A',
     actor?: StoreConfiguration['actor'],
     wrap: (connection: StoreConnection) => StoreConnection = (connection) => connection,
-    review: Pick<ReviewConnections, 'github' | 'repository'> = {},
+    review: Pick<ReviewConnections, 'github' | 'repository' | 'confirmLocalRepository'> = {},
   ) {
     const store = wrap(
       createStoreConnection(worker, {
@@ -168,6 +169,7 @@ async function fixture() {
         detail: 'Separate probe',
       }),
       store,
+      confirmLocalRepository: async () => true,
       ...(actor ? { account: actor } : {}),
       ...review,
     });
@@ -251,6 +253,14 @@ test('an account owner durably saves a verified PR candidate and local registrat
     localRepository: { repositoryId: '4001' },
     pullRequest: { head: { repository: { id: '4001' } } },
   });
+  await second.releasePrivateStore();
+  actor.userId = '1002';
+  const other = context.manager('repository', 'data-A', actor, (connection) => connection, review);
+  await expect(other.openPullRequestOverview(pullRequest.url)).resolves.toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('previously registered'),
+  });
+  await expect(other.readSavedPullRequest('3001', 248)).resolves.toBeUndefined();
 });
 
 async function overviewFixture() {
@@ -258,6 +268,7 @@ async function overviewFixture() {
   const { repository, git, oid } = await repositoryFixture(context.directory);
   git('remote', 'add', 'arbitrary-alias', 'git@github.com:fork/export-service.git');
   const state = {
+    confirm: true,
     userId: 1001,
     failure: 0,
     headId: 4001,
@@ -309,6 +320,7 @@ async function overviewFixture() {
   const manager = context.manager('repository', 'data-A', undefined, (connection) => connection, {
     github,
     repository: createLocalRepositoryConnection(),
+    confirmLocalRepository: async () => state.confirm,
   });
   return {
     ...context,
@@ -346,6 +358,35 @@ test('first-time sign-in can finish after the provider announces its new session
     context.manager.handleGitHubSessionChange(true);
   };
   expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+});
+
+test('first registration requires explicit confirmation and a retained mapping avoids reconfirmation', async () => {
+  const context = await overviewFixture();
+  context.state.confirm = false;
+  await expect(context.manager.openPullRequestOverview(context.url)).resolves.toMatchObject({
+    status: 'local-required',
+    detail: expect.stringContaining('confirmation'),
+  });
+  await expect(context.manager.readSavedPullRequest('3001', 248)).resolves.toBeUndefined();
+  context.state.confirm = true;
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  context.state.confirm = false;
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+});
+
+test('replacing a registered Git directory cannot silently inherit the local mapping', async () => {
+  const context = await overviewFixture();
+  expect((await context.manager.openPullRequestOverview(context.url)).status).toBe('ready');
+  await rename(join(context.repository, '.git'), join(context.repository, 'prior-git-directory'));
+  context.git('init', '--quiet');
+  context.git('remote', 'add', 'same-alias', 'git@github.com:fork/export-service.git');
+  await expect(context.manager.openPullRequestOverview(context.url)).resolves.toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('directory identities'),
+  });
+  await expect(context.manager.readSavedPullRequest('3001', 248)).resolves.toMatchObject({
+    localRepository: { repositoryId: '4001' },
+  });
 });
 
 test('a changed actor cannot inherit the old scope and explicit release permits a separate account', async () => {

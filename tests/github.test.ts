@@ -200,6 +200,36 @@ test('an inaccessible local remote retains its API authorization error', async (
   expect(JSON.stringify(result)).not.toContain('SSH');
 });
 
+test('an unrelated stale remote cannot hide a proven base mapping', async () => {
+  const pull = pullFixture();
+  const connection = createGitHubConnection({
+    getSession: async () => ({ accessToken: 'secret' }),
+    fetch: async (input) =>
+      String(input).includes('/stale/')
+        ? new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } })
+        : new Response(
+            JSON.stringify(
+              String(input).endsWith('/user')
+                ? { id: 1001, login: 'reviewer' }
+                : String(input).endsWith('/pulls/248')
+                  ? pull
+                  : pull.base.repo,
+            ),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+  });
+  await expect(
+    connection.resolvePullRequest(pull.html_url, [
+      { owner: 'acme', repository: 'export-service', transport: 'https' },
+      { owner: 'stale', repository: 'old-repository', transport: 'ssh' },
+    ]),
+  ).resolves.toMatchObject({
+    status: 'ready',
+    unverifiedRemotes: true,
+    repositories: [{ identity: { id: '3001' } }],
+  });
+});
+
 test('deleted fork and author identities remain explicitly unavailable while the base PR resolves', async () => {
   const pull = { ...pullFixture(), head: { ...pullFixture().head, repo: null }, user: null };
   const connection = createGitHubConnection({

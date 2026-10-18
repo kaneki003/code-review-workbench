@@ -629,10 +629,10 @@ class SharedStore {
     }
     const existing = this.database!.prepare(
       `SELECT result FROM requests
-      WHERE scope_id=? AND action='saveCandidate'
+      WHERE action='saveCandidate'
       AND json_extract(result,'$.candidate.localRepository.facts.worktree.path')=?
       ORDER BY rowid DESC LIMIT 1`,
-    ).get(this.lease!.scopeId, local.facts.worktree.path);
+    ).get(local.facts.worktree.path);
     if (existing) {
       const prior = normalizeCandidate(JSON.parse(String(existing.result)).candidate);
       if (
@@ -698,6 +698,27 @@ class SharedStore {
     return {
       ...this.owned(),
       ...(row ? { candidate: normalizeCandidate(JSON.parse(String(row.result)).candidate) } : {}),
+    };
+  }
+
+  private readRegistration(request: StoreRequest): StoreReply {
+    this.validate(request.lease, true);
+    if (!text(request.registrationPath) || !isAbsolute(request.registrationPath))
+      throw new StoreError('INVALID_CANDIDATE', 'A canonical local registration path is required.');
+    // Copy identity is shared across this OS user's accounts. No private PR
+    // content or other actor identity is returned through this lookup.
+    const row = this.database!.prepare(
+      `SELECT result FROM requests WHERE action='saveCandidate'
+      AND json_extract(result,'$.candidate.localRepository.facts.worktree.path')=? ORDER BY rowid DESC LIMIT 1`,
+    ).get(request.registrationPath);
+    return {
+      ...this.owned(),
+      ...(row
+        ? {
+            registration: normalizeCandidate(JSON.parse(String(row.result)).candidate)
+              .localRepository,
+          }
+        : {}),
     };
   }
 
@@ -1052,6 +1073,7 @@ class SharedStore {
         'inspectOperation',
         'saveCandidate',
         'readCandidate',
+        'readRegistration',
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -1088,6 +1110,7 @@ class SharedStore {
       if (request.action === 'recordIntent') return this.recordIntent(request);
       if (request.action === 'saveCandidate') return this.saveCandidate(request);
       if (request.action === 'readCandidate') return this.readCandidate(request);
+      if (request.action === 'readRegistration') return this.readRegistration(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {

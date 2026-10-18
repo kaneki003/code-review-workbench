@@ -39,7 +39,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Production and host tests still exercise the same public manager/actions.
   function createManager(
     configuration: StoreConfiguration,
-    review: Pick<ReviewConnections, 'github' | 'repository' | 'account'> = {},
+    review: Pick<
+      ReviewConnections,
+      'github' | 'repository' | 'account' | 'confirmLocalRepository'
+    > = {},
   ) {
     return new ReviewManager({
       environment: readHostEnvironment,
@@ -58,6 +61,15 @@ export function activate(context: vscode.ExtensionContext) {
       ),
       github,
       repository: createLocalRepositoryConnection(),
+      confirmLocalRepository: async (candidate) =>
+        (await vscode.window.showWarningMessage(
+          'Register this selected local copy for the verified GitHub repository?',
+          {
+            modal: true,
+            detail: `Local copy: ${candidate.localRepository.facts.worktree.path}\nGitHub repository ID: ${candidate.localRepository.repositoryId}\nPR: ${candidate.pullRequest.url}\n\nGit remote names can be reused and cannot prove clone origin. Confirm that this is the local copy you intend to associate with this immutable repository ID. This registers the copy only; source availability and Git authentication remain unverified.`,
+          },
+          'Register Local Copy',
+        )) === 'Register Local Copy',
       ...(configuration.actor ? { account: configuration.actor } : {}),
       ...review,
     });

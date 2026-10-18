@@ -46,6 +46,7 @@ export type PullRequestResolution =
       account: GitHubAccount;
       pullRequest: PullRequestRecord;
       repositories: { identity: GitHubRepositoryIdentity; remote: GitHubRemote }[];
+      unverifiedRemotes?: true;
     }
   | AccessFailure;
 
@@ -72,6 +73,8 @@ export interface LocalRepositoryConnection {
 }
 
 export interface LocalRepositoryRegistration {
+  confirmation: 'user-confirmed';
+  unverifiedRemotes?: true;
   facts: LocalRepositoryFacts;
   repositoryId: string;
   relation: 'base' | 'head';
@@ -138,6 +141,8 @@ export function normalizeCandidate(input: unknown): ReviewCandidate {
       head,
     },
     localRepository: {
+      confirmation: local.confirmation === 'user-confirmed' ? 'user-confirmed' : invalid(),
+      ...(local.unverifiedRemotes === true ? { unverifiedRemotes: true as const } : {}),
       facts: {
         worktree: directory(facts.worktree),
         gitDirectory: directory(facts.gitDirectory),

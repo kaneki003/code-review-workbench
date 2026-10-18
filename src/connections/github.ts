@@ -132,21 +132,44 @@ export function createGitHubConnection(options: GitHubOptions): GitHubConnection
             detail:
               'This repository has too many GitHub remotes for a bounded overview read. Keep at most 16 relevant GitHub remotes and Retry.',
           };
+        let remoteFailure: AccessFailure | undefined;
         for (const remote of remotes) {
-          const fullName = `${remote.owner}/${remote.repository}`;
-          const identity =
-            fullName.toLowerCase() === base.fullName.toLowerCase()
-              ? base
-              : repositoryRecord(
-                  await read('GET /repos/{owner}/{repo}', {
-                    owner: remote.owner,
-                    repo: remote.repository,
-                  }),
-                );
-          repositories.push({ identity, remote });
+          try {
+            const fullName = `${remote.owner}/${remote.repository}`;
+            const identity =
+              fullName.toLowerCase() === base.fullName.toLowerCase()
+                ? base
+                : repositoryRecord(
+                    await read('GET /repos/{owner}/{repo}', {
+                      owner: remote.owner,
+                      repo: remote.repository,
+                    }),
+                  );
+            repositories.push({ identity, remote });
+          } catch (error) {
+            if (
+              !(error instanceof AccessError) ||
+              error.failure.status === 'reconnect' ||
+              controller.signal.aborted
+            )
+              throw error;
+            remoteFailure = error.failure;
+          }
         }
         if (generation !== sessionGeneration) return staleRead();
-        return { status: 'ready', account, pullRequest: pull, repositories };
+        const hasEligibleRemote = repositories.some(
+          (item) =>
+            item.identity.id === pull.base.repository.id ||
+            item.identity.id === pull.head.repository?.id,
+        );
+        if (!hasEligibleRemote && remoteFailure) return remoteFailure;
+        return {
+          status: 'ready',
+          account,
+          pullRequest: pull,
+          repositories,
+          ...(remoteFailure ? { unverifiedRemotes: true as const } : {}),
+        };
       } catch (error) {
         if (generation !== sessionGeneration || controller.signal.aborted) return staleRead();
         if (error instanceof AccessError) {

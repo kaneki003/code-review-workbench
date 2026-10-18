@@ -33,6 +33,14 @@ export function createPullRequestOverviewMarkdown(overview: ReviewCandidate): st
     '',
     `${code(local.facts.worktree.path)} · ${local.relation} repository ID ${code(local.repositoryId)}`,
     '',
+    'Mapping: user-confirmed local registration. Canonical directory identities are checked; Git remote names alone cannot prove clone origin.',
+    ...(local.unverifiedRemotes
+      ? [
+          '',
+          '> Some other configured remotes could not be verified. This mapping uses only the accessible base/head repository ID.',
+        ]
+      : []),
+    '',
     `Configured Git transport: ${local.remote.transport.toUpperCase()}. Git authentication has not been tested. API sign-in does not configure Git's HTTPS credential helper or SSH keys.`,
     '',
     '> Read-only metadata overview. Checkout, full source availability, discussion and AI content are unavailable at this stage. No branch was switched or source fetched.',
