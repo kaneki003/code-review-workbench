@@ -224,11 +224,6 @@ export function createDraftReview(
       // reveal inside the hide event can lose to that same transition. Wait
       // for the next host turn and finish the explicit writer-open action.
       if (!view?.visible) {
-        console.log('[DEBUG-draft21] reveal after native transition', {
-          visible: view?.visible,
-          bound: Boolean(bound),
-          ready: bound?.ready,
-        });
         await vscode.commands.executeCommand('codeReviewWorkbench.writer.focus');
         view?.show(false);
       }
