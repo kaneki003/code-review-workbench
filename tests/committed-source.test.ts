@@ -6,17 +6,36 @@ import { cp, mkdir, mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/p
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { ReviewManager } from '../src/application/review-manager';
 import { createStoreConnection } from '../src/connections/shared-store';
 import { createLocalRepositoryConnection } from '../src/connections/local-repository';
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../src/application/private-store';
+import type { SourceNavigation } from '../src/application/committed-source';
 
 const integrationTimeout = process.platform === 'win32' ? 60_000 : 20_000;
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
+
+async function draftTarget(manager: ReviewManager): Promise<SourceNavigation> {
+  const result = await manager.inspectPullRequestSource('3001', 20);
+  if (result.status !== 'ready') throw new Error(result.detail);
+  const file = result.source.files.find((file) => file.path === 'worker.ts')!;
+  const content = await manager.readCommittedFile(result.source.id, file.id, 'new');
+  if (content.status !== 'available') throw new Error(content.detail);
+  return {
+    anchor: {
+      ...content.anchor,
+      range: { startLine: 1, startCharacter: 0, endLine: 1, endCharacter: 5 },
+    },
+    control: 'diff',
+    focus: 'editor',
+    column: 2,
+  };
+}
 
 async function fixture() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'crw-source-')));
@@ -694,6 +713,111 @@ test(
     await expect(
       manager.readCommittedFile(result.source.id, result.source.files[0]!.id, 'new'),
     ).resolves.toMatchObject({ status: 'unavailable', detail: expect.stringMatching(/Submodule/) });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'acknowledged private feedback reopens at its original committed target after restart',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const target = await draftTarget(manager);
+    const before = context.git('status', '--porcelain=v1');
+    const transportRequests = context.transportRequests();
+    const draft = await manager.createLocalDraft(target);
+    const receipt = await manager.saveLocalDraft({
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: draft.rowRevision,
+      expectedCommittedRevision: draft.committedRevision,
+      editRevision: 3,
+      body: 'Why is this safe? 🐈\n\n```ts\nunfinished **Markdown',
+    });
+    expect(receipt).toMatchObject({
+      draftId: draft.id,
+      editRevision: 3,
+      committedRevision: 3,
+      rowRevision: 2,
+      deletionRevision: 0,
+    });
+    await manager.releasePrivateStore();
+    const restarted = context.manager();
+    await restarted.openPrivateStore();
+    const recovered = await restarted.readLocalDraft(draft.id);
+    expect(recovered).toEqual({
+      ...draft,
+      body: 'Why is this safe? 🐈\n\n```ts\nunfinished **Markdown',
+      editRevision: 3,
+      committedRevision: 3,
+      rowRevision: 2,
+    });
+    expect(await restarted.listLocalDrafts(target.anchor.sourceId)).toEqual([recovered]);
+    expect(await restarted.readReviewedMarks(target.anchor.sourceId)).toEqual([]);
+    expect(context.git('status', '--porcelain=v1')).toBe(before);
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    expect(context.transportRequests()).toBe(transportRequests);
+    await restarted.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'duplicate draft saves have one durable result and conflicting or reordered edits cannot replace newer text',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const first = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'first',
+    };
+    const receipt = await manager.saveLocalDraft(first);
+    expect(await manager.saveLocalDraft(first)).toEqual(receipt);
+    const second = {
+      ...first,
+      requestId: randomUUID(),
+      expectedRowRevision: 2,
+      expectedCommittedRevision: 1,
+      editRevision: 5,
+      body: 'newest input',
+    };
+    await manager.saveLocalDraft(second);
+    expect(await manager.saveLocalDraft(first)).toEqual(receipt);
+    await expect(manager.saveLocalDraft({ ...first, body: 'collision' })).rejects.toMatchObject({
+      code: 'REQUEST_COLLISION',
+    });
+    await expect(
+      manager.saveLocalDraft({ ...first, requestId: randomUUID() }),
+    ).rejects.toMatchObject({ code: 'DRAFT_CONFLICT' });
+    for (const changed of [{ reviewId: randomUUID() }, { contentGeneration: 2 }]) {
+      await expect(
+        manager.saveLocalDraft({
+          ...second,
+          ...changed,
+          requestId: randomUUID(),
+          expectedRowRevision: 3,
+          expectedCommittedRevision: 5,
+          editRevision: 6,
+        }),
+      ).rejects.toMatchObject({ code: 'DRAFT_CONFLICT' });
+    }
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+      body: 'newest input',
+      committedRevision: 5,
+      rowRevision: 3,
+    });
     await manager.releasePrivateStore();
   },
   integrationTimeout,

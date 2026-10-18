@@ -8,6 +8,7 @@ import type {
   StoreRequest,
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
+import { isDraftAction } from '../application/local-draft';
 import {
   recovery,
   sequence,
@@ -207,7 +208,13 @@ export function claimDatabase(
 }
 
 export function requestDigest(request: StoreRequest) {
-  return createHash('sha256').update(JSON.stringify(request)).digest('hex');
+  // The owner fence stays authoritative. Its global revision advances after
+  // unrelated commits, so it is not part of a draft request's content identity.
+  const identity =
+    isDraftAction(request.action) && request.lease
+      ? { ...request, lease: { ...request.lease, revision: 0 } }
+      : request;
+  return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
 }
 
 export function previousReply(

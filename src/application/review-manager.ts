@@ -24,6 +24,7 @@ import type {
   SourceNavigation,
 } from './committed-source';
 import { isSourceAction } from './committed-source';
+import { isDraftAction, type LocalDraft, type DraftEdit, type DraftCommit } from './local-draft';
 
 export interface HostEnvironment {
   vscode: string;
@@ -220,6 +221,41 @@ export class ReviewManager {
     return (await this.storeRequest('readNavigation')).navigation;
   }
 
+  async createLocalDraft(target: SourceNavigation): Promise<LocalDraft> {
+    const reply = await this.storeRequest('createDraft', {
+      sourceId: target.anchor.sourceId,
+      navigation: target,
+    });
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    const draft = await this.readLocalDraft(reply.draftCommit.draftId);
+    if (!draft) throw new StoreError('DRAFT_UNAVAILABLE', 'The new draft could not be reopened.');
+    return draft;
+  }
+  async readLocalDraft(draftId: string): Promise<LocalDraft | undefined> {
+    const reply = await this.storeRequest('readDraft', { draftId });
+    if (reply.view.status !== 'owned')
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.draft;
+  }
+  async listLocalDrafts(sourceId: string): Promise<LocalDraft[]> {
+    const reply = await this.storeRequest('listDrafts', { sourceId });
+    if (!reply.drafts)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.drafts;
+  }
+  async saveLocalDraft(edit: DraftEdit): Promise<DraftCommit> {
+    const reply = await this.storeRequest(
+      'saveDraft',
+      { draftEdit: edit },
+      undefined,
+      edit.requestId,
+    );
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_SAVE_FAILED', reply.view.detail);
+    return reply.draftCommit;
+  }
+
   async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
     const generation = ++this.overviewGeneration;
     const github = this.connections.github;
@@ -368,12 +404,16 @@ export class ReviewManager {
       | 'side'
       | 'reviewed'
       | 'navigation'
+      | 'draftId'
+      | 'draftEdit'
     > = {},
     overviewGeneration?: number,
+    requestId: string = randomUUID(),
   ): Promise<StoreReply> {
+    const privateAction = isSourceAction(action) || isDraftAction(action);
     const requestedGeneration = overviewGeneration ?? this.overviewGeneration;
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
-      if (isSourceAction(action) && !this.sourceAuthorized)
+      if (privateAction && !this.sourceAuthorized)
         return {
           view: {
             status: 'blocked',
@@ -382,7 +422,7 @@ export class ReviewManager {
           },
         };
       if (
-        (overviewGeneration !== undefined || isSourceAction(action)) &&
+        (overviewGeneration !== undefined || privateAction) &&
         requestedGeneration !== this.overviewGeneration
       )
         return {
@@ -434,7 +474,7 @@ export class ReviewManager {
           };
         const request: StoreRequest = {
           protocol: 1,
-          id: randomUUID(),
+          id: requestId,
           action,
           workspacePath: host.folders[0]!.path,
           ...fields,
@@ -449,7 +489,7 @@ export class ReviewManager {
         )
           this.storeLease = reply.lease;
         if (action === 'release' && reply.view.status === 'closed') this.account = undefined;
-        if (isSourceAction(action) && requestedGeneration !== this.overviewGeneration)
+        if (privateAction && requestedGeneration !== this.overviewGeneration)
           return {
             view: {
               status: 'blocked',
