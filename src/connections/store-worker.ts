@@ -1599,6 +1599,7 @@ class SharedStore {
           recovery(
             'Git exit and observed checkout disagree. Reconcile the actual checkout before continuing.',
           );
+        this.faults.at('checkout.effect.after');
         return this.projectOperation(
           { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
           request,

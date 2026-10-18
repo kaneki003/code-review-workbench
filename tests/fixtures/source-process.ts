@@ -24,7 +24,7 @@ const manager = new ReviewManager({
   sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: '' }),
   native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
   store: createStoreConnection(process.argv[2]!, configuration, {
-    boundary: process.argv[5] ? 'checkout.dispatch.after' : 'dispatch.after',
+    boundary: process.argv[5] ? 'checkout.effect.after' : 'dispatch.after',
     mode: 'error',
   }),
   account,
