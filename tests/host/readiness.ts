@@ -456,10 +456,13 @@ suite('Installed readiness VSIX', () => {
       const result = await manager.inspectPullRequestSource('3001', 20);
       assert.equal(result.status, 'ready', JSON.stringify(result));
       const source = result.source;
-      async function waitForActiveEditor(uri: vscode.Uri) {
+      async function waitForActiveEditor(uri: vscode.Uri, action = 'source navigation') {
         const deadline = Date.now() + 5000;
         while (vscode.window.activeTextEditor?.document.uri.toString() !== uri.toString()) {
-          if (Date.now() > deadline) throw new Error(`The native editor did not focus ${uri.path}`);
+          if (Date.now() > deadline)
+            throw new Error(
+              `The native editor did not focus ${uri.path} during ${action}; active=${vscode.window.activeTextEditor?.document.uri.path}; windowFocused=${vscode.window.state.focused}; split=${diffConfiguration.get('renderSideBySide')}; adaptive=${diffConfiguration.get('useInlineViewWhenSpaceIsLimited')}`,
+            );
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
       }
@@ -507,10 +510,11 @@ suite('Installed readiness VSIX', () => {
         opened.modified.toString(),
       );
       assert.deepEqual(vscode.window.activeTextEditor!.selection, new vscode.Selection(1, 0, 1, 5));
+      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
       for (let attempt = 0; attempt < 7; attempt += 1) {
         await vscode.commands.executeCommand('diffEditor.switchSide');
         const desired = attempt % 2 === 0 ? opened.original : opened.modified;
-        await waitForActiveEditor(desired);
+        await waitForActiveEditor(desired, `native side switch ${attempt + 1}`);
         assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), desired.toString());
       }
       assert.equal(
