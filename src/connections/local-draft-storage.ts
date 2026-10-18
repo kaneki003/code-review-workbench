@@ -90,6 +90,25 @@ export function listDrafts(
   return rows.map((row) => draftFromResult(row.result));
 }
 
+export function listReviewDrafts(
+  database: DatabaseSync,
+  scopeId: string,
+  review: LocalDraft['review'],
+  location: string,
+): LocalDraft[] {
+  return database
+    .prepare(
+      `SELECT draft.result FROM requests AS draft JOIN requests AS source
+     ON source.request_id=json_extract(draft.result,'$.draft.target.anchor.sourceId')
+     WHERE draft.scope_id=? AND draft.action='createDraft' AND source.scope_id=draft.scope_id
+     AND source.action='prepareSource' AND json_extract(source.result,'$.sourcePlan.candidate.localRepository.facts.worktree.path')=?
+     AND json_extract(draft.result,'$.draft.review.baseRepositoryId')=? AND json_extract(draft.result,'$.draft.review.pullNumber')=?
+     AND json_extract(draft.result,'$.draft.deletionRevision')=0 ORDER BY draft.rowid`,
+    )
+    .all(scopeId, location, review.baseRepositoryId, review.pullNumber)
+    .map((row) => draftFromResult(row.result));
+}
+
 // The creation row holds the current snapshot beside its immutable body-free
 // creation receipt. Later mutation receipts contain no body. One indexed row
 // update keeps per-edit write work independent of the retained save history.

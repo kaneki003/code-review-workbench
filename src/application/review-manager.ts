@@ -313,6 +313,12 @@ export class ReviewManager {
       throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
     return reply.drafts;
   }
+  async listReviewDrafts(sourceId: string): Promise<LocalDraft[]> {
+    const reply = await this.storeRequest('listReviewDrafts', { sourceId });
+    if (!reply.drafts)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.drafts;
+  }
   async saveLocalDraft(edit: DraftEdit): Promise<DraftCommit> {
     const change = structuredClone(edit);
     const reply = await this.storeRequest(

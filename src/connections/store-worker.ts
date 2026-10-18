@@ -67,6 +67,7 @@ import {
   readDraft,
   reviewDraft,
   listDrafts,
+  listReviewDrafts,
   assertDraftVersion,
   updateDraft,
   draftWriteError,
@@ -933,8 +934,21 @@ class SharedStore {
         deletionRevision: 0,
       });
     }
-    if (request.action === 'listDrafts') {
+    if (request.action === 'listDrafts' || request.action === 'listReviewDrafts') {
       const source = this.sourceRecord(request.sourceId);
+      if (request.action === 'listReviewDrafts')
+        return {
+          ...this.owned(),
+          drafts: listReviewDrafts(
+            this.database!,
+            this.lease!.scopeId,
+            {
+              baseRepositoryId: source.candidate.pullRequest.base.repository.id,
+              pullNumber: source.candidate.pullRequest.number,
+            },
+            this.config.location,
+          ),
+        };
       return {
         ...this.owned(),
         drafts: listDrafts(this.database!, this.lease!.scopeId, source.id),

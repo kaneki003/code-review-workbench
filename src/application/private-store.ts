@@ -75,7 +75,8 @@ export interface StoreRequest {
     | 'saveDraft'
     | 'discardDraft'
     | 'readDraft'
-    | 'listDrafts';
+    | 'listDrafts'
+    | 'listReviewDrafts';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;

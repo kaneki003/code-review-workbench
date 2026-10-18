@@ -7,6 +7,7 @@ export const draftActions = [
   'discardDraft',
   'readDraft',
   'listDrafts',
+  'listReviewDrafts',
 ] as const;
 export function isDraftAction(action: string): boolean {
   return (draftActions as readonly string[]).includes(action);
