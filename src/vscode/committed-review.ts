@@ -168,7 +168,7 @@ export function createCommittedReview(initialManager: ReviewManager) {
     if (content.status !== 'available' && content.status !== 'absent')
       throw new Error(content.detail);
     const selection = editor.selection;
-    await manager.saveSourceNavigation({
+    return manager.saveSourceNavigation({
       anchor: {
         ...content.anchor,
         range: {
@@ -264,9 +264,9 @@ export function createCommittedReview(initialManager: ReviewManager) {
     await vscode.window.showTextDocument(uri, { preview: false, selection: range(requestedRange) });
     return uri;
   }
-  async function returnToSource() {
+  async function returnToSource(originalTarget?: SourceNavigation) {
     const expectedPresentation = presentation;
-    const saved = await manager.readSourceNavigation();
+    const saved = originalTarget ?? (await manager.readSourceNavigation());
     if (!saved) throw new Error('No committed source return target has been saved.');
     await manager.validateSourceNavigation(saved);
     const snapshot = await load(saved.anchor.sourceId);
@@ -348,6 +348,14 @@ export function createCommittedReview(initialManager: ReviewManager) {
     openDiff,
     openSource,
     returnToSource,
+    async captureDraftTarget() {
+      const saved = await rememberOrigin('editor');
+      if (!saved || !saved.anchor.blob)
+        throw new Error(
+          'Select an available original or new committed source range before writing private feedback.',
+        );
+      return saved;
+    },
     dispose() {
       for (const subscription of subscriptions) subscription.dispose();
     },

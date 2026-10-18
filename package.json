@@ -87,6 +87,26 @@
         "command": "codeReviewWorkbench.unmarkReviewed",
         "title": "Code Review Workbench: Remove Reviewed Mark",
         "icon": "$(circle-slash)"
+      },
+      {
+        "command": "codeReviewWorkbench.writeLocalDraft",
+        "title": "Code Review Workbench: Write Private Local Draft",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "codeReviewWorkbench.openLocalDraft",
+        "title": "Code Review Workbench: Open Local Draft",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "codeReviewWorkbench.showLocalDrafts",
+        "title": "Code Review Workbench: Show Local Drafts",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "codeReviewWorkbench.recreateDraftWriter",
+        "title": "Code Review Workbench: Recreate Local Draft Writer",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -96,6 +116,13 @@
           "title": "Code Review Workbench",
           "icon": "media/review.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "codeReviewWorkbench-feedback",
+          "title": "Private Feedback",
+          "icon": "media/review.svg"
+        }
       ]
     },
     "views": {
@@ -103,6 +130,14 @@
         {
           "id": "codeReviewWorkbench.files",
           "name": "Changed Files",
+          "icon": "media/review.svg"
+        }
+      ],
+      "codeReviewWorkbench-feedback": [
+        {
+          "id": "codeReviewWorkbench.writer",
+          "name": "Local Draft",
+          "type": "webview",
           "icon": "media/review.svg"
         }
       ]
@@ -118,6 +153,16 @@
           "command": "codeReviewWorkbench.returnToCommittedSource",
           "when": "view == codeReviewWorkbench.files",
           "group": "navigation@2"
+        },
+        {
+          "command": "codeReviewWorkbench.showLocalDrafts",
+          "when": "view == codeReviewWorkbench.files || view == codeReviewWorkbench.writer",
+          "group": "drafts@1"
+        },
+        {
+          "command": "codeReviewWorkbench.recreateDraftWriter",
+          "when": "view == codeReviewWorkbench.writer",
+          "group": "drafts@2"
         }
       ],
       "view/item/context": [
@@ -139,6 +184,20 @@
         {
           "command": "codeReviewWorkbench.openChangedDiff",
           "when": "view == codeReviewWorkbench.files",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "codeReviewWorkbench.writeLocalDraft",
+          "when": "resourceScheme == crw-source",
+          "group": "navigation@10"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "codeReviewWorkbench.openLocalDraft",
+          "when": "commentThread == crw-local-draft",
           "group": "navigation"
         }
       ]
