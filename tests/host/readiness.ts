@@ -585,7 +585,12 @@ suite('Installed readiness VSIX', () => {
           target,
         );
         assert.ok(navigated, 'An intentionally absent side must not block navigation');
-        await vscode.commands.executeCommand('codeReviewWorkbench.returnToCommittedSource');
+        const returned = await vscode.commands.executeCommand<{
+          anchor: { side: 'old' | 'new' };
+        }>('codeReviewWorkbench.returnToCommittedSource');
+        assert.ok(returned, 'Returning to an absent committed side must succeed');
+        assert.equal(returned.anchor.side, emptySide === 'original' ? 'old' : 'new');
+        await waitForActiveEditor(emptyUri, 'return to an absent committed side');
         assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), emptyUri.toString());
       }
       const misleading = opened.original.with({ path: `/New-${head}/incorrect.ts` });
