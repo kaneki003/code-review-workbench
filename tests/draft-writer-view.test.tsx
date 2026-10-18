@@ -31,6 +31,7 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
   let closed = false;
   let paused = false;
   let failNext = false;
+  let syncGate: Promise<void> | undefined;
   function deliver(snapshot: ReturnType<typeof manager.snapshotDraftWriter>, force = false) {
     if (!paused || force) for (const chunk of draftSnapshotChunks(snapshot)) client.receive(chunk);
   }
@@ -39,7 +40,10 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
       failNext = false;
       throw new Error('Fixture transport failure');
     }
-    void manager.handleDraftWriterMessage(message).then((result) => {
+    void (async () => {
+      if (message.type === 'sync') await syncGate;
+      return manager.handleDraftWriterMessage(message);
+    })().then((result) => {
       if (result.snapshot) deliver(result.snapshot, message.type === 'sync');
       if (result.closedTarget) {
         expect(result.closedTarget).toEqual(target);
@@ -71,12 +75,43 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
     failNextEdit: () => {
       failNext = true;
     },
+    holdSync: () => {
+      let release!: () => void;
+      syncGate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return release;
+    },
     resume: () => {
       paused = false;
       deliver(manager.snapshotDraftWriter(instance, true));
     },
   };
 }
+test(
+  'Close waiting for resynchronization retains rejected text if another writer opens',
+  async () => {
+    const { manager, target, holdSync } = await renderWriter();
+    const other = await manager.createLocalDraft(target);
+    const body = 'x'.repeat(1024 * 1024 + 1);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Private feedback' }), {
+      target: { value: body },
+    });
+    const release = holdSync();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await act(async () => {
+      await manager.openDraftWriter(other.id);
+      release();
+    });
+    const recovery = await screen.findByRole('textbox', {
+      name: 'Recovery copy of private feedback',
+    });
+    expect((recovery as HTMLTextAreaElement).value).toBe(body);
+    expect((await manager.readLocalDraft(other.id))?.body).toBe('');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 test(
   'Retry resynchronizes before rebasing failed transport and preserves the newest input',
   async () => {

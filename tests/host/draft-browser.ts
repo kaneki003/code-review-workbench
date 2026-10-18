@@ -1,6 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 
 const findDocument = `function find(doc) {
+  if (doc.visibilityState === 'hidden') return null;
+  const ownerFrame=doc.defaultView?.frameElement;
+  if(ownerFrame && !ownerFrame.getBoundingClientRect().width) return null;
   if (doc.querySelector('main[aria-label="Private local draft writer"]')) return doc;
   for (const frame of doc.querySelectorAll('iframe')) {
     try { const inner=frame.contentDocument; if(inner){const found=find(inner);if(found)return found;} } catch {}

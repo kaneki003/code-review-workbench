@@ -74,13 +74,22 @@ export async function exerciseDraftWriter(
     () => vscode.window.activeTextEditor?.document.uri.toString() === uri.toString(),
     'Original source did not gain focus',
   );
+  const browser = await DraftBrowser.connect();
   const draft = await vscode.commands.executeCommand<LocalDraft>(
     'codeReviewWorkbench.writeLocalDraft',
   );
-  assert.ok(draft, 'Native range action creates a private draft');
+  if (!draft) {
+    await browser.screenshot(
+      join(dirname(process.env.CRW_HOST_EVIDENCE!), 'draft-writer-failure.png'),
+    );
+    const notification = await browser.workbench<string>(
+      `return document.querySelector('.notifications-toasts')?.innerText ?? '';`,
+    );
+    browser.dispose();
+    assert.fail(`Native range action did not open the writer: ${notification}`);
+  }
   assert.equal(draft.target.anchor.side, 'old');
   assert.equal(draft.target.anchor.commit, source.mergeBase);
-  const browser = await DraftBrowser.connect();
   const body = 'Private Unicode 🐈\n\n```ts\nunfinished **Markdown';
   const screenshots: string[] = [];
   try {
@@ -317,7 +326,7 @@ export async function exerciseDraftWriter(
           : null,
         page: await browser
           .writer(
-            `return {hasInput:!!doc.querySelector('textarea[aria-label="Private feedback"]'),status:doc.querySelector('[role="status"]')?.textContent};`,
+            `return {hasInput:!!doc.querySelector('textarea[aria-label="Private feedback"]'),status:doc.querySelector('[role="status"]')?.textContent,width:doc.documentElement.clientWidth,viewport:doc.defaultView.innerWidth};`,
           )
           .catch((failure: Error) => failure.message),
         chrome: await browser

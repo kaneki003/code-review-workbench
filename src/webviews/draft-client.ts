@@ -122,7 +122,7 @@ export class DraftWriterClient {
         throw new Error('The host projection was malformed. Keep the input and Retry.');
       const previous = this.state.snapshot;
       if (snapshot.fenced) {
-        for (const copy of [this.state.recovery, this.recoveryCopy()])
+        for (const copy of [this.recoveryCopy(), this.state.recovery])
           if (copy) this.fencedInputs.set(copy.draftId, copy);
         this.pendingControl = undefined;
         this.syncing = false;
@@ -144,6 +144,7 @@ export class DraftWriterClient {
         return;
       }
       if (snapshot.reset) this.syncing = false;
+      const resynchronizing = Boolean(this.pendingControl);
       if (this.pendingControl && snapshot.reset) {
         const control = this.pendingControl;
         this.pendingControl = undefined;
@@ -183,7 +184,7 @@ export class DraftWriterClient {
       if (next?.writerId !== previous?.state?.writerId) {
         if (
           previous?.state &&
-          action !== 'close' &&
+          (action !== 'close' || Boolean(next) || resynchronizing) &&
           action !== 'discard' &&
           !this.discardRequested &&
           editRevision > previous.state.committedRevision &&
