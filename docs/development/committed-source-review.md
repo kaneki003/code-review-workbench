@@ -8,7 +8,11 @@ The initial review found three documented-contract defects: a fetch prepared bef
 
 The follow-up report confirmed all fixes. Source inspection carries its captured generation through fetch dispatch, queues and delayed replies are fenced while actual receipts/leases remain retained, Git comparison overrides submodule ignore settings, and the provider validates the canonical document URI. Manager authorization and worker routing now share the source-action list. No new actionable Standards or correctness finding remained. The reviewer inspected the regression tests and did not run them independently.
 
-The first CI matrix additionally exposed native editor-focus timing on current macOS VS Code. Repeating Switch Side reproduced the failure locally. Waiting for the active-editor update alone still failed; explicitly focusing the editor group made the same loop pass. Return now restores that native focus before switching and waits for the requested side before selecting its range. The installed-host regression repeats side switching and checks actual editor state.
+The CI matrix additionally exposed native editor-focus timing on macOS VS Code. Repeating Switch Side reproduced the failure locally. Focusing the editor group alone did not remove every failure: narrow native diffs can automatically collapse into unified mode, where the separate original widget cannot take focus. The installed-host regression now explicitly selects split mode for original-side assertions and exercises unified mode separately. Return restores native editor focus, observes either side of the actual diff before deciding to switch, and waits for the requested side before selecting its range. Its bounded wait preserves the saved target if VS Code cannot focus that side.
+
+Windows passed the 141-test suite but the combined native-source case exceeded the runner's 25-second whole-case bound. Only that test case gets a 90-second Windows deadline; production operation/read/focus deadlines stay unchanged.
+
+Both agents reviewed the final focus/layout/deadline follow-up. The Spec reviewer confirmed that observing either diff side before switching resolves the remaining focus-event race. Neither reviewer found another actionable regression.
 
 ## Spec
 

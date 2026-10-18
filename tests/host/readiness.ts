@@ -319,7 +319,11 @@ suite('Installed readiness VSIX', () => {
       await rm(home, { recursive: true, force: true });
     }
   });
-  test('installed committed documents preserve native diff sides, return range, readonly source and theme changes', async () => {
+  test('installed committed documents preserve native diff sides, return range, readonly source and theme changes', async function () {
+    // This case runs many real Git/SQLite/editor round trips. Windows CI
+    // exceeded the runner's 25-second whole-case bound; individual production
+    // fetch, source-read and focus deadlines remain unchanged.
+    this.timeout(process.platform === 'win32' ? 90000 : 25000);
     const extension = vscode.extensions.getExtension<{
       createManager(
         configuration: StoreConfiguration,
@@ -436,9 +440,18 @@ suite('Installed readiness VSIX', () => {
     );
     const diffConfiguration = vscode.workspace.getConfiguration('diffEditor');
     const previousInline = diffConfiguration.get('renderSideBySide');
+    const previousAdaptive = diffConfiguration.get('useInlineViewWhenSpaceIsLimited');
     const themeConfiguration = vscode.workspace.getConfiguration('workbench');
     const previousTheme = themeConfiguration.get('colorTheme');
     try {
+      // Original-side focus is a split-editor assertion. A narrow native
+      // window otherwise collapses the two widgets into unified mode.
+      await diffConfiguration.update('renderSideBySide', true, vscode.ConfigurationTarget.Global);
+      await diffConfiguration.update(
+        'useInlineViewWhenSpaceIsLimited',
+        false,
+        vscode.ConfigurationTarget.Global,
+      );
       assert.equal((await manager.openPullRequestOverview(pullRequest.url)).status, 'ready');
       const result = await manager.inspectPullRequestSource('3001', 20);
       assert.equal(result.status, 'ready', JSON.stringify(result));
@@ -620,6 +633,11 @@ suite('Installed readiness VSIX', () => {
       await diffConfiguration.update(
         'renderSideBySide',
         previousInline,
+        vscode.ConfigurationTarget.Global,
+      );
+      await diffConfiguration.update(
+        'useInlineViewWhenSpaceIsLimited',
+        previousAdaptive,
         vscode.ConfigurationTarget.Global,
       );
       await themeConfiguration.update(

@@ -44,14 +44,15 @@ export function createCommittedReview(initialManager: ReviewManager) {
       throw new Error('The selected review changed. Reopen the verified source before navigating.');
   }
   async function waitForEditor(
-    uri: vscode.Uri,
+    uris: readonly vscode.Uri[],
     expectedPresentation: number,
   ): Promise<vscode.TextEditor> {
     const deadline = Date.now() + 5000;
     for (;;) {
       assertPresentation(expectedPresentation);
       const editor = vscode.window.activeTextEditor;
-      if (editor?.document.uri.toString() === uri.toString()) return editor;
+      if (editor && uris.some((uri) => editor.document.uri.toString() === uri.toString()))
+        return editor;
       if (Date.now() > deadline)
         throw new Error(
           'The native diff could not focus the original source side. Its saved return target is retained.',
@@ -210,9 +211,10 @@ export function createCommittedReview(initialManager: ReviewManager) {
       assertPresentation(expectedPresentation);
       await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
       const desired = navigation.anchor.side === 'old' ? oldUri : newUri;
-      if (vscode.window.activeTextEditor?.document.uri.toString() !== desired.toString())
+      const focused = await waitForEditor([oldUri, newUri], expectedPresentation);
+      if (focused.document.uri.toString() !== desired.toString())
         await vscode.commands.executeCommand('diffEditor.switchSide');
-      const editor = await waitForEditor(desired, expectedPresentation);
+      const editor = await waitForEditor([desired], expectedPresentation);
       const selection = range(navigation.anchor.range);
       editor.selection = new vscode.Selection(selection.start, selection.end);
       editor.revealRange(selection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
