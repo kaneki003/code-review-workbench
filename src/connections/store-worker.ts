@@ -959,6 +959,9 @@ class SharedStore {
         });
         if (pinned.operation?.outcome !== 'applied')
           recovery('The original exact commit was not pinned. No checkout was authorized.');
+        // The verified pin can create .git/logs. Bind checkout's own intent to
+        // that settled metadata, while retaining the original work/file facts.
+        record.storage = repository.referenceStorage(ref, facts, true);
       }
       repository.validateCheckout(record);
       return this.projectOperation(record, request);

@@ -507,6 +507,28 @@ test(
 );
 
 test(
+  'creating original-commit protection works when the repository has no reflog directory',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    context.git('config', 'core.logAllRefUpdates', 'false');
+    await rm(join(context.location, '.git', 'logs'), { recursive: true });
+    const entry = await manager.prepareCleanCheckout(source.source.id);
+    expect(entry, JSON.stringify(entry)).toHaveProperty('operation.id');
+    expect(await manager.executeRepositoryOperation(entry.operation!.id)).toMatchObject({
+      operation: { outcome: 'applied' },
+    });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
   'public source actions inspect committed mixed-language changes without adopting working edits',
   async () => {
     const context = await fixture();
