@@ -12,6 +12,8 @@ import {
   readFile,
   rename,
   link,
+  stat,
+  utimes,
 } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -430,6 +432,35 @@ test(
     expect(
       context.git('rev-parse', `refs/heads/code-review-workbench/${entry.operation!.id}`),
     ).toBe(userCommit);
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'clean checkout refuses changed bytes hidden by Git stat-cache settings',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const path = join(context.location, 'worker.ts');
+    context.git('config', 'core.trustctime', 'false');
+    context.git('config', 'core.checkstat', 'minimal');
+    const old = new Date('2020-01-01T00:00:00Z');
+    await utimes(path, old, old);
+    context.git('update-index', '--refresh');
+    const cached = await stat(path);
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    await writeFile(path, 'export const count = 9;\n');
+    await utimes(path, cached.atime, cached.mtime);
+    expect(context.git('status', '--porcelain=v1')).toBe('');
+    expect(await manager.prepareCleanCheckout(source.source.id)).toMatchObject({
+      view: { code: 'DIRTY_CHECKOUT' },
+    });
+    expect(await readFile(path, 'utf8')).toBe('export const count = 9;\n');
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
     await manager.releasePrivateStore();
   },
   integrationTimeout,

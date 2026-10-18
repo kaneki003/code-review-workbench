@@ -455,17 +455,58 @@ export class RepositoryOperation {
         'DIRTY_CHECKOUT',
         'Unfinished index/worktree changes prevent this clean-only checkout. Commit or preserve them using ordinary Git, then Retry; committed-source reading remains available.',
       );
+    // Status can trust cached stat fields even when bytes differ. Verify each
+    // indexed blob directly, without invoking filters or refreshing the index.
+    // Transformed working-file representations remain a safe no-switch case.
+    for (const entry of staged.split('\0').filter(Boolean)) {
+      const match = /^(100644|100755|120000) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t(.+)$/s.exec(entry);
+      if (!match)
+        throw new StoreError(
+          'UNSUPPORTED_CHECKOUT',
+          'An index entry has an unsupported representation.',
+        );
+      const mode = match[1]!, expected = match[2]!, file = match[3]!;
+      const path = join(facts.worktree, file);
+      const metadata = lstatSync(path);
+      const symlink = metadata.isSymbolicLink();
+      if ((mode === '120000') !== symlink || (!symlink && !metadata.isFile()))
+        throw new StoreError(
+          'DIRTY_CHECKOUT',
+          'A working-file type differs from its indexed type. Keep no-switch reading.',
+        );
+      const content = symlink ? Buffer.from(readlinkSync(path)) : readFileSync(path);
+      const actual = createHash(expected.length === 40 ? 'sha1' : 'sha256')
+        .update(`blob ${content.length}\0`)
+        .update(content)
+        .digest('hex');
+      if (
+        actual !== expected ||
+        (process.platform !== 'win32' &&
+          !symlink &&
+          Boolean(metadata.mode & 0o111) !== (mode === '100755'))
+      )
+        throw new StoreError(
+          'DIRTY_CHECKOUT',
+          'Working-file bytes or modes differ from the index. Preserve any edits; transformed files require supported handling before switching. Keep no-switch reading.',
+        );
+    }
     const commit = this.refOid('HEAD');
     if (!commit)
       throw new StoreError(
         'UNSUPPORTED_CHECKOUT',
         'An unborn repository cannot enter a PR checkout.',
       );
-    return {
+    const state = {
       branch: this.git(['symbolic-ref', '-q', 'HEAD'], true)?.toString().trim() ?? null,
       commit,
       fingerprint: this.facts(false).digest,
     };
+    if (!this.sameFacts(facts))
+      throw new StoreError(
+        'REPOSITORY_CHANGED',
+        'Repository facts changed during clean-content verification. No checkout was authorized.',
+      );
+    return state;
   }
   validateCheckout(record: OperationRecord) {
     const checkout = record.checkout!;
