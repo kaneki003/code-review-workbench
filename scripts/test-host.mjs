@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -138,6 +139,13 @@ async function findWindowsCliScript(cliLauncher, vscodeExecutable) {
 }
 
 async function prepareHostTestRunner(vscodeExecutable, fixture) {
+  const debugServer = createServer();
+  await new Promise((resolve, reject) => {
+    debugServer.once('error', reject);
+    debugServer.listen(0, '127.0.0.1', resolve);
+  });
+  const debugPort = debugServer.address().port;
+  await new Promise((resolve) => debugServer.close(resolve));
   const compiledTests = join(testOutputDirectory, 'readiness.cjs');
   await build({
     entryPoints: [join(projectRoot, 'tests/host/readiness.ts')],
@@ -159,6 +167,7 @@ async function prepareHostTestRunner(vscodeExecutable, fixture) {
       CRW_HOST_SANDBOX: fixture.directory,
       CRW_SOURCE_ROOT: projectRoot,
       CRW_HOST_EVIDENCE: evidenceFile,
+      CRW_HOST_DEBUG_PORT: String(debugPort),
     },
     launchArgs: [
       '--user-data-dir',
@@ -169,6 +178,8 @@ async function prepareHostTestRunner(vscodeExecutable, fixture) {
       '--skip-release-notes',
       '--no-sandbox',
       '--disable-gpu',
+      `--remote-debugging-port=${debugPort}`,
+      '--remote-debugging-address=127.0.0.1',
       '--disable-extension',
       'github.copilot',
       '--disable-extension',

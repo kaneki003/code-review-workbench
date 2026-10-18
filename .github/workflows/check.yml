@@ -43,5 +43,6 @@ jobs:
           include-hidden-files: true
           path: |
             .host-test/evidence.json
+            .host-test/draft-writer-*.png
             dist/*.vsix
           if-no-files-found: warn
