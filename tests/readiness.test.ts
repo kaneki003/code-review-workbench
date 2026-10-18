@@ -23,6 +23,9 @@ const supportedHost: HostEnvironment = {
 test('a remote workspace explains the limitation before executing local probes', async () => {
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, remote: 'ssh-remote' }),
+    native: async () => {
+      throw new Error('Native helper must not execute');
+    },
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -38,6 +41,7 @@ test('a remote workspace explains the limitation before executing local probes',
   expect(report.reviewAvailable).toBe(false);
   expect(report.checks.map((check) => check.id)).not.toContain('git');
   expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
+  expect(report.checks.map((check) => check.id)).not.toContain('guard');
 });
 
 const unsupportedHosts: { name: string; changes: Partial<HostEnvironment> }[] = [
@@ -62,6 +66,9 @@ const unsupportedHosts: { name: string; changes: Partial<HostEnvironment> }[] = 
 test.each(unsupportedHosts)('$name skips all local probes', async ({ changes }) => {
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, ...changes }),
+    native: async () => {
+      throw new Error('Native helper must not execute');
+    },
     git: async () => {
       throw new Error('Git must not execute');
     },
@@ -72,6 +79,7 @@ test.each(unsupportedHosts)('$name skips all local probes', async ({ changes }) 
   const report = await manager.checkReadiness();
   expect(report.checks.map((check) => check.id)).not.toContain('git');
   expect(report.checks.map((check) => check.id)).not.toContain('sqlite');
+  expect(report.checks.map((check) => check.id)).not.toContain('guard');
   expect(report.checks.find((check) => check.id === 'probes')?.status).toBe('blocked');
 });
 
@@ -88,6 +96,12 @@ test('a missing repository is explained without cloning or starting a review', a
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
+    native: async () => ({
+      id: 'guard',
+      label: 'Helper',
+      status: 'blocked',
+      detail: 'Separate probe',
+    }),
     sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: 'Available' }),
   });
   const report = await manager.checkReadiness();
@@ -102,7 +116,7 @@ test('a missing repository is explained without cloning or starting a review', a
   ).toThrow();
 });
 
-test('checking a dirty repository retains the files, index and refs and keeps ownership pending', async () => {
+test('checking a dirty repository retains the files, index and refs while ownership is blocked', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'crw-readiness-'));
   temporaryDirectories.push(folder);
   const runGit = (...args: string[]) =>
@@ -119,12 +133,21 @@ test('checking a dirty repository retains the files, index and refs and keeps ow
   const manager = new ReviewManager({
     environment: () => ({ ...supportedHost, folders: [{ scheme: 'file', path: folder }] }),
     git: probeGit,
+    native: async () => ({
+      id: 'guard',
+      label: 'Helper',
+      status: 'blocked',
+      detail: 'Separate probe',
+    }),
     sqlite: () => probeSqlite(join(folder, 'missing-worker.cjs')),
   });
   const report = await manager.checkReadiness();
   expect(report.checks.find((check) => check.id === 'git')?.status).toBe('passed');
   expect(report.checks.find((check) => check.id === 'sqlite')?.status).toBe('blocked');
-  expect(report.checks.find((check) => check.id === 'ownership')?.status).toBe('pending');
+  expect(report.checks.find((check) => check.id === 'ownership')).toMatchObject({
+    status: 'blocked',
+    detail: expect.stringContaining('extension update'),
+  });
   expect(await readFile(join(folder, '.git/index'))).toEqual(originalIndex);
   expect(await readFile(join(folder, 'file.txt'), 'utf8')).toBe('unstaged\n');
   expect(runGit('for-each-ref')).toBe(originalRefs);

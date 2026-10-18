@@ -1,4 +1,14 @@
 import type { Capability, ReadinessReport } from '../shared/readiness';
+import { randomUUID } from 'node:crypto';
+import {
+  StoreError,
+  type StoreConnection,
+  type StoreLease,
+  type StoreRequest,
+  type StoreView,
+  type StoreReply,
+  type StoreHandoff,
+} from './private-store';
 
 export interface HostEnvironment {
   vscode: string;
@@ -17,11 +27,132 @@ export interface ReadinessConnections {
   environment(): HostEnvironment;
   git(folder: string): Promise<Capability>;
   sqlite(): Promise<Capability>;
+  native(): Promise<Capability>;
+  store?: StoreConnection;
 }
 
 // This public action only inspects capabilities. It never acquires review ownership.
 export class ReviewManager {
+  private storeLease: StoreLease | undefined;
+  private storeQueue: Promise<unknown> = Promise.resolve();
   constructor(private readonly connections: ReadinessConnections) {}
+  async dispose(): Promise<void> {
+    try {
+      if (this.storeLease) await this.releasePrivateStore();
+    } finally {
+      await this.connections.store?.dispose();
+    }
+  }
+
+  openPrivateStore(handoff?: StoreHandoff): Promise<StoreView> {
+    return this.storeRequest('open', handoff ? { handoff } : {}).then((reply) => reply.view);
+  }
+  releasePrivateStore(): Promise<StoreView> {
+    return this.storeAction('release');
+  }
+  inspectPrivateStore(): Promise<StoreView> {
+    return this.storeAction('inspect');
+  }
+  renewOwnership(): Promise<StoreView> {
+    return this.storeAction('renew');
+  }
+  offerStoreHandoff(targetWindowId: string): Promise<StoreReply> {
+    return this.storeRequest('handoff', { targetWindowId });
+  }
+  // Untyped legacy intent never authorizes execution or automatic recovery.
+  // New operations must use the typed prepare/execute API below.
+  recordRepositoryIntent(): Promise<StoreReply> {
+    return this.storeRequest('recordIntent');
+  }
+  prepareReferenceUpdate(ref: string, newOid: string): Promise<StoreReply> {
+    return this.storeRequest('prepareRef', { refUpdate: { ref, newOid } });
+  }
+  executeRepositoryOperation(operationId: string): Promise<StoreReply> {
+    return this.storeRequest('executeOperation', { operationId });
+  }
+  recoverPrivateStore(): Promise<StoreReply> {
+    return this.storeRequest('recover');
+  }
+  inspectRepositoryOperation(operationId: string): Promise<StoreReply> {
+    return this.storeRequest('inspectOperation', { operationId });
+  }
+
+  private storeAction(action: StoreRequest['action']): Promise<StoreView> {
+    return this.storeRequest(action).then((reply) => reply.view);
+  }
+
+  private storeRequest(
+    action: StoreRequest['action'],
+    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId'> = {},
+  ): Promise<StoreReply> {
+    const work = this.storeQueue.then(async (): Promise<StoreReply> => {
+      const host = this.connections.environment();
+      if (
+        [
+          checkWorkspace(host),
+          checkWorkspaceTrust(host),
+          checkEmbeddedRuntime(host),
+          checkPlatform(host),
+        ].some((check) => check.status !== 'passed')
+      ) {
+        return {
+          view: {
+            status: 'blocked',
+            detail:
+              'Use a trusted supported local desktop workspace before opening private storage.',
+          },
+        };
+      }
+      if (!this.connections.store)
+        return {
+          view: { status: 'blocked', detail: 'This installation has no shared-store connection.' },
+        };
+      try {
+        if (
+          action === 'open' &&
+          (await this.connections.git(host.folders[0]!.path)).status !== 'passed'
+        ) {
+          return {
+            view: {
+              status: 'blocked',
+              detail:
+                'Open an already-cloned local Git repository before claiming the private store.',
+            },
+          };
+        }
+        const request: StoreRequest = {
+          protocol: 1,
+          id: randomUUID(),
+          action,
+          workspacePath: host.folders[0]!.path,
+          ...fields,
+          ...(this.storeLease ? { lease: this.storeLease } : {}),
+        };
+        const reply = await this.connections.store.request(request);
+        if (
+          !reply.lease ||
+          !this.storeLease ||
+          reply.lease.token !== this.storeLease.token ||
+          reply.lease.revision >= this.storeLease.revision
+        )
+          this.storeLease = reply.lease;
+        return reply;
+      } catch (error) {
+        return {
+          view: {
+            status: 'recovery',
+            code: error instanceof StoreError ? error.code : 'STORE_UNAVAILABLE',
+            detail:
+              error instanceof StoreError
+                ? error.message
+                : 'The private store is unavailable. Preserve its files and check recovery before writing.',
+          },
+        };
+      }
+    });
+    this.storeQueue = work;
+    return work;
+  }
 
   async checkReadiness(): Promise<ReadinessReport> {
     const host = this.connections.environment();
@@ -36,14 +167,16 @@ export class ReviewManager {
     if (canRunLocalProbes) {
       // checkWorkspace has established that exactly one local folder exists.
       const repositoryFolder = host.folders[0]!;
-      const [gitResult, sqliteResult] = await Promise.allSettled([
+      const [gitResult, sqliteResult, nativeResult] = await Promise.allSettled([
         this.connections.git(repositoryFolder.path),
         this.connections.sqlite(),
+        this.connections.native(),
       ]);
 
       checks.push(
         readProbeResult(gitResult, 'git', 'Git'),
         readProbeResult(sqliteResult, 'sqlite', 'Packaged SQLite worker'),
+        readProbeResult(nativeResult, 'guard', 'Packaged ownership helper'),
       );
     } else {
       checks.push({
@@ -54,12 +187,15 @@ export class ReviewManager {
       });
     }
 
+    const ownership =
+      this.connections.store && canRunLocalProbes ? await this.inspectPrivateStore() : undefined;
     checks.push({
       id: 'ownership',
       label: 'Review ownership',
-      status: 'pending',
+      status: ownership?.status === 'owned' ? 'passed' : 'blocked',
       detail:
-        'Readiness inspection only. Shared-store ownership is not implemented (#18); starting a review and private-state writes remain unavailable.',
+        ownership?.detail ??
+        'Safe cross-window ownership is unavailable (#18). Starting a review and private-state writes remain disabled. Continue using the editor; ownership requires an extension update.',
     });
 
     return { checkedAt: new Date().toISOString(), checks, reviewAvailable: false };

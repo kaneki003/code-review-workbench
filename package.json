@@ -1,7 +1,7 @@
 {
   "name": "code-review-workbench",
   "displayName": "Code Review Workbench",
-  "description": "Personal-local code review workbench: read-only installed-host readiness.",
+  "description": "Personal-local code review workbench: readiness and shared private-store ownership.",
   "version": "0.0.1",
   "publisher": "kaneki003",
   "private": true,
@@ -38,6 +38,18 @@
       {
         "command": "codeReviewWorkbench.checkReadiness",
         "title": "Code Review Workbench: Check Readiness"
+      },
+      {
+        "command": "codeReviewWorkbench.openPrivateStore",
+        "title": "Code Review Workbench: Open Private Store"
+      },
+      {
+        "command": "codeReviewWorkbench.releasePrivateStore",
+        "title": "Code Review Workbench: Release Private Store"
+      },
+      {
+        "command": "codeReviewWorkbench.recoverPrivateStore",
+        "title": "Code Review Workbench: Recover Private Store"
       }
     ]
   },
@@ -47,10 +59,11 @@
     "validate": "pnpm format:check && pnpm check && pnpm test",
     "dev": "node scripts/build.mjs --watch",
     "check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm build:native && vitest run",
+    "build:native": "node scripts/build-native.mjs",
     "test:host": "node scripts/test-host.mjs",
     "build": "node scripts/build.mjs",
-    "package": "pnpm run build && pnpm exec vsce package --no-dependencies --allow-missing-repository --skip-license --out dist/code-review-workbench.vsix"
+    "package": "pnpm run build && node scripts/package.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -71,6 +84,7 @@
     "esbuild": "0.28.2",
     "jsdom": "30.1.3",
     "mocha": "11.7.6",
+    "node-gyp": "13.1.0",
     "prettier": "3.9.10",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
