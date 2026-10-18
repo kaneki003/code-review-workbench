@@ -29,10 +29,13 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
   const instance = randomUUID();
   const initial = manager.attachDraftWriter(instance);
   let closed = false;
+  let paused = false;
+  function deliver(snapshot: ReturnType<typeof manager.snapshotDraftWriter>) {
+    if (!paused) for (const chunk of draftSnapshotChunks(snapshot)) client.receive(chunk);
+  }
   const client = new DraftWriterClient(instance, (message) => {
     void manager.handleDraftWriterMessage(message).then((result) => {
-      if (result.snapshot)
-        for (const chunk of draftSnapshotChunks(result.snapshot)) client.receive(chunk);
+      if (result.snapshot) deliver(result.snapshot);
       if (result.closedTarget) {
         expect(result.closedTarget).toEqual(target);
         closed = true;
@@ -40,8 +43,7 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
     });
   });
   const unsubscribe = manager.onDraftWriterChange(() => {
-    for (const chunk of draftSnapshotChunks(manager.snapshotDraftWriter(instance)))
-      client.receive(chunk);
+    deliver(manager.snapshotDraftWriter(instance));
   });
   dispose.push(() => {
     unsubscribe();
@@ -51,8 +53,67 @@ async function renderWriter(diagnostics?: StorageDiagnostics) {
   await act(async () => {
     for (const chunk of draftSnapshotChunks(initial)) client.receive(chunk);
   });
-  return { manager, target, draft, client, instance, closed: () => closed };
+  return {
+    manager,
+    target,
+    draft,
+    client,
+    instance,
+    closed: () => closed,
+    pause: () => {
+      paused = true;
+    },
+    resume: () => {
+      paused = false;
+      deliver(manager.snapshotDraftWriter(instance, true));
+    },
+  };
 }
+test(
+  'trimming rejected input while host projections lag never replaces it with older text',
+  async () => {
+    const { manager, draft, pause, resume } = await renderWriter();
+    pause();
+    const input = screen.getByRole('textbox', { name: 'Private feedback' });
+    fireEvent.change(input, { target: { value: 'first' } });
+    fireEvent.change(input, { target: { value: 'second' } });
+    await waitFor(() => expect(manager.readDraftWriter()?.editRevision).toBe(2));
+    fireEvent.change(input, { target: { value: 'x'.repeat(1024 * 1024 + 1) } });
+    fireEvent.change(input, { target: { value: 'latest trimmed input' } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      resume();
+    });
+    expect((input as HTMLTextAreaElement).value).toBe('latest trimmed input');
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toMatch(/Saved on this device/),
+    );
+    expect((await manager.readLocalDraft(draft.id))?.body).toBe('latest trimmed input');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'Close with a dropped Saved projection completes without a false recovery copy',
+  async () => {
+    const { manager, draft, pause, resume, closed } = await renderWriter();
+    pause();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Private feedback' }), {
+      target: { value: 'saved by Close' },
+    });
+    await waitFor(() => expect(manager.readDraftWriter()?.editRevision).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(closed()).toBe(true));
+    await act(async () => {
+      resume();
+    });
+    expect(screen.queryByRole('textbox', { name: 'Recovery copy of private feedback' })).toBeNull();
+    expect((await manager.readLocalDraft(draft.id))?.body).toBe('saved by Close');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 test(
   'real typing, Preview and Escape save at the original target through the real worker',
   async () => {
@@ -179,6 +240,39 @@ test(
     });
     expect(screen.queryByRole('textbox', { name: 'Private feedback' })).toBeNull();
     expect(document.body.textContent).not.toContain('newest visible text');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'account fencing hides rejected browser input until its exact original draft is verified again',
+  async () => {
+    const { manager, target, draft, client } = await renderWriter();
+    const body = '🧪'.repeat(256 * 1024) + 'browser-only';
+    fireEvent.change(screen.getByRole('textbox', { name: 'Private feedback' }), {
+      target: { value: body },
+    });
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    await act(async () => {
+      manager.fencePullRequestOverview();
+    });
+    expect(document.body.textContent).not.toContain('browser-only');
+    expect(client.read().body).toBe('');
+    await manager.openPullRequestOverview('https://github.com/base/project/pull/20');
+    const other = await manager.createLocalDraft(target);
+    await act(async () => {
+      await manager.openDraftWriter(other.id);
+    });
+    expect(screen.queryByRole('textbox', { name: 'Recovery copy of private feedback' })).toBeNull();
+    await act(async () => {
+      await manager.openDraftWriter(draft.id);
+    });
+    const recovery = await screen.findByRole('textbox', {
+      name: 'Recovery copy of private feedback',
+    });
+    expect((recovery as HTMLTextAreaElement).value).toBe(body);
+    expect((await manager.readLocalDraft(draft.id))?.body).toBe('');
     await manager.releasePrivateStore();
   },
   integrationTimeout,

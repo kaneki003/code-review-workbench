@@ -10,13 +10,20 @@ import {
   type DraftControl,
 } from '../shared/draft-writer';
 
+interface RecoveryCopy {
+  draftId: string;
+  reviewId: string;
+  contentGeneration: number;
+  body: string;
+  label: string;
+}
 interface ClientState {
   snapshot: DraftSnapshot | undefined;
   body: string;
   editRevision: number;
   problem: string | undefined;
   action: DraftControl | undefined;
-  recovery: { body: string; label: string } | undefined;
+  recovery: RecoveryCopy | undefined;
 }
 // Temporary presentation/input only. The host owns received pending text and
 // storage; a transport acknowledgment is never a durable Saved acknowledgment.
@@ -33,6 +40,8 @@ export class DraftWriterClient {
   private incomingSequence = 0;
   private syncing = false;
   private discardRequested = false;
+  private fencedInput: RecoveryCopy | undefined;
+  private sentEditRevision = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly listeners = new Set<() => void>();
   constructor(
@@ -110,7 +119,9 @@ export class DraftWriterClient {
         throw new Error('The host projection was malformed. Keep the input and Retry.');
       const previous = this.state.snapshot;
       if (snapshot.fenced) {
+        this.fencedInput = this.state.recovery ?? this.recoveryCopy() ?? this.fencedInput;
         this.discardRequested = false;
+        this.sentEditRevision = 0;
         clearTimeout(this.timer);
         this.update({
           snapshot,
@@ -129,23 +140,31 @@ export class DraftWriterClient {
       if (snapshot.reset) this.syncing = false;
       let { body, editRevision, recovery, action } = this.state;
       const next = snapshot.state;
+      if (
+        next &&
+        this.fencedInput?.draftId === next.id &&
+        this.fencedInput.reviewId === next.reviewId &&
+        this.fencedInput.contentGeneration === next.contentGeneration
+      ) {
+        recovery = this.fencedInput;
+        this.fencedInput = undefined;
+      }
       if (next?.writerId !== previous?.state?.writerId) {
         if (
           previous?.state &&
+          action !== 'close' &&
           action !== 'discard' &&
           !this.discardRequested &&
           editRevision > previous.state.committedRevision &&
           !recovery
         )
-          recovery = {
-            body,
-            label: `PR #${previous.state.review.pullNumber} · ${previous.state.target.anchor.path} · ${previous.state.target.anchor.commit.slice(0, 8)}`,
-          };
+          recovery = this.recoveryCopy();
         body = next?.body ?? '';
         editRevision = next?.editRevision ?? 0;
+        this.sentEditRevision = editRevision;
         action = undefined;
         this.discardRequested = false;
-      } else if (next && next.editRevision > editRevision) {
+      } else if (next && next.editRevision > editRevision && !this.state.problem) {
         body = next.body;
         editRevision = next.editRevision;
       } else if (next && next.editRevision === editRevision && next.body !== body) {
@@ -160,6 +179,7 @@ export class DraftWriterClient {
       )
         action = undefined;
       if (next && next.editRevision >= editRevision) clearTimeout(this.timer);
+      if (next) this.sentEditRevision = Math.max(this.sentEditRevision, next.editRevision);
       this.update({ snapshot, body, editRevision, recovery, action, problem: snapshot.problem });
     } catch (error) {
       this.assembly.clear();
@@ -171,14 +191,29 @@ export class DraftWriterClient {
       this.sync();
     }
   }
+  private recoveryCopy(): RecoveryCopy | undefined {
+    const state = this.state.snapshot?.state;
+    if (!state || this.discardRequested || this.state.editRevision <= state.committedRevision)
+      return;
+    return {
+      draftId: state.id,
+      reviewId: state.reviewId,
+      contentGeneration: state.contentGeneration,
+      body: this.state.body,
+      label: `PR #${state.review.pullNumber} · ${state.target.anchor.path} · ${state.target.anchor.commit.slice(0, 8)}`,
+    };
+  }
   edit(body: string): boolean {
     const snapshot = this.state.snapshot;
     if (!snapshot?.state || this.state.action || this.state.recovery) return false;
-    const expected = this.state.problem ? snapshot.state.editRevision : this.state.editRevision;
+    const expected = this.state.problem
+      ? Math.max(snapshot.state.editRevision, this.sentEditRevision)
+      : this.state.editRevision;
     this.discardRequested = false;
     this.update({ body, editRevision: expected + 1, problem: undefined });
     try {
       const requests = draftEditRequests(snapshot, body, expected);
+      this.sentEditRevision = expected + 1;
       this.watch();
       for (const request of requests) this.send(request);
       return true;
@@ -201,6 +236,7 @@ export class DraftWriterClient {
     try {
       if (this.state.problem && type !== 'discard') {
         const requests = draftEditRequests(snapshot, this.state.body, snapshot.state.editRevision);
+        this.sentEditRevision = snapshot.state.editRevision + 1;
         this.update({ editRevision: snapshot.state.editRevision + 1, problem: undefined });
         for (const request of requests) this.send(request);
       }
