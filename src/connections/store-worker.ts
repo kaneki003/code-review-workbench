@@ -1404,6 +1404,7 @@ class SharedStore {
         } else {
           entry();
           next.phase = record.phase === 'exiting' ? 'exiting' : 'active';
+          if (next.phase === 'exiting') next.exitId = randomUUID();
         }
         break;
       default:

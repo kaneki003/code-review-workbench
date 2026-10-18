@@ -17,11 +17,13 @@ import { createOverviewDocuments } from './vscode/overview-documents';
 import type { ReviewCandidate } from './application/pull-request';
 import { createCommittedReview } from './vscode/committed-review';
 import type { CommittedSource } from './application/committed-source';
+import { createCheckoutEditors } from './vscode/checkout-editors';
 
 let activeManager: ReviewManager | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   let requestingSession = false;
+  const documents = createOverviewDocuments();
   const github = createGitHubConnection({
     getSession: async (forceNewSession) => {
       requestingSession = true;
@@ -63,6 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
       ),
       github,
       repository: createLocalRepositoryConnection(),
+      editors: createCheckoutEditors(documents),
       confirmLocalRepository: async (candidate) =>
         (await vscode.window.showWarningMessage(
           'Register this selected local copy for the verified GitHub repository?',
@@ -81,7 +84,6 @@ export function activate(context: vscode.ExtensionContext) {
   const manager = createManager(resolveStoreConfiguration(location));
   activeManager = manager;
   const panel = createReadinessPanel(context.extensionUri, () => manager.checkReadiness());
-  const documents = createOverviewDocuments();
   const committedReview = createCommittedReview(manager);
   let selection = 0;
   let lastUrl = '';

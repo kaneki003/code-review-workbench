@@ -641,6 +641,63 @@ suite('Installed readiness VSIX', () => {
       }
       await vscode.commands.executeCommand('workbench.action.zoomIn');
       await vscode.commands.executeCommand('workbench.action.zoomOut');
+      // Exercise the complete clean checkout through the installed manager and
+      // its actual native editor adapter, after the no-switch assertions above.
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      git(['config', 'core.autocrlf', 'false']);
+      git(['add', '.']);
+      git([
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-m',
+        'original clean workspace',
+      ]);
+      const priorBranch = git(['symbolic-ref', 'HEAD']);
+      const priorCommit = git(['rev-parse', 'HEAD']);
+      const priorUri = vscode.Uri.file(join(location, 'fixture.txt'));
+      const priorEditor = await vscode.window.showTextDocument(priorUri, {
+        preview: false,
+        viewColumn: vscode.ViewColumn.One,
+      });
+      priorEditor.selection = new vscode.Selection(0, 2, 0, 5);
+      const otherUri = vscode.Uri.file(join(location, 'untracked.txt'));
+      await vscode.window.showTextDocument(otherUri, {
+        preview: false,
+        viewColumn: vscode.ViewColumn.Two,
+      });
+      await api.showOverview(source.candidate, source);
+      const beforeTabs = vscode.window.tabGroups.all.map((group) =>
+        group.tabs.map((tab) => tab.label),
+      );
+      const entered = await manager.enterPullRequestCheckout(source.id);
+      assert.equal(entered.status, 'active', JSON.stringify(entered));
+      assert.equal(git(['rev-parse', 'HEAD']), head);
+      await vscode.window.tabGroups.close(
+        vscode.window.tabGroups.all.flatMap((group) => [...group.tabs]),
+      );
+      assert.equal(
+        (await manager.readCheckoutReview())?.phase,
+        'active',
+        'Closing tabs does not Exit',
+      );
+      await vscode.commands.executeCommand('vscode.open', opened.modified);
+      const exited = await manager.exitPullRequestCheckout();
+      assert.equal(exited.status, 'complete', JSON.stringify(exited));
+      assert.equal(git(['symbolic-ref', 'HEAD']), priorBranch);
+      assert.equal(git(['rev-parse', 'HEAD']), priorCommit);
+      assert.deepEqual(
+        vscode.window.tabGroups.all.map((group) => group.tabs.map((tab) => tab.label)),
+        beforeTabs,
+      );
+      const restoredPrior = vscode.window.visibleTextEditors.find(
+        (editor) => editor.document.uri.toString() === priorUri.toString(),
+      )!;
+      assert.deepEqual(restoredPrior.selection, new vscode.Selection(0, 2, 0, 5));
       assert.equal((await manager.releasePrivateStore()).status, 'closed');
     } finally {
       await diffConfiguration.update(

@@ -279,6 +279,89 @@ test(
 );
 
 test(
+  'failed host restoration retains recovery across restart and retries editors without another checkout',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const snapshot = {
+      protocol: 1 as const,
+      workspace: context.location,
+      layout: { groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    };
+    const first = context.manager(undefined, undefined, {
+      capture: async () => snapshot,
+      assertSaved() {},
+      restore: async () => {
+        throw new Error('Host refused layout restoration');
+      },
+    });
+    await first.openPullRequestOverview(context.pullRequest.url);
+    const source = await first.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    expect(await first.enterPullRequestCheckout(source.source.id)).toMatchObject({
+      status: 'active',
+    });
+    expect(await first.exitPullRequestCheckout()).toMatchObject({
+      status: 'recovery',
+      detail: 'Host refused layout restoration',
+    });
+    expect((await first.readCheckoutReview())?.phase).toBe('restoring-editors');
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    const reflog = context.git('reflog', 'show', '--format=%gs', 'HEAD');
+    await first.dispose();
+    let restored: unknown;
+    const second = context.manager(undefined, undefined, {
+      capture: async () => snapshot,
+      assertSaved() {},
+      restore: async (value) => {
+        restored = value;
+      },
+    });
+    await second.openPrivateStore();
+    expect(await second.recoverPullRequestCheckout('restore')).toMatchObject({
+      status: 'complete',
+    });
+    expect(restored).toEqual(snapshot);
+    expect(context.git('reflog', 'show', '--format=%gs', 'HEAD')).toBe(reflog);
+    await second.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'cancelled normal host saves refuse Enter before any checkout or recovery ref is created',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager(undefined, undefined, {
+      capture: async () => {
+        throw new Error('Save cancelled');
+      },
+      assertSaved() {},
+      restore: async () => {},
+    });
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    expect(await manager.enterPullRequestCheckout(source.source.id)).toMatchObject({
+      status: 'blocked',
+      detail: 'Save cancelled',
+    });
+    expect(await manager.readCheckoutReview()).toBeUndefined();
+    expect(
+      context.git(
+        'for-each-ref',
+        '--format=%(refname)',
+        'refs/code-review-workbench/recovery/',
+        'refs/heads/code-review-workbench/',
+      ),
+    ).toBe('');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
   'guarded clean checkout enters the exact PR on a fresh branch and restores the original commit',
   async () => {
     const context = await fixture();

@@ -6,6 +6,38 @@ import type { CommittedSource } from '../application/committed-source';
 
 export function createOverviewDocuments() {
   const content = new Map<string, string>();
+  const previews = new WeakMap<vscode.Tab, string>();
+  function preview(tab: vscode.Tab) {
+    if (!(tab.input instanceof vscode.TabInputWebview)) return undefined;
+    const uri =
+      previews.get(tab) ??
+      [...content.keys()].find(
+        (value) => tab.label === `Preview ${vscode.Uri.parse(value).path.split('/').pop()}`,
+      );
+    const text = uri ? content.get(uri) : undefined;
+    return uri && text !== undefined ? { uri, content: text } : undefined;
+  }
+  async function showPreview(uri: vscode.Uri, column?: number) {
+    await vscode.commands.executeCommand('markdown.showPreview', uri);
+    const label = `Preview ${uri.path.split('/').pop()}`;
+    const deadline = Date.now() + 5000;
+    let tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    while (!(tab?.input instanceof vscode.TabInputWebview) || tab.label !== label) {
+      if (Date.now() > deadline)
+        throw new Error(
+          'The native Markdown preview did not become available. Retry opening the overview.',
+        );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    }
+    previews.set(tab, uri.toString());
+    if (column !== undefined && vscode.window.tabGroups.activeTabGroup.viewColumn !== column)
+      await vscode.commands.executeCommand('moveActiveEditor', {
+        to: 'position',
+        by: 'group',
+        value: column,
+      });
+  }
   const provider = vscode.workspace.registerTextDocumentContentProvider('crw-overview', {
     provideTextDocumentContent: (uri) =>
       content.get(uri.toString()) ?? 'This overview is no longer available. Open the PR again.',
@@ -14,6 +46,12 @@ export function createOverviewDocuments() {
     content.delete(document.uri.toString()),
   );
   return {
+    read: (uri: string) => content.get(uri),
+    retain: (uri: string, text: string) => {
+      if (vscode.Uri.parse(uri).scheme === 'crw-overview') content.set(uri, text);
+    },
+    preview,
+    showPreview,
     async show(
       input: ReviewCandidate,
       isCurrent: () => boolean = () => true,
@@ -34,7 +72,7 @@ export function createOverviewDocuments() {
       if (!isCurrent()) return undefined;
       await vscode.window.showTextDocument(document, { preview: false });
       if (!isCurrent()) return undefined;
-      await vscode.commands.executeCommand('markdown.showPreview', document.uri);
+      await showPreview(document.uri);
       return uri;
     },
     dispose() {

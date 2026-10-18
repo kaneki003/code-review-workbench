@@ -119,6 +119,7 @@ export class ReviewManager {
     const reply = await this.storeRequest('readCheckout');
     if (reply.view.status !== 'owned')
       throw new StoreError(reply.view.code ?? 'CHECKOUT_UNAVAILABLE', reply.view.detail);
+    if (reply.checkout) this.connections.editors?.retain?.(reply.checkout.editors);
     return reply.checkout;
   }
   private checkoutWork(action: () => Promise<CheckoutResult>): Promise<CheckoutResult> {
@@ -129,6 +130,7 @@ export class ReviewManager {
   private checkoutReply(reply: StoreReply): CheckoutReview {
     if (!reply.checkout || reply.view.status !== 'owned')
       throw new StoreError(reply.view.code ?? 'CHECKOUT_RECOVERY', reply.view.detail);
+    this.connections.editors?.retain?.(reply.checkout.editors);
     return reply.checkout;
   }
   private checkoutFailure(error: unknown, review?: CheckoutReview): CheckoutResult {
@@ -294,7 +296,6 @@ export class ReviewManager {
       try {
         if (!this.connections.editors)
           throw new StoreError('EDITOR_UNAVAILABLE', 'Native editor recovery is unavailable.');
-        await this.connections.editors.capture();
         const ownership = await this.inspectPrivateStore();
         if (ownership.status === 'recovery') {
           const recovered = await this.recoverPrivateStore();
@@ -307,6 +308,7 @@ export class ReviewManager {
         review = this.checkoutReply(
           await this.storeRequest('reconcileCheckout', { checkoutChoice: choice }),
         );
+        await this.connections.editors.capture();
         if (review.phase === 'complete')
           return { status: 'complete', detail: 'The recorded Exit is complete.', review };
         if (review.phase === 'restoring-editors') return await this.restoreCheckoutEditors(review);

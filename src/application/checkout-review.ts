@@ -11,13 +11,14 @@ export interface EditorView {
   topLine: number;
 }
 export interface EditorTab {
-  kind: 'text' | 'diff';
+  kind: 'text' | 'diff' | 'markdown-preview';
   uri: string;
   original?: string;
   active: boolean;
   preview: boolean;
   pinned: boolean;
   views: EditorView[];
+  content?: string;
 }
 export interface EditorSnapshot {
   protocol: 1;
@@ -26,6 +27,8 @@ export interface EditorSnapshot {
   groups: { column: number; active: boolean; tabs: EditorTab[] }[];
 }
 export interface CheckoutEditors {
+  /** Rehydrates our own readonly documents after an authorized store read. */
+  retain?(snapshot: EditorSnapshot): void;
   /** Normal host saves followed by a stable inventory of restorable tabs. */
   capture(): Promise<EditorSnapshot>;
   /** Refuses unsaved/uncertain buffers immediately before a Git/host effect. */

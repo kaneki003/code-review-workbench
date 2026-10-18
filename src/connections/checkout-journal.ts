@@ -41,8 +41,12 @@ export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
         return (
           tabs <= 100 &&
           object(tab) &&
-          ['text', 'diff'].includes(String(tab.kind)) &&
+          ['text', 'diff', 'markdown-preview'].includes(String(tab.kind)) &&
           text(tab.uri, 8192) &&
+          (tab.content === undefined ||
+            (typeof tab.content === 'string' &&
+              tab.content.length <= 48000 &&
+              tab.uri.startsWith('crw-overview:'))) &&
           (tab.kind !== 'diff' || text(tab.original, 8192)) &&
           typeof tab.active === 'boolean' &&
           typeof tab.preview === 'boolean' &&
