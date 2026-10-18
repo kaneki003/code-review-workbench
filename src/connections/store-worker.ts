@@ -42,6 +42,7 @@ import {
   assertOperationOwner,
   readOperation,
   operationFile,
+  originalCheckoutRef,
   type OperationRecord,
 } from './repository-operation';
 
@@ -929,6 +930,36 @@ class SharedStore {
         child: null,
         checkout,
       };
+      if (checkout.create) {
+        const pinRef = originalCheckoutRef(record.id);
+        repository.validateUpdate(pinRef, checkout.before.commit);
+        if (repository.refOid(pinRef) !== null)
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'The original-commit recovery reference already exists. No reference was reused.',
+          );
+        const { checkout: _checkout, ...pinBase } = record;
+        const pin: OperationRecord = {
+          ...pinBase,
+          id: randomUUID(),
+          kind: 'update-ref',
+          ref: pinRef,
+          newOid: checkout.before.commit,
+          beforeOid: null,
+          storage: repository.referenceStorage(pinRef, facts),
+        };
+        this.projectOperation(pin);
+        const pinned = await this.executeOperation({
+          protocol: 1,
+          id: randomUUID(),
+          action: 'executeOperation',
+          operationId: pin.id,
+          lease: this.lease!,
+          workspacePath: this.config.location,
+        });
+        if (pinned.operation?.outcome !== 'applied')
+          recovery('The original exact commit was not pinned. No checkout was authorized.');
+      }
       repository.validateCheckout(record);
       return this.projectOperation(record, request);
     }
@@ -1326,18 +1357,17 @@ class SharedStore {
       }
       this.validate(this.lease, true);
       this.faults.at('dispatch.before');
+      if (record.kind === 'checkout') this.faults.at('checkout.dispatch.before');
       native.startChild(child);
       this.faults.at('dispatch.after');
+      if (record.kind === 'checkout') this.faults.at('checkout.dispatch.after');
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
       if (record.kind === 'checkout') {
-        const observed = repository.facts();
         const outcome = repository.checkoutOutcome(record);
         if (
-          JSON.stringify(observed.scopes) !== JSON.stringify(record.facts.scopes) ||
-          observed.gitDir !== record.facts.gitDir ||
-          observed.index !== record.facts.index ||
+          !repository.sameRepositoryIdentity(record.facts) ||
           !repository.sameReferenceStorage(record, true) ||
           outcome === 'refused'
         )
@@ -1481,13 +1511,9 @@ class SharedStore {
     else if (record.kind !== 'checkout') repository.validateUpdate(record.ref, record.newOid);
     const checkoutOutcome =
       record.kind === 'checkout' ? repository.checkoutOutcome(record) : undefined;
-    const currentFacts = repository.facts();
     if (
       record.kind === 'checkout'
-        ? checkoutOutcome === 'refused' ||
-          JSON.stringify(currentFacts.scopes) !== JSON.stringify(record.facts.scopes) ||
-          currentFacts.gitDir !== record.facts.gitDir ||
-          currentFacts.index !== record.facts.index
+        ? checkoutOutcome === 'refused' || !repository.sameRepositoryIdentity(record.facts)
         : !repository.sameFacts(record.facts)
     )
       recovery(

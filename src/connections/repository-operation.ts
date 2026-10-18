@@ -85,6 +85,10 @@ export function operationFile(directory: string, id: string) {
   if (!uuid(id)) recovery('Operation identity is invalid.');
   return join(directory, `operation-${id}.json`);
 }
+export function originalCheckoutRef(entryId: string) {
+  if (!uuid(entryId)) recovery('The original checkout reference needs an entry identity.');
+  return `refs/code-review-workbench/recovery/${entryId}/original`;
+}
 export function readOperation(directory: string, id: string): OperationRecord {
   const value = readRecord(operationFile(directory, id));
   if (
@@ -392,6 +396,14 @@ export class RepositoryOperation {
   sameFacts(expected: RepositoryFacts) {
     return JSON.stringify(this.facts()) === JSON.stringify(expected);
   }
+  sameRepositoryIdentity(expected: RepositoryFacts) {
+    const actual = this.facts();
+    return (
+      JSON.stringify(actual.scopes) === JSON.stringify(expected.scopes) &&
+      actual.gitDir === expected.gitDir &&
+      actual.index === expected.index
+    );
+  }
   cleanCheckoutState(target?: string): CleanCheckoutState {
     // Refuse configurations whose checkout/status can execute repository-owned
     // programs, and representations this clean-only slice cannot verify.
@@ -465,7 +477,9 @@ export class RepositoryOperation {
           'UNSUPPORTED_CHECKOUT',
           'An index entry has an unsupported representation.',
         );
-      const mode = match[1]!, expected = match[2]!, file = match[3]!;
+      const mode = match[1]!,
+        expected = match[2]!,
+        file = match[3]!;
       const path = join(facts.worktree, file);
       const metadata = lstatSync(path);
       const symlink = metadata.isSymbolicLink();
@@ -510,6 +524,12 @@ export class RepositoryOperation {
   }
   validateCheckout(record: OperationRecord) {
     const checkout = record.checkout!;
+    const original = checkout.create ? checkout.before.commit : checkout.target.commit;
+    if (this.refOid(originalCheckoutRef(checkout.entryId ?? record.id)) !== original)
+      throw new StoreError(
+        'CHECKOUT_INTERFERENCE',
+        'The exact original commit is no longer protected by its owned recovery reference. Preserve the checkout and recovery records.',
+      );
     this.git(['cat-file', '-e', `${checkout.target.commit}^{commit}`]);
     if (checkout.target.branch) {
       this.git(['check-ref-format', checkout.target.branch]);

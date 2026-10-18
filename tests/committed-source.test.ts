@@ -467,6 +467,46 @@ test(
 );
 
 test(
+  'entry pins an otherwise unreachable detached original commit until exact restoration',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '--detach', context.base);
+    await writeFile(join(context.location, 'prior.txt'), 'committed prior work\n');
+    context.git('add', 'prior.txt');
+    context.git('commit', '-m', 'detached user work');
+    const original = context.git('rev-parse', 'HEAD');
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const entry = await manager.prepareCleanCheckout(source.source.id);
+    expect(entry, JSON.stringify(entry)).toHaveProperty('operation.id');
+    expect(
+      context.git(
+        'rev-parse',
+        `refs/code-review-workbench/recovery/${entry.operation!.id}/original`,
+      ),
+    ).toBe(original);
+    expect(await manager.executeRepositoryOperation(entry.operation!.id)).toMatchObject({
+      operation: { outcome: 'applied' },
+    });
+    context.git('reflog', 'expire', '--expire=now', '--all');
+    context.git('gc', '--prune=now');
+    expect(context.git('cat-file', '-t', original)).toBe('commit');
+    const restore = await manager.prepareCleanRestore(entry.operation!.id);
+    expect(await manager.executeRepositoryOperation(restore.operation!.id)).toMatchObject({
+      operation: { outcome: 'applied' },
+    });
+    expect(context.git('rev-parse', 'HEAD')).toBe(original);
+    expect(await readFile(join(context.location, 'prior.txt'), 'utf8')).toBe(
+      'committed prior work\n',
+    );
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
   'public source actions inspect committed mixed-language changes without adopting working edits',
   async () => {
     const context = await fixture();

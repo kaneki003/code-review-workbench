@@ -112,7 +112,7 @@ export function createStoreConnection(
           },
           message.action === 'executeOperation'
             ? 60_000
-            : message.action === 'publishSource'
+            : message.action === 'publishSource' || message.action === 'prepareCleanCheckout'
               ? 45_000
               : 10_000,
         );
