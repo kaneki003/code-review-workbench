@@ -23,6 +23,7 @@ import { createStoreConnection } from '../src/connections/shared-store';
 import { createLocalRepositoryConnection } from '../src/connections/local-repository';
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../src/application/private-store';
+import type { CheckoutEditors } from '../src/application/checkout-review';
 
 const integrationTimeout = process.platform === 'win32' ? 60_000 : 20_000;
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -123,6 +124,7 @@ async function fixture() {
   function manager(
     diagnostics?: StorageDiagnostics,
     wrap: (store: StoreConnection) => StoreConnection = (store) => store,
+    editors?: CheckoutEditors,
   ) {
     const store = wrap(
       createStoreConnection(
@@ -155,6 +157,7 @@ async function fixture() {
       sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: '' }),
       native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
       store,
+      ...(editors ? { editors } : {}),
       account: actor,
       repository: createLocalRepositoryConnection(),
       confirmLocalRepository: async () => true,
@@ -231,6 +234,49 @@ async function fixture() {
     transportRequests: () => transportRequests,
   };
 }
+
+test(
+  'public Enter and Exit commit Active only after checkout and restore the saved editor snapshot',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    const original = {
+      protocol: 1 as const,
+      workspace: context.location,
+      layout: { orientation: 0, groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    };
+    let restored: unknown;
+    const manager = context.manager(undefined, undefined, {
+      capture: async () => original,
+      assertSaved() {},
+      restore: async (snapshot) => {
+        restored = snapshot;
+      },
+    });
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const entered = await manager.enterPullRequestCheckout(source.source.id);
+    expect(entered, JSON.stringify(entered)).toMatchObject({
+      status: 'active',
+      review: { phase: 'active', sourceId: source.source.id },
+    });
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
+    expect((await manager.readCheckoutReview())?.phase).toBe('active');
+    const exited = await manager.exitPullRequestCheckout();
+    expect(exited, JSON.stringify(exited)).toMatchObject({
+      status: 'complete',
+      review: { phase: 'complete' },
+    });
+    expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    expect(restored).toEqual(original);
+    expect((await manager.readCheckoutReview())?.phase).toBe('complete');
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 
 test(
   'guarded clean checkout enters the exact PR on a fresh branch and restores the original commit',

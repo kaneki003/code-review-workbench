@@ -47,6 +47,16 @@ import {
 } from './repository-operation';
 
 import { StorageFaults } from './storage-diagnostics';
+import {
+  CheckoutJournal,
+  validEditorSnapshot,
+  type CheckoutJournalState,
+} from './checkout-journal';
+import {
+  checkoutActions,
+  isCheckoutAction,
+  type CheckoutReview,
+} from '../application/checkout-review';
 import { normalizeCandidate, type ReviewCandidate } from '../application/pull-request';
 import { CommittedGit } from './committed-git';
 import {
@@ -878,6 +888,19 @@ class SharedStore {
           target: { branch: ref, commit: source.head },
           create: true,
         };
+        const session = this.checkoutJournal().read()?.record;
+        if (
+          session &&
+          session.phase !== 'complete' &&
+          (session.entryId !== request.id ||
+            session.sourceId !== source.id ||
+            session.scopeId !== this.lease!.scopeId ||
+            JSON.stringify(session.original) !== JSON.stringify(checkout.before))
+        )
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'A saved checkout transition already owns this repository. Recover or Exit that review before another entry.',
+          );
       } else {
         if (!uuid(request.operationId))
           throw new StoreError('INVALID_OPERATION', 'The original entry operation is required.');
@@ -910,6 +933,18 @@ class SharedStore {
           );
         ref = entry.checkout.before.branch ?? entry.ref;
         checkout = { before, target: entry.checkout.before, create: false, entryId: entry.id };
+        const session = this.checkoutJournal().read()?.record;
+        if (
+          session &&
+          session.phase !== 'complete' &&
+          (session.exitId !== request.id ||
+            session.entryId !== entry.id ||
+            session.scopeId !== this.lease!.scopeId)
+        )
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'Restoration does not identify the current saved Exit transition.',
+          );
       }
       const facts = repository.facts();
       const record: OperationRecord = {
@@ -1192,6 +1227,189 @@ class SharedStore {
     if (request.reviewed) reviewed.add(file.id);
     else reviewed.delete(file.id);
     return this.saveSourceReply(request, { sourceId: source.id, reviewed: [...reviewed] });
+  }
+
+  private checkoutJournal() {
+    return new CheckoutJournal(this.database!, this.rendezvous, native, this.faults);
+  }
+  private checkoutForOwner(state: CheckoutJournalState | undefined): CheckoutReview {
+    const record = state?.record;
+    if (
+      !record ||
+      record.scopeId !== this.lease!.scopeId ||
+      record.storeId !== this.lease!.storeId ||
+      record.incarnation !== this.lease!.incarnation ||
+      record.repository.worktree.path !== this.config.location
+    )
+      throw new StoreError(
+        'CHECKOUT_UNAVAILABLE',
+        'No checkout recovery belongs to this verified account and local repository. Open the original PR overview in its affected repository.',
+      );
+    this.sourcePlan(record.sourceId);
+    return record;
+  }
+  private saveCheckout(
+    request: StoreRequest,
+    record: CheckoutReview,
+    previous: CheckoutJournalState | undefined,
+  ) {
+    this.validate(this.lease, true);
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'Settle and reconcile the pending Git child before changing review lifecycle.',
+      );
+    const journal = this.checkoutJournal();
+    journal.publish(record, previous);
+    const reply = { ...this.owned(), checkout: record };
+    this.faults.at(`checkout-${record.phase}.commit.before`, this.database);
+    transaction(this.database!, () => {
+      this.validate(this.lease, true);
+      journal.project(record, previous);
+      // Content row revisions are independent of ownership revisions. Touching
+      // metadata also exercises the existing real transaction-failure fixture.
+      this.database!.exec('UPDATE metadata SET revision=revision WHERE id=1');
+      saveReply(this.database!, request, this.lease!, reply);
+    });
+    this.faults.at(`checkout-${record.phase}.commit.after`);
+    return reply;
+  }
+  private checkoutAction(request: StoreRequest): StoreReply {
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'A Git child may still run. Use Recover Private Store before Recover PR Checkout.',
+      );
+    const journal = this.checkoutJournal();
+    const state = journal.read(request.action === 'reconcileCheckout');
+    if (request.action === 'beginCheckout') {
+      if (state && state.record.phase !== 'complete')
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'A prior checkout still needs Exit or recovery in its original repository/account.',
+        );
+      const source = this.sourceRecord(request.sourceId);
+      if (
+        !validEditorSnapshot(request.editors) ||
+        request.editors.workspace !== this.config.location
+      )
+        throw new StoreError(
+          'INVALID_CHECKOUT',
+          'A stable restorable editor snapshot from this local workspace is required.',
+        );
+      const record: CheckoutReview = {
+        protocol: 1,
+        id: request.id,
+        storeId: this.lease!.storeId,
+        incarnation: this.lease!.incarnation,
+        scopeId: this.lease!.scopeId,
+        revision: 1,
+        phase: 'entering',
+        sourceId: source.id,
+        repository: source.candidate.localRepository.facts,
+        original: this.repository().cleanCheckoutState(source.head),
+        editors: request.editors,
+        entryId: randomUUID(),
+        exitId: null,
+      };
+      return this.saveCheckout(request, record, state);
+    }
+    if (request.action === 'readCheckout') {
+      if (
+        !state ||
+        (state.record.phase === 'complete' && state.record.scopeId !== this.lease!.scopeId)
+      )
+        return this.owned();
+      return { ...this.owned(), checkout: this.checkoutForOwner(state) };
+    }
+    const record = this.checkoutForOwner(state);
+    if (
+      request.action !== 'reconcileCheckout' &&
+      (request.checkoutId !== record.id || request.checkoutRevision !== record.revision)
+    )
+      throw new StoreError(
+        'CHECKOUT_INTERFERENCE',
+        'The review transition changed. Read its current recovery state before continuing.',
+      );
+    const repository = this.repository();
+    const actual = repository.cleanCheckoutState();
+    const original = JSON.stringify(actual) === JSON.stringify(record.original);
+    const entry = () => {
+      const operation = readOperation(this.rendezvous, record.entryId);
+      if (
+        operation.kind !== 'checkout' ||
+        !operation.checkout?.create ||
+        operation.scopeId !== record.scopeId ||
+        operation.phase !== 'observed' ||
+        operation.outcome !== 'applied' ||
+        operation.facts.worktree !== this.config.location ||
+        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
+          operation.id,
+        )?.record !== JSON.stringify(operation) ||
+        repository.checkoutOutcome(operation) !== 'applied' ||
+        !repository.sameRepositoryIdentity(operation.facts)
+      )
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'Actual source, checkout and the durable entry receipt do not agree. Preserve user work and recover the transition.',
+        );
+      const source = this.sourceRecord(record.sourceId);
+      if (source.head !== actual.commit)
+        throw new StoreError(
+          'CHECKOUT_INTERFERENCE',
+          'The checked-out commit differs from the saved inspected PR source.',
+        );
+      return operation;
+    };
+    let next: CheckoutReview = { ...record, revision: record.revision + 1 };
+    switch (request.action) {
+      case 'activateCheckout':
+        if (record.phase !== 'entering')
+          throw new StoreError('INVALID_CHECKOUT', 'Only a verified entry can become Active.');
+        entry();
+        next.phase = 'active';
+        break;
+      case 'beginCheckoutExit':
+        if (!['active', 'exiting'].includes(record.phase))
+          throw new StoreError('INVALID_CHECKOUT', 'Recover this transition before Exit.');
+        entry();
+        next.phase = 'exiting';
+        next.exitId ??= randomUUID();
+        break;
+      case 'finishCheckoutGit':
+        if (record.phase !== 'exiting' || !original)
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'Git has not verified the exact original branch, commit and clean files.',
+          );
+        next.phase = 'restoring-editors';
+        break;
+      case 'completeCheckout':
+        if (record.phase !== 'restoring-editors' || !original)
+          throw new StoreError(
+            'CHECKOUT_INTERFERENCE',
+            'Exit cannot complete before verified Git and editor restoration.',
+          );
+        next.phase = 'complete';
+        break;
+      case 'reconcileCheckout':
+        if (record.phase === 'complete' && state!.agrees)
+          return { ...this.owned(), checkout: record };
+        if (original) {
+          if (request.checkoutChoice === 'continue' && record.phase === 'entering') {
+            next.entryId = randomUUID();
+            next.phase = 'entering';
+          } else next.phase = 'restoring-editors';
+        } else {
+          entry();
+          next.phase = record.phase === 'exiting' ? 'exiting' : 'active';
+        }
+        break;
+      default:
+        throw new StoreError('INVALID_CHECKOUT', 'Unsupported checkout lifecycle action.');
+    }
+    return this.saveCheckout(request, next, state);
   }
 
   private projectOperation(record: OperationRecord, request?: StoreRequest): StoreReply {
@@ -1595,6 +1813,7 @@ class SharedStore {
         'readCandidate',
         'readRegistration',
         ...sourceActions,
+        ...checkoutActions,
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -1633,6 +1852,7 @@ class SharedStore {
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
       if (isSourceAction(request.action)) return await this.sourceAction(request);
+      if (isCheckoutAction(request.action)) return this.checkoutAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {
@@ -1698,6 +1918,9 @@ class SharedStore {
           'UNSUPPORTED_CHECKOUT',
           'DIRTY_CHECKOUT',
           'CHECKOUT_INTERFERENCE',
+          'CHECKOUT_UNAVAILABLE',
+          'INVALID_CHECKOUT',
+          'CHECKOUT_RECOVERY',
         ].includes(error.code)
       )
         this.poisoned = true;

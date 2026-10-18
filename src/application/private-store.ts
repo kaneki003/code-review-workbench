@@ -1,4 +1,5 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
+import type { CheckoutReview, EditorSnapshot } from './checkout-review';
 import type {
   CommittedContent,
   CommittedSource,
@@ -33,6 +34,7 @@ export interface StoreView {
   process?: StoreProcess;
   ownerLocation?: string;
   code?: string;
+  checkoutPending?: boolean;
 }
 
 export interface StoreConfiguration {
@@ -56,6 +58,13 @@ export interface StoreRequest {
     | 'prepareRef'
     | 'prepareCleanCheckout'
     | 'prepareCleanRestore'
+    | 'beginCheckout'
+    | 'readCheckout'
+    | 'activateCheckout'
+    | 'beginCheckoutExit'
+    | 'finishCheckoutGit'
+    | 'completeCheckout'
+    | 'reconcileCheckout'
     | 'executeOperation'
     | 'recover'
     | 'inspectOperation'
@@ -87,6 +96,10 @@ export interface StoreRequest {
   side?: SourceSide;
   reviewed?: boolean;
   navigation?: SourceNavigation;
+  editors?: EditorSnapshot;
+  checkoutId?: string;
+  checkoutRevision?: number;
+  checkoutChoice?: 'continue' | 'restore';
 }
 
 export interface StoreHandoff {
@@ -97,6 +110,7 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  checkout?: CheckoutReview;
   sourceId?: string;
   sourcePlan?: SourcePlan;
   source?: CommittedSource;
