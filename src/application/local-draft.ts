@@ -56,7 +56,10 @@ export function validDraftBody(body: unknown): body is string {
   if (typeof body !== 'string' || body.length > maxDraftBytes) return false;
   const encoded = new TextEncoder().encode(body);
   // Reject ill-formed UTF-16 rather than let UTF-8 storage replace characters.
-  return encoded.byteLength <= maxDraftBytes && new TextDecoder().decode(encoded) === body;
+  return (
+    encoded.byteLength <= maxDraftBytes &&
+    new TextDecoder('utf-8', { ignoreBOM: true }).decode(encoded) === body
+  );
 }
 
 export function draftCommit(draft: LocalDraft): DraftCommit {

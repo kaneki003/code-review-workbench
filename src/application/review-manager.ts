@@ -228,9 +228,10 @@ export class ReviewManager {
   }
 
   async createLocalDraft(target: SourceNavigation): Promise<LocalDraft> {
+    const navigation = structuredClone(target);
     const reply = await this.storeRequest('createDraft', {
-      sourceId: target.anchor.sourceId,
-      navigation: target,
+      sourceId: navigation.anchor.sourceId,
+      navigation,
     });
     if (!reply.draftCommit)
       throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
@@ -251,22 +252,24 @@ export class ReviewManager {
     return reply.drafts;
   }
   async saveLocalDraft(edit: DraftEdit): Promise<DraftCommit> {
+    const change = structuredClone(edit);
     const reply = await this.storeRequest(
       'saveDraft',
-      { draftEdit: edit },
+      { draftEdit: change },
       undefined,
-      edit.requestId,
+      change.requestId,
     );
     if (!reply.draftCommit)
       throw new StoreError(reply.view.code ?? 'DRAFT_SAVE_FAILED', reply.view.detail);
     return reply.draftCommit;
   }
   async discardLocalDraft(discard: DraftDiscard): Promise<DraftCommit> {
+    const change = structuredClone(discard);
     const reply = await this.storeRequest(
       'discardDraft',
-      { draftDiscard: discard },
+      { draftDiscard: change },
       undefined,
-      discard.requestId,
+      change.requestId,
     );
     if (!reply.draftCommit)
       throw new StoreError(reply.view.code ?? 'DRAFT_DISCARD_FAILED', reply.view.detail);

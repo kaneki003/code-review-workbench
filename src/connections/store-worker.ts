@@ -865,18 +865,29 @@ class SharedStore {
       lease,
       ...fields,
     };
-    transaction(
-      this.database!,
-      () => {
-        this.validate(request.lease, true);
-        beforeWrite?.();
-        if (isDraftAction(request.action))
-          this.faults.at(`${request.action}.commit.before`, this.database!);
-        this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
-        saveReply(this.database!, request, lease, reply);
-      },
-      isDraftAction(request.action) ? draftWriteError : undefined,
-    );
+    try {
+      transaction(
+        this.database!,
+        () => {
+          this.validate(request.lease, true);
+          beforeWrite?.();
+          if (isDraftAction(request.action))
+            this.faults.at(`${request.action}.commit.before`, this.database!);
+          this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+          saveReply(this.database!, request, lease, reply);
+        },
+        isDraftAction(request.action)
+          ? (error) => {
+              // FULL can automatically roll back. Verify the unchanged durable
+              // sequence before classifying any failed transaction as Retry.
+              this.validate(request.lease, true);
+              return draftWriteError(error);
+            }
+          : undefined,
+      );
+    } finally {
+      if (isDraftAction(request.action)) this.faults.resetDatabase();
+    }
     this.lease = lease;
     this.saveControl({ ...this.control!, revision: lease.revision });
     return reply;

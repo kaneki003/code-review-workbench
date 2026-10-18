@@ -34,7 +34,7 @@ export function transaction<T>(
   } catch (error) {
     // A failed BEGIN has no effects. Only a confirmed rollback permits a caller
     // to classify a failed write as retryable. A failed rollback stays unknown.
-    if (began) database.exec('ROLLBACK');
+    if (began && database.isTransaction) database.exec('ROLLBACK');
     throw afterRollback ? afterRollback(error) : error;
   }
 }

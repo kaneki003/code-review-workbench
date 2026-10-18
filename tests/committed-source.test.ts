@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { ReviewManager } from '../src/application/review-manager';
 import { createStoreConnection } from '../src/connections/shared-store';
 import { createLocalRepositoryConnection } from '../src/connections/local-repository';
@@ -127,6 +128,7 @@ async function fixture() {
   function manager(
     diagnostics?: StorageDiagnostics,
     wrap: (store: StoreConnection) => StoreConnection = (store) => store,
+    account = actor,
   ) {
     const store = wrap(
       createStoreConnection(
@@ -136,7 +138,7 @@ async function fixture() {
           candidateRoot: join(home, 'data'),
           windowId: 'source-window',
           location,
-          actor,
+          actor: account,
         },
         diagnostics,
       ),
@@ -159,13 +161,13 @@ async function fixture() {
       sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: '' }),
       native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
       store,
-      account: actor,
+      account,
       repository: createLocalRepositoryConnection(),
       confirmLocalRepository: async () => true,
       github: {
         resolvePullRequest: async () => ({
           status: 'ready',
-          account: actor,
+          account,
           pullRequest,
           repositories: [
             {
@@ -935,6 +937,277 @@ test.each(['saveDraft', 'discardDraft'] as const)(
       });
       expect(await manager.discardLocalDraft(discard)).toMatchObject({ deletionRevision: 3 });
     }
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test.each(['read-only', 'disk-full'] as const)(
+  'a real SQLite %s error keeps the acknowledged draft intact and permits a later retry',
+  async (mode) => {
+    const context = await fixture();
+    const manager = context.manager({ boundary: 'saveDraft.commit.before', mode });
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'keep this input visible',
+    };
+    await expect(manager.saveLocalDraft(edit)).rejects.toMatchObject({
+      code: 'DRAFT_WRITE_FAILED',
+    });
+    expect(await manager.readLocalDraft(draft.id)).toEqual(draft);
+    expect(await manager.saveLocalDraft(edit)).toMatchObject({
+      rowRevision: 2,
+      committedRevision: 1,
+    });
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({ body: edit.body });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'drafts preserve Unicode exactly at the UTF-8 ceiling and reject oversized or malformed replacements',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: '\ufeffUnicode 🐈\n\0unfinished **',
+    };
+    await manager.saveLocalDraft(edit);
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({ body: edit.body });
+    const limit = '🧪'.repeat(256 * 1024);
+    const next = {
+      ...edit,
+      requestId: randomUUID(),
+      expectedRowRevision: 2,
+      expectedCommittedRevision: 1,
+      editRevision: 2,
+      body: limit,
+    };
+    for (const body of [limit + 'a', 'a'.repeat(1024 * 1024 + 1), '\ud800']) {
+      await expect(
+        manager.saveLocalDraft({ ...next, body, requestId: randomUUID() }),
+      ).rejects.toMatchObject({ code: 'INVALID_DRAFT' });
+      expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+        body: edit.body,
+        committedRevision: 1,
+      });
+    }
+    await manager.saveLocalDraft(next);
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+      body: limit,
+      committedRevision: 2,
+    });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'a queued draft save owns the input captured when the public action was requested',
+  async () => {
+    const context = await fixture();
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = context.manager(undefined, (store) => ({
+      async request(request) {
+        if (request.action === 'saveDraft') {
+          entered();
+          await gate;
+        }
+        return store.request(request);
+      },
+      dispose: () => store.dispose(),
+    }));
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'captured input',
+    };
+    const saving = manager.saveLocalDraft(edit);
+    await waiting;
+    edit.body = 'input changed while waiting';
+    release();
+    await saving;
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({ body: 'captured input' });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'an actual competing SQLite writer yields a retryable save without advancing the draft',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const draft = await manager.createLocalDraft(await draftTarget(manager));
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'saved after contention',
+    };
+    const contender = new DatabaseSync(join(context.directory, 'home', 'data', 'review.sqlite'));
+    try {
+      contender.exec('BEGIN IMMEDIATE');
+      await expect(manager.saveLocalDraft(edit)).rejects.toMatchObject({
+        code: 'DRAFT_WRITE_FAILED',
+      });
+      expect(await manager.readLocalDraft(draft.id)).toEqual(draft);
+    } finally {
+      if (contender.isTransaction) contender.exec('ROLLBACK');
+      contender.close();
+    }
+    await manager.saveLocalDraft(edit);
+    expect(await manager.readLocalDraft(draft.id)).toMatchObject({
+      body: edit.body,
+      rowRevision: 2,
+    });
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'account changes cannot read or inherit another account draft and old targets survive newer source',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const target = await draftTarget(manager);
+    const draft = await manager.createLocalDraft(target);
+    const edit = {
+      requestId: randomUUID(),
+      draftId: draft.id,
+      reviewId: draft.reviewId,
+      contentGeneration: draft.contentGeneration,
+      expectedRowRevision: 1,
+      expectedCommittedRevision: 0,
+      editRevision: 1,
+      body: 'original account feedback',
+    };
+    await manager.saveLocalDraft(edit);
+    manager.fencePullRequestOverview();
+    await expect(manager.readLocalDraft(draft.id)).rejects.toThrow(/verify.*account/);
+    await expect(manager.saveLocalDraft(edit)).rejects.toThrow(/verify.*account/);
+    await manager.releasePrivateStore();
+    const other = context.manager(undefined, undefined, {
+      host: 'github.com',
+      userId: '2002',
+      login: 'another-reviewer',
+    });
+    expect(await other.openPullRequestOverview(context.pullRequest.url)).toMatchObject({
+      status: 'ready',
+    });
+    expect(await other.readLocalDraft(draft.id)).toBeUndefined();
+    await expect(other.saveLocalDraft(edit)).rejects.toMatchObject({ code: 'REQUEST_COLLISION' });
+    await expect(other.saveLocalDraft({ ...edit, requestId: randomUUID() })).rejects.toMatchObject({
+      code: 'DRAFT_UNAVAILABLE',
+    });
+    const otherDraft = await other.createLocalDraft(await draftTarget(other));
+    expect(otherDraft).toMatchObject({ body: '' });
+    expect(otherDraft.reviewId).not.toBe(draft.reviewId);
+    await other.releasePrivateStore();
+    const original = context.manager();
+    await original.openPrivateStore();
+    expect(await original.readLocalDraft(draft.id)).toMatchObject({ target, body: edit.body });
+    await writeFile(
+      join(context.location, 'worker.ts'),
+      'export const count = 3;\n// newer committed\n',
+    );
+    await context.publishHead();
+    await original.openPullRequestOverview(context.pullRequest.url);
+    const newerTarget = await draftTarget(original);
+    expect(newerTarget.anchor.sourceId).not.toBe(target.anchor.sourceId);
+    const newerDraft = await original.createLocalDraft(newerTarget);
+    expect(newerDraft).toMatchObject({ reviewId: draft.reviewId, target: newerTarget, body: '' });
+    expect(await original.readLocalDraft(draft.id)).toMatchObject({ target, body: edit.body });
+    expect(await original.listLocalDrafts(newerTarget.anchor.sourceId)).toEqual([newerDraft]);
+    await original.releasePrivateStore();
+  },
+  integrationTimeout,
+);
+
+test(
+  'draft targets must resolve to an available committed side and an exact original range',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const target = await draftTarget(manager);
+    for (const anchor of [
+      { ...target.anchor, path: 'different.ts' },
+      { ...target.anchor, commit: context.base },
+      { ...target.anchor, blob: context.base },
+      {
+        ...target.anchor,
+        range: { startLine: 0, startCharacter: 0, endLine: 999, endCharacter: 0 },
+      },
+    ]) {
+      await expect(manager.createLocalDraft({ ...target, anchor })).rejects.toMatchObject({
+        code: 'INVALID_SOURCE',
+      });
+    }
+    const result = await manager.readCommittedSource(target.anchor.sourceId);
+    if (result.status !== 'ready') throw new Error(result.detail);
+    const deleted = result.source.files.find((file) => file.path === 'delete.py')!;
+    const absent = await manager.readCommittedFile(result.source.id, deleted.id, 'new');
+    if (absent.status !== 'absent') throw new Error('Expected absent committed side');
+    await expect(
+      manager.createLocalDraft({
+        ...target,
+        anchor: {
+          ...absent.anchor,
+          range: { startLine: 0, startCharacter: 0, endLine: 0, endCharacter: 0 },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_DRAFT' });
+    const original = await manager.readCommittedFile(result.source.id, deleted.id, 'old');
+    if (original.status !== 'available') throw new Error(original.detail);
+    const oldTarget = {
+      ...target,
+      anchor: {
+        ...original.anchor,
+        range: { startLine: 0, startCharacter: 0, endLine: 0, endCharacter: 5 },
+      },
+    };
+    expect(await manager.createLocalDraft(oldTarget)).toMatchObject({ target: oldTarget });
+    expect(await manager.listLocalDrafts(result.source.id)).toHaveLength(1);
     await manager.releasePrivateStore();
   },
   integrationTimeout,
