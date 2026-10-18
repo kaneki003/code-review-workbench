@@ -38,6 +38,11 @@ export function createCommittedReview(initialManager: ReviewManager) {
   let manager = initialManager;
   let source: CommittedSource | undefined;
   let reviewed = new Set<string>();
+  let presentation = 0;
+  function assertPresentation(expected: number) {
+    if (expected !== presentation)
+      throw new Error('The selected review changed. Reopen the verified source before navigating.');
+  }
   const changed = new vscode.EventEmitter<void>();
   const provider: vscode.TreeDataProvider<FileTarget> = {
     getParent: () => undefined,
@@ -45,7 +50,11 @@ export function createCommittedReview(initialManager: ReviewManager) {
     getChildren: () =>
       source?.files.map((file) => ({ sourceId: source!.id, fileId: file.id })) ?? [],
     getTreeItem(item) {
-      const file = source!.files.find((file) => file.id === item.fileId)!;
+      const file =
+        source?.id === item.sourceId
+          ? source.files.find((file) => file.id === item.fileId)
+          : undefined;
+      if (!file) return new vscode.TreeItem('Source selection changed');
       const marked = reviewed.has(file.id);
       const row = new vscode.TreeItem(file.path);
       row.id = `${item.sourceId}/${item.fileId}`;
@@ -73,6 +82,16 @@ export function createCommittedReview(initialManager: ReviewManager) {
     async provideTextDocumentContent(uri) {
       const selected = target(uri);
       if (!selected) throw vscode.FileSystemError.FileNotFound('Invalid committed-source target.');
+      const snapshot = await load(selected.sourceId);
+      const file = snapshot.files.find((file) => file.id === selected.fileId);
+      if (
+        !file ||
+        vscode.Uri.parse(committedDocumentUri(snapshot, file, selected.side)).toString() !==
+          uri.with({ fragment: '' }).toString()
+      )
+        throw vscode.FileSystemError.FileNotFound(
+          'The source document label does not match its exact side, path and revision identity.',
+        );
       const content = await manager.readCommittedFile(
         selected.sourceId,
         selected.fileId,
@@ -127,7 +146,8 @@ export function createCommittedReview(initialManager: ReviewManager) {
       selected.fileId,
       selected.side,
     );
-    if (content.status !== 'available') throw new Error(content.detail);
+    if (content.status !== 'available' && content.status !== 'absent')
+      throw new Error(content.detail);
     const selection = editor.selection;
     await manager.saveSourceNavigation({
       anchor: {
@@ -151,6 +171,7 @@ export function createCommittedReview(initialManager: ReviewManager) {
     snapshot: CommittedSource,
     file: CommittedFile,
     navigation?: SourceNavigation,
+    expectedPresentation = presentation,
   ) {
     const original = await manager.readCommittedFile(snapshot.id, file.id, 'old');
     const current = await manager.readCommittedFile(snapshot.id, file.id, 'new');
@@ -159,6 +180,7 @@ export function createCommittedReview(initialManager: ReviewManager) {
         throw new Error(content.detail);
     const oldUri = vscode.Uri.parse(committedDocumentUri(snapshot, file, 'old'));
     const newUri = vscode.Uri.parse(committedDocumentUri(snapshot, file, 'new'));
+    assertPresentation(expectedPresentation);
     await vscode.commands.executeCommand(
       'vscode.diff',
       oldUri,
@@ -167,6 +189,7 @@ export function createCommittedReview(initialManager: ReviewManager) {
       { preview: false, viewColumn: navigation?.column ?? vscode.ViewColumn.Active },
     );
     if (navigation) {
+      assertPresentation(expectedPresentation);
       const desired = navigation.anchor.side === 'old' ? oldUri : newUri;
       if (vscode.window.activeTextEditor?.document.uri.toString() !== desired.toString())
         await vscode.commands.executeCommand('diffEditor.switchSide');
@@ -182,12 +205,14 @@ export function createCommittedReview(initialManager: ReviewManager) {
     return { original: oldUri, modified: newUri };
   }
   async function openDiff(input?: unknown, focus: 'editor' | 'files' = 'editor') {
+    const expectedPresentation = presentation;
     const selected = await choose(input);
     if (!selected) return undefined;
     await rememberOrigin(focus);
-    return showDiff(selected.source, selected.file);
+    return showDiff(selected.source, selected.file, undefined, expectedPresentation);
   }
   async function openSource(input?: unknown, side?: SourceSide, requestedRange = startRange) {
+    const expectedPresentation = presentation;
     const selected = await choose(input);
     if (!selected) return undefined;
     const selectedSide =
@@ -218,16 +243,19 @@ export function createCommittedReview(initialManager: ReviewManager) {
     const uri = vscode.Uri.parse(
       committedDocumentUri(selected.source, selected.file, selectedSide),
     );
+    assertPresentation(expectedPresentation);
     await vscode.window.showTextDocument(uri, { preview: false, selection: range(requestedRange) });
     return uri;
   }
   async function returnToSource() {
+    const expectedPresentation = presentation;
     const saved = await manager.readSourceNavigation();
     if (!saved) throw new Error('No committed source return target has been saved.');
     await manager.validateSourceNavigation(saved);
     const snapshot = await load(saved.anchor.sourceId);
     const file = snapshot.files.find((file) => file.id === saved.anchor.fileId)!;
-    if (saved.control === 'diff') await showDiff(snapshot, file, saved);
+    assertPresentation(expectedPresentation);
+    if (saved.control === 'diff') await showDiff(snapshot, file, saved, expectedPresentation);
     else
       await vscode.window.showTextDocument(
         vscode.Uri.parse(committedDocumentUri(snapshot, file, saved.anchor.side)),
@@ -244,22 +272,29 @@ export function createCommittedReview(initialManager: ReviewManager) {
     return saved;
   }
   async function mark(input: unknown, value: boolean) {
+    const expectedPresentation = presentation;
     const selected = await choose(input);
     if (!selected) return;
-    reviewed = new Set(await manager.setFileReviewed(selected.source.id, selected.file.id, value));
+    const marks = await manager.setFileReviewed(selected.source.id, selected.file.id, value);
+    assertPresentation(expectedPresentation);
+    reviewed = new Set(marks);
     tree.description = `${source?.files.length ?? 0} files · ${reviewed.size} Reviewed`;
     changed.fire();
   }
   async function show(snapshot: CommittedSource, owner = manager) {
+    const expectedPresentation = ++presentation;
     manager = owner;
+    const marks = await owner.readReviewedMarks(snapshot.id);
+    assertPresentation(expectedPresentation);
     source = snapshot;
-    reviewed = new Set(await manager.readReviewedMarks(snapshot.id));
+    reviewed = new Set(marks);
     tree.message = `No-switch reading. Working files and ordinary terminals remain on their earlier checkout. Inspected head ${snapshot.head.slice(0, 8)}; base tip ${snapshot.baseTip.slice(0, 8)}; merge base ${snapshot.mergeBase?.slice(0, 8) ?? 'unavailable'}. ${snapshot.limitations.join(' ')} Text blobs load on demand; binary, LFS and large-file limits appear when opened.`;
     tree.description = `${snapshot.files.length} files · ${reviewed.size} Reviewed`;
     changed.fire();
     await vscode.commands.executeCommand('codeReviewWorkbench.files.focus');
   }
   function clear() {
+    presentation += 1;
     source = undefined;
     reviewed.clear();
     tree.message = 'Open a verified PR overview, then Inspect Committed PR Diffs.';

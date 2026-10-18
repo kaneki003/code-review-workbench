@@ -23,6 +23,7 @@ import type {
   SourceSide,
   SourceNavigation,
 } from './committed-source';
+import { isSourceAction } from './committed-source';
 
 export interface HostEnvironment {
   vscode: string;
@@ -146,7 +147,11 @@ export class ReviewManager {
       );
       if (!intent.operation)
         return { status: 'unavailable', detail: intent.view.detail, sourceId: plan.id };
-      const outcome = await this.executeRepositoryOperation(intent.operation.id);
+      const outcome = await this.storeRequest(
+        'executeOperation',
+        { operationId: intent.operation.id },
+        generation,
+      );
       if (outcome.operation?.outcome !== 'applied')
         return {
           status: 'unavailable',
@@ -366,22 +371,9 @@ export class ReviewManager {
     > = {},
     overviewGeneration?: number,
   ): Promise<StoreReply> {
+    const requestedGeneration = overviewGeneration ?? this.overviewGeneration;
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
-      if (
-        [
-          'prepareSource',
-          'prepareSourceFetch',
-          'publishSource',
-          'readSource',
-          'readCommittedFile',
-          'setReviewed',
-          'readReviewed',
-          'saveNavigation',
-          'validateNavigation',
-          'readNavigation',
-        ].includes(action) &&
-        !this.sourceAuthorized
-      )
+      if (isSourceAction(action) && !this.sourceAuthorized)
         return {
           view: {
             status: 'blocked',
@@ -389,7 +381,10 @@ export class ReviewManager {
               'Reopen the PR overview to verify its original GitHub account before inspecting saved source or progress.',
           },
         };
-      if (overviewGeneration !== undefined && overviewGeneration !== this.overviewGeneration)
+      if (
+        (overviewGeneration !== undefined || isSourceAction(action)) &&
+        requestedGeneration !== this.overviewGeneration
+      )
         return {
           view: {
             status: 'blocked',
@@ -454,6 +449,14 @@ export class ReviewManager {
         )
           this.storeLease = reply.lease;
         if (action === 'release' && reply.view.status === 'closed') this.account = undefined;
+        if (isSourceAction(action) && requestedGeneration !== this.overviewGeneration)
+          return {
+            view: {
+              status: 'blocked',
+              detail:
+                'The account or selected review changed while this source request was running. Its durable receipt was retained; reopen the verified overview before continuing.',
+            },
+          };
         return reply;
       } catch (error) {
         return {

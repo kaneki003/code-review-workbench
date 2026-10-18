@@ -78,6 +78,7 @@ export class CommittedGit {
         '--find-renames',
         '--no-ext-diff',
         '--no-textconv',
+        '--ignore-submodules=none',
         source.mergeBase,
         source.head,
         '--',
@@ -126,6 +127,14 @@ export class CommittedGit {
       return {
         status: 'absent',
         detail: `This file has no ${side === 'old' ? 'original' : 'new'} side (${file.status}).`,
+        anchor: {
+          sourceId: source.id,
+          fileId: file.id,
+          side,
+          path: file.path,
+          blob: null,
+          commit: side === 'old' ? source.mergeBase! : source.head,
+        },
       };
     if (entry.mode === '160000')
       return {

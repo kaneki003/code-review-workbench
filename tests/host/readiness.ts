@@ -348,8 +348,14 @@ suite('Installed readiness VSIX', () => {
       ['hash-object', '-w', '--stdin'],
       'export const count = 2;\n// new range\n',
     );
-    const oldTree = git(['mktree'], `100644 blob ${original}\tworker.ts\n`);
-    const newTree = git(['mktree'], `100644 blob ${modified}\tworker.ts\n`);
+    const oldTree = git(
+      ['mktree'],
+      `100644 blob ${original}\tdeleted.py\n100644 blob ${original}\tworker.ts\n`,
+    );
+    const newTree = git(
+      ['mktree'],
+      `100644 blob ${modified}\tadded.py\n100644 blob ${modified}\tworker.ts\n`,
+    );
     const commit = (tree: string, parent?: string) =>
       git([
         '-c',
@@ -438,7 +444,10 @@ suite('Installed readiness VSIX', () => {
       assert.equal(result.status, 'ready', JSON.stringify(result));
       const source = result.source;
       await api.showCommittedSource(source, manager);
-      const target = { sourceId: source.id, fileId: source.files[0]!.id };
+      const target = {
+        sourceId: source.id,
+        fileId: source.files.find((file) => file.path === 'worker.ts')!.id,
+      };
       const commands = await vscode.commands.getCommands(true);
       assert.ok(commands.includes('codeReviewWorkbench.returnToCommittedSource'));
       const opened = await vscode.commands.executeCommand<{
@@ -499,18 +508,81 @@ suite('Installed readiness VSIX', () => {
       const overviewUri = await api.showOverview(source.candidate, source);
       const overview = await vscode.workspace.openTextDocument(overviewUri);
       assert.match(overview.getText(), /No-switch reading/);
-      assert.match(overview.getText(), /1, complete Git comparison/);
-      const link = /\]\((crw-source:[^)]+)\)/.exec(overview.getText())![1]!;
+      assert.match(overview.getText(), /3, complete Git comparison/);
+      const link = [...overview.getText().matchAll(/\]\((crw-source:[^)]+)\)/g)]
+        .map((match) => match[1]!)
+        .find((value) => vscode.Uri.parse(value).path.endsWith('/worker.ts'))!;
       await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(link));
       assert.equal(
         vscode.window.activeTextEditor!.document.uri.toString(),
         opened.modified.toString(),
+      );
+      for (const [path, emptySide] of [
+        ['added.py', 'original'],
+        ['deleted.py', 'modified'],
+      ] as const) {
+        const absentTarget = {
+          sourceId: source.id,
+          fileId: source.files.find((file) => file.path === path)!.id,
+        };
+        const absentDiff = await vscode.commands.executeCommand<{
+          original: vscode.Uri;
+          modified: vscode.Uri;
+        }>('codeReviewWorkbench.openChangedDiff', absentTarget);
+        assert.ok(absentDiff);
+        const emptyUri = absentDiff[emptySide];
+        if (vscode.window.activeTextEditor?.document.uri.toString() !== emptyUri.toString())
+          await vscode.commands.executeCommand('diffEditor.switchSide');
+        assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), emptyUri.toString());
+        assert.equal(vscode.window.activeTextEditor!.document.getText(), '');
+        const navigated = await vscode.commands.executeCommand(
+          'codeReviewWorkbench.openChangedDiff',
+          target,
+        );
+        assert.ok(navigated, 'An intentionally absent side must not block navigation');
+        await vscode.commands.executeCommand('codeReviewWorkbench.returnToCommittedSource');
+        assert.equal(vscode.window.activeTextEditor!.document.uri.toString(), emptyUri.toString());
+      }
+      const misleading = opened.original.with({ path: `/New-${head}/incorrect.ts` });
+      await assert.rejects(
+        () => Promise.resolve(vscode.workspace.openTextDocument(misleading)),
+        /label|identity|match/,
       );
       assert.deepEqual(await manager.readReviewedMarks(source.id), []);
       await vscode.commands.executeCommand('codeReviewWorkbench.markReviewed', target);
       assert.deepEqual(await manager.readReviewedMarks(source.id), [target.fileId]);
       await vscode.commands.executeCommand('codeReviewWorkbench.unmarkReviewed', target);
       assert.deepEqual(await manager.readReviewedMarks(source.id), []);
+      await vscode.commands.executeCommand('codeReviewWorkbench.files.focus');
+      await vscode.commands.executeCommand('list.focusFirst');
+      await vscode.commands.executeCommand('list.select');
+      async function waitForDiffPath(path: string) {
+        const deadline = Date.now() + 5000;
+        for (;;) {
+          const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+          if (input instanceof vscode.TabInputTextDiff && input.modified.path.endsWith(path))
+            return input;
+          if (Date.now() > deadline)
+            throw new Error(`Native keyboard navigation did not open ${path}`);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      }
+      const keyboardOpened = await waitForDiffPath('/added.py');
+      assert.ok(keyboardOpened instanceof vscode.TabInputTextDiff);
+      assert.ok(
+        keyboardOpened.modified.path.endsWith('/added.py'),
+        'Keyboard selection opens the first changed file',
+      );
+      await vscode.commands.executeCommand('codeReviewWorkbench.openChangedDiff', target, 'files');
+      await vscode.commands.executeCommand('codeReviewWorkbench.returnToCommittedSource');
+      await vscode.commands.executeCommand('list.focusLast');
+      await vscode.commands.executeCommand('list.select');
+      const focusReturned = await waitForDiffPath('/worker.ts');
+      assert.ok(focusReturned instanceof vscode.TabInputTextDiff);
+      assert.ok(
+        focusReturned.modified.path.endsWith('/worker.ts'),
+        'Source return restores keyboard focus to the changed-file list',
+      );
       await diffConfiguration.update('renderSideBySide', false, vscode.ConfigurationTarget.Global);
       await vscode.commands.executeCommand('codeReviewWorkbench.openChangedDiff', target);
       assert.ok(

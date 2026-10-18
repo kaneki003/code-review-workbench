@@ -50,6 +50,8 @@ import { normalizeCandidate, type ReviewCandidate } from '../application/pull-re
 import { CommittedGit } from './committed-git';
 import {
   validRange,
+  sourceActions,
+  isSourceAction,
   type CommittedSource,
   type SourcePlan,
   type SourceNavigation,
@@ -737,15 +739,27 @@ class SharedStore {
     return new RepositoryOperation(location, hooks, native);
   }
 
-  private sourceReceipt(action: StoreRequest['action'], sourceId?: string): StoreReply | undefined {
+  private sourceReceipt(
+    action: StoreRequest['action'],
+    sourceId?: string,
+    review?: { baseRepositoryId: string; pullNumber: number },
+  ): StoreReply | undefined {
     if (sourceId !== undefined && !uuid(sourceId))
       throw new StoreError('INVALID_SOURCE', 'An exact source identity is required.');
     const row = this.database!.prepare(
       `SELECT result FROM requests WHERE scope_id=? AND action=?
       AND coalesce(json_extract(result,'$.sourcePlan.candidate.localRepository.facts.worktree.path'),
         json_extract(result,'$.source.candidate.localRepository.facts.worktree.path'))=?
-      ${sourceId ? "AND coalesce(json_extract(result,'$.sourcePlan.id'),json_extract(result,'$.source.id'))=?" : ''} ORDER BY rowid DESC LIMIT 1`,
-    ).get(this.lease!.scopeId, action, this.config.location, ...(sourceId ? [sourceId] : []));
+      ${sourceId ? "AND coalesce(json_extract(result,'$.sourcePlan.id'),json_extract(result,'$.source.id'))=?" : ''}
+      ${review ? "AND json_extract(result,'$.source.candidate.pullRequest.base.repository.id')=? AND json_extract(result,'$.source.candidate.pullRequest.number')=?" : ''}
+      ORDER BY rowid DESC LIMIT 1`,
+    ).get(
+      this.lease!.scopeId,
+      action,
+      this.config.location,
+      ...(sourceId ? [sourceId] : []),
+      ...(review ? [review.baseRepositoryId, review.pullNumber] : []),
+    );
     return row ? (JSON.parse(String(row.result)) as StoreReply) : undefined;
   }
   private sourcePlan(sourceId: string): SourcePlan {
@@ -941,7 +955,10 @@ class SharedStore {
         recovery(
           'The interrupted source publication disagrees with its exact committed objects. No new source was installed.',
         );
-      const prior = this.sourceReceipt('publishSource')?.source;
+      const prior = this.sourceReceipt('publishSource', undefined, {
+        baseRepositoryId: source.candidate.pullRequest.base.repository.id,
+        pullNumber: source.candidate.pullRequest.number,
+      })?.source;
       const retained =
         prior &&
         prior.candidate.pullRequest.base.repository.id ===
@@ -1009,7 +1026,7 @@ class SharedStore {
         throw new StoreError('INVALID_SOURCE', 'The original navigation side is unavailable.');
       const content = await new CommittedGit(this.repository()).read(source, file, nav.anchor.side);
       if (
-        content.status !== 'available' ||
+        (content.status !== 'available' && content.status !== 'absent') ||
         Object.entries(content.anchor).some(
           ([key, value]) => nav.anchor[key as keyof typeof nav.anchor] !== value,
         )
@@ -1018,9 +1035,10 @@ class SharedStore {
           'INVALID_SOURCE',
           'The navigation anchor does not match its committed object.',
         );
-      const lines = content.text.split(/\r\n|\r|\n/);
+      const lines = (content.status === 'available' ? content.text : '').split(/\r\n|\r|\n/);
       const range = nav.anchor.range;
       if (
+        (content.status === 'absent' && nav.control !== 'diff') ||
         range.endLine >= lines.length ||
         range.startCharacter > lines[range.startLine]!.length ||
         range.endCharacter > lines[range.endLine]!.length
@@ -1030,7 +1048,15 @@ class SharedStore {
           'The original committed range is unavailable. No current line was substituted.',
         );
       const navigation: SourceNavigation = {
-        anchor: { ...content.anchor, range: { ...range } },
+        anchor: {
+          ...content.anchor,
+          range: {
+            startLine: range.startLine,
+            startCharacter: range.startCharacter,
+            endLine: range.endLine,
+            endCharacter: range.endCharacter,
+          },
+        },
         control: nav.control,
         focus: nav.focus,
         column: nav.column,
@@ -1430,16 +1456,7 @@ class SharedStore {
         'saveCandidate',
         'readCandidate',
         'readRegistration',
-        'prepareSource',
-        'prepareSourceFetch',
-        'publishSource',
-        'readSource',
-        'readCommittedFile',
-        'setReviewed',
-        'readReviewed',
-        'saveNavigation',
-        'validateNavigation',
-        'readNavigation',
+        ...sourceActions,
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -1477,21 +1494,7 @@ class SharedStore {
       if (request.action === 'saveCandidate') return this.saveCandidate(request);
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
-      if (
-        [
-          'prepareSource',
-          'prepareSourceFetch',
-          'publishSource',
-          'readSource',
-          'readCommittedFile',
-          'setReviewed',
-          'readReviewed',
-          'saveNavigation',
-          'validateNavigation',
-          'readNavigation',
-        ].includes(request.action)
-      )
-        return await this.sourceAction(request);
+      if (isSourceAction(request.action)) return await this.sourceAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {

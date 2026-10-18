@@ -1,6 +1,21 @@
 import type { ReviewCandidate } from './pull-request';
 
 export type SourceSide = 'old' | 'new';
+export const sourceActions = [
+  'prepareSource',
+  'prepareSourceFetch',
+  'publishSource',
+  'readSource',
+  'readCommittedFile',
+  'setReviewed',
+  'readReviewed',
+  'saveNavigation',
+  'validateNavigation',
+  'readNavigation',
+] as const;
+export function isSourceAction(action: string): boolean {
+  return (sourceActions as readonly string[]).includes(action);
+}
 export interface CommittedFileSide {
   path: string;
   blob: string;
@@ -46,7 +61,7 @@ export interface SourceAnchor {
   fileId: string;
   side: SourceSide;
   path: string;
-  blob: string;
+  blob: string | null;
   commit: string;
   range: SourceRange;
 }
@@ -58,7 +73,7 @@ export interface SourceNavigation {
 }
 export type CommittedContent =
   | { status: 'available'; text: string; anchor: Omit<SourceAnchor, 'range'> }
-  | { status: 'absent'; detail: string }
+  | { status: 'absent'; detail: string; anchor: Omit<SourceAnchor, 'range'> }
   | { status: 'binary' | 'lfs' | 'unavailable'; detail: string };
 
 export function validRange(value: unknown): value is SourceRange {
