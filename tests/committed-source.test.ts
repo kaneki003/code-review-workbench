@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'vitest';
 import { build } from 'esbuild';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, fork } from 'node:child_process';
+import { once } from 'node:events';
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -43,13 +44,18 @@ async function fixture() {
   git('commit', '-m', 'head');
   const head = git('rev-parse', 'HEAD');
   const remote = join(directory, 'remote.git');
+  let transportRequests = 0;
   git('clone', '--bare', location, remote);
   const remoteGit = (...args: string[]) =>
-    execFileSync('git', ['--git-dir', remote, ...args], { encoding: 'utf8' }).trim();
+    execFileSync('git', ['--git-dir', remote, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
   remoteGit('update-ref', 'refs/heads/main', base);
   remoteGit('update-ref', 'refs/pull/20/head', head);
   remoteGit('update-server-info');
   const server = createServer(async (request, response) => {
+    transportRequests += 1;
     try {
       const path = new URL(request.url!, 'http://fixture').pathname;
       if (!/^\/(?:info\/refs|HEAD|objects\/[a-f0-9/]+)$/.test(path))
@@ -150,10 +156,57 @@ async function fixture() {
     git('add', '.');
     git('commit', '-m', 'later head');
     pullRequest.head.oid = git('rev-parse', 'HEAD');
-    remoteGit('fetch', location, 'HEAD:refs/pull/20/head');
+    remoteGit('fetch', location, '+HEAD:refs/pull/20/head');
     remoteGit('update-server-info');
   }
-  return { directory, location, git, remoteGit, base, head, pullRequest, manager, publishHead };
+  async function interruptedInspector() {
+    const script = join(directory, 'source-process.cjs');
+    await build({
+      entryPoints: ['tests/fixtures/source-process.ts'],
+      outfile: script,
+      bundle: true,
+      platform: 'node',
+      target: 'node24',
+      format: 'cjs',
+    });
+    const child = fork(
+      script,
+      [
+        worker,
+        JSON.stringify({
+          osHome: home,
+          candidateRoot: join(home, 'data'),
+          location,
+          windowId: 'crashed-source-host',
+          actor,
+        }),
+        JSON.stringify(pullRequest),
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
+    );
+    cleanups.push(async () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, 'exit');
+        child.kill('SIGKILL');
+        await exited;
+      }
+    });
+    const [result] = await once(child, 'message');
+    return { child, result };
+  }
+  return {
+    directory,
+    location,
+    git,
+    remoteGit,
+    base,
+    head,
+    pullRequest,
+    manager,
+    publishHead,
+    interruptedInspector,
+    transportRequests: () => transportRequests,
+  };
 }
 
 test('public source actions inspect committed mixed-language changes without adopting working edits', async () => {
@@ -191,6 +244,30 @@ test('public source actions inspect committed mixed-language changes without ado
   expect(context.git('status', '--porcelain=v1')).toBe(before);
   expect(context.git('rev-parse', 'HEAD')).toBe(context.head);
   expect(await manager.readReviewedMarks(result.source.id)).toEqual([]);
+  await manager.releasePrivateStore();
+}, 15000);
+
+test('a new owner reconciles an interrupted fetch from actual refs without repeating Git transport', async () => {
+  const context = await fixture();
+  const { child, result } = await context.interruptedInspector();
+  expect(result).toMatchObject({ status: 'unavailable' });
+  const exited = once(child, 'exit');
+  child.kill('SIGKILL');
+  await exited;
+  const manager = context.manager();
+  let recovered = await manager.recoverPrivateStore();
+  for (let attempt = 0; recovered.view.status === 'recovery' && attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    recovered = await manager.recoverPrivateStore();
+  }
+  expect(recovered, JSON.stringify(recovered)).toMatchObject({
+    view: { status: 'closed' },
+    operation: { phase: 'observed' },
+  });
+  const requests = context.transportRequests();
+  await manager.openPrivateStore();
+  await expect(manager.readCommittedSource()).resolves.toMatchObject({ status: 'unavailable' });
+  expect(context.transportRequests()).toBe(requests);
   await manager.releasePrivateStore();
 }, 15000);
 
@@ -318,6 +395,130 @@ test('interrupted source publication reconciles pinned source without another fe
   await expect(manager.publishCommittedSource(failed.sourceId)).resolves.toMatchObject({
     status: 'ready',
     source: { id: failed.sourceId, head: context.head, baseTip: context.base },
+  });
+  await manager.releasePrivateStore();
+}, 15000);
+
+test('old source stays readable after a force-push and absent objects or ranges never select working code', async () => {
+  const context = await fixture();
+  const manager = context.manager();
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const first = await manager.inspectPullRequestSource('3001', 20);
+  if (first.status !== 'ready') throw new Error(first.detail);
+  const file = first.source.files.find((file) => file.path === 'worker.ts')!;
+  context.git('checkout', '--detach', context.base);
+  await writeFile(join(context.location, 'worker.ts'), 'export const count = 99;\n');
+  context.git('add', '.');
+  context.git('commit', '-m', 'force pushed source');
+  context.pullRequest.head.oid = context.git('rev-parse', 'HEAD');
+  context.remoteGit('fetch', context.location, '+HEAD:refs/pull/20/head');
+  context.remoteGit('update-server-info');
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const next = await manager.inspectPullRequestSource('3001', 20);
+  expect(next).toMatchObject({ status: 'ready', source: { head: context.pullRequest.head.oid } });
+  await expect(manager.readCommittedFile(first.source.id, file.id, 'new')).resolves.toMatchObject({
+    status: 'available',
+    text: 'export const count = 2;\n// committed\n',
+  });
+  // Saved source refs retain the old head through normal pruning.
+  context.git('reflog', 'expire', '--expire=now', '--all');
+  context.git('gc', '--prune=now');
+  await expect(manager.readCommittedFile(first.source.id, file.id, 'new')).resolves.toMatchObject({
+    status: 'available',
+  });
+  await expect(manager.setFileReviewed(first.source.id, file.id, true)).rejects.toThrow(
+    /older comparison/,
+  );
+  await manager.releasePrivateStore();
+}, 15000);
+
+test('source fetch obtains missing committed objects through the base repository PR ref', async () => {
+  const context = await fixture();
+  context.git('checkout', '--detach', context.base);
+  context.git('update-ref', 'refs/heads/main', context.base);
+  await rm(
+    join(context.location, '.git', 'objects', context.head.slice(0, 2), context.head.slice(2)),
+  );
+  const manager = context.manager();
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const result = await manager.inspectPullRequestSource('3001', 20);
+  expect(result, JSON.stringify(result)).toMatchObject({
+    status: 'ready',
+    source: { head: context.head, completeness: 'complete' },
+  });
+  expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+  await manager.releasePrivateStore();
+}, 15000);
+
+test('shallow history and multiple merge bases produce explicit comparison limitations', async () => {
+  const context = await fixture();
+  const manager = context.manager();
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  await writeFile(join(context.location, '.git', 'shallow'), `${context.base}\n`);
+  const shallow = await manager.inspectPullRequestSource('3001', 20);
+  expect(shallow).toMatchObject({
+    status: 'ready',
+    source: {
+      completeness: 'unavailable',
+      files: [],
+      limitations: [expect.stringMatching(/shallow/)],
+    },
+  });
+  await rm(join(context.location, '.git', 'shallow'));
+  const tree = context.git('rev-parse', `${context.base}^{tree}`);
+  const left = context.git('commit-tree', tree, '-p', context.base, '-m', 'left');
+  const right = context.git('commit-tree', tree, '-p', context.base, '-m', 'right');
+  const base = context.git('commit-tree', tree, '-p', left, '-p', right, '-m', 'base merge');
+  const head = context.git('commit-tree', tree, '-p', right, '-p', left, '-m', 'head merge');
+  context.pullRequest.base.oid = base;
+  context.pullRequest.head.oid = head;
+  context.remoteGit(
+    'fetch',
+    context.location,
+    `+${base}:refs/heads/main`,
+    `+${head}:refs/pull/20/head`,
+  );
+  context.remoteGit('update-server-info');
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const multiple = await manager.inspectPullRequestSource('3001', 20);
+  expect(multiple).toMatchObject({
+    status: 'ready',
+    source: {
+      completeness: 'unavailable',
+      mergeBase: null,
+      files: [],
+      limitations: [expect.stringMatching(/Multiple merge bases/)],
+    },
+  });
+  await manager.releasePrivateStore();
+}, 15000);
+
+test('rename identities keep both paths, and missing blobs never fall back to a current file', async () => {
+  const context = await fixture();
+  // Move the original path without changing its committed bytes.
+  context.git('checkout', '--detach', context.base);
+  context.git('mv', 'worker.ts', 'renamed ) # worker.ts');
+  await context.publishHead();
+  const manager = context.manager();
+  await manager.openPullRequestOverview(context.pullRequest.url);
+  const result = await manager.inspectPullRequestSource('3001', 20);
+  if (result.status !== 'ready') throw new Error(result.detail);
+  expect(result.source.files).toHaveLength(1);
+  const file = result.source.files[0]!;
+  expect(file).toMatchObject({
+    status: 'R',
+    old: { path: 'worker.ts' },
+    new: { path: 'renamed ) # worker.ts' },
+  });
+  await expect(manager.readCommittedFile(result.source.id, file.id, 'old')).resolves.toMatchObject({
+    status: 'available',
+    text: 'export const count = 1;\n',
+  });
+  await rm(
+    join(context.location, '.git', 'objects', file.old!.blob.slice(0, 2), file.old!.blob.slice(2)),
+  );
+  await expect(manager.readCommittedFile(result.source.id, file.id, 'old')).resolves.toMatchObject({
+    status: 'unavailable',
   });
   await manager.releasePrivateStore();
 }, 15000);
