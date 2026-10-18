@@ -18,7 +18,6 @@ export function createDraftReview(
   let bound:
     | { view: vscode.WebviewView; owner: ReviewManager; instanceId: string; ready: boolean }
     | undefined;
-  let revealing = false;
   let sending = false;
   let pendingProjection:
     { destination: NonNullable<typeof bound>; snapshot: DraftSnapshot } | undefined;
@@ -195,10 +194,6 @@ export function createDraftReview(
         else if (!opened.visible && bound?.view === opened) {
           bound.owner.detachDraftWriter(bound.instanceId);
           bound = undefined;
-          // VS Code can auto-open its Comments view when the first native
-          // thread arrives. Finish this explicit writer-open action after that
-          // transition; normal hiding after the renderer is ready stays hidden.
-          if (revealing) opened.show(false);
         }
       });
       opened.onDidDispose(() => {
@@ -217,22 +212,29 @@ export function createDraftReview(
   );
 
   async function show() {
-    revealing = true;
-    try {
-      await vscode.commands.executeCommand('codeReviewWorkbench.writer.focus');
-      view?.show(false);
-      const deadline = Date.now() + 12_000;
-      while (!view?.visible || !bound?.ready) {
-        if (Date.now() > deadline)
-          throw new Error(
-            'The private writer did not become ready. Its host-owned input is retained; recreate the writer and Retry.',
-          );
-        await new Promise((resolve) => setTimeout(resolve, 20));
+    await vscode.commands.executeCommand('codeReviewWorkbench.writer.focus');
+    view?.show(false);
+    const deadline = Date.now() + 12_000;
+    while (!view?.visible || !bound?.ready) {
+      if (Date.now() > deadline)
+        throw new Error(
+          'The private writer did not become ready. Its host-owned input is retained; recreate the writer and Retry.',
+        );
+      // Native Comments can auto-open while its first thread is added. A
+      // reveal inside the hide event can lose to that same transition. Wait
+      // for the next host turn and finish the explicit writer-open action.
+      if (!view?.visible) {
+        console.log('[DEBUG-draft21] reveal after native transition', {
+          visible: view?.visible,
+          bound: Boolean(bound),
+          ready: bound?.ready,
+        });
+        await vscode.commands.executeCommand('codeReviewWorkbench.writer.focus');
+        view?.show(false);
       }
-      view.show(false);
-    } finally {
-      revealing = false;
+      await new Promise((resolve) => setTimeout(resolve, 20));
     }
+    view.show(false);
   }
   function showError(error: unknown) {
     void vscode.window.showWarningMessage(

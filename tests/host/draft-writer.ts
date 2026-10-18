@@ -75,9 +75,11 @@ export async function exerciseDraftWriter(
     'Original source did not gain focus',
   );
   const browser = await DraftBrowser.connect();
-  const draft = await vscode.commands.executeCommand<LocalDraft>(
-    'codeReviewWorkbench.writeLocalDraft',
-  );
+  const opening = vscode.commands.executeCommand<LocalDraft>('codeReviewWorkbench.writeLocalDraft');
+  await until(() => Boolean(manager.readDraftWriter()), 'The host did not create its writer');
+  await vscode.commands.executeCommand('codeReviewWorkbench.writer.focus');
+  await vscode.commands.executeCommand('workbench.action.focusCommentsPanel');
+  const draft = await opening;
   if (!draft) {
     await browser.screenshot(
       join(dirname(process.env.CRW_HOST_EVIDENCE!), 'draft-writer-failure.png'),
