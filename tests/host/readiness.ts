@@ -461,7 +461,7 @@ suite('Installed readiness VSIX', () => {
         while (vscode.window.activeTextEditor?.document.uri.toString() !== uri.toString()) {
           if (Date.now() > deadline)
             throw new Error(
-              `The native editor did not focus ${uri.path} during ${action}; active=${vscode.window.activeTextEditor?.document.uri.path}; windowFocused=${vscode.window.state.focused}; split=${diffConfiguration.get('renderSideBySide')}; adaptive=${diffConfiguration.get('useInlineViewWhenSpaceIsLimited')}`,
+              `The native editor did not focus ${uri.path} during ${action}; active=${vscode.window.activeTextEditor?.document.uri.path}; windowFocused=${vscode.window.state.focused}; split=${vscode.workspace.getConfiguration('diffEditor', uri).get('renderSideBySide')}; adaptive=${vscode.workspace.getConfiguration('diffEditor', uri).get('useInlineViewWhenSpaceIsLimited')}`,
             );
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
@@ -510,6 +510,15 @@ suite('Installed readiness VSIX', () => {
         opened.modified.toString(),
       );
       assert.deepEqual(vscode.window.activeTextEditor!.selection, new vscode.Selection(1, 0, 1, 5));
+      // macOS CI can open the test window in the background. Native keyboard
+      // actions need OS window focus as well as an active editor group.
+      await vscode.commands.executeCommand('workbench.action.focusWindow');
+      const focusDeadline = Date.now() + 5000;
+      while (!vscode.window.state.focused) {
+        if (Date.now() > focusDeadline)
+          throw new Error('The native test window did not gain focus');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
       await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
       for (let attempt = 0; attempt < 7; attempt += 1) {
         await vscode.commands.executeCommand('diffEditor.switchSide');
