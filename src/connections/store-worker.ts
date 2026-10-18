@@ -2,7 +2,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, normalize } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
@@ -28,6 +28,7 @@ import {
   object,
   publish,
   readControl,
+  readRecord,
   readRegistry,
   recovery,
   text,
@@ -46,6 +47,13 @@ import {
 
 import { StorageFaults } from './storage-diagnostics';
 import { normalizeCandidate, type ReviewCandidate } from '../application/pull-request';
+import { CommittedGit } from './committed-git';
+import {
+  validRange,
+  type CommittedSource,
+  type SourcePlan,
+  type SourceNavigation,
+} from '../application/committed-source';
 
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
 
@@ -729,6 +737,334 @@ class SharedStore {
     return new RepositoryOperation(location, hooks, native);
   }
 
+  private sourceReceipt(action: StoreRequest['action'], sourceId?: string): StoreReply | undefined {
+    if (sourceId !== undefined && !uuid(sourceId))
+      throw new StoreError('INVALID_SOURCE', 'An exact source identity is required.');
+    const row = this.database!.prepare(
+      `SELECT result FROM requests WHERE scope_id=? AND action=?
+      AND coalesce(json_extract(result,'$.sourcePlan.candidate.localRepository.facts.worktree.path'),
+        json_extract(result,'$.source.candidate.localRepository.facts.worktree.path'))=?
+      ${sourceId ? "AND coalesce(json_extract(result,'$.sourcePlan.id'),json_extract(result,'$.source.id'))=?" : ''} ORDER BY rowid DESC LIMIT 1`,
+    ).get(this.lease!.scopeId, action, this.config.location, ...(sourceId ? [sourceId] : []));
+    return row ? (JSON.parse(String(row.result)) as StoreReply) : undefined;
+  }
+  private sourcePlan(sourceId: string): SourcePlan {
+    const plan = this.sourceReceipt('prepareSource', sourceId)?.sourcePlan;
+    if (!plan || plan.candidate.localRepository.facts.worktree.path !== this.config.location)
+      throw new StoreError(
+        'INVALID_SOURCE',
+        'This account and local copy have no such committed source.',
+      );
+    for (const identity of [
+      plan.candidate.localRepository.facts.worktree,
+      plan.candidate.localRepository.facts.gitDirectory,
+      plan.candidate.localRepository.facts.commonDirectory,
+    ]) {
+      native.assertLocalDirectory(identity.path);
+      const actual = statSync(identity.path, { bigint: true });
+      if (String(actual.dev) !== identity.device || String(actual.ino) !== identity.inode)
+        throw new StoreError(
+          'WORKSPACE_CHANGED',
+          'The source belongs to a replaced local copy. No working-file substitute is available.',
+        );
+    }
+    const record = readRecord(join(this.rendezvous, `source-${sourceId}.json`));
+    if (
+      !object(record) ||
+      JSON.stringify(record.intent) !== JSON.stringify(this.sourceIntent(plan))
+    )
+      recovery('The source journal and durable intent disagree. No source was installed.');
+    return plan;
+  }
+  private sourceIntent(plan: SourcePlan) {
+    return {
+      protocol: 1,
+      id: plan.id,
+      storeId: this.lease!.storeId,
+      incarnation: this.lease!.incarnation,
+      scopeId: this.lease!.scopeId,
+      repositoryId: plan.candidate.pullRequest.base.repository.id,
+      pullNumber: plan.candidate.pullRequest.number,
+      local: plan.candidate.localRepository.facts,
+      head: plan.candidate.pullRequest.head.oid,
+      base: plan.candidate.pullRequest.base.oid,
+      headRef: plan.headRef,
+      baseRef: plan.baseRef,
+    };
+  }
+  private sourceDigest(source: CommittedSource) {
+    return createHash('sha256').update(JSON.stringify(source)).digest('hex');
+  }
+  private sourceRecord(sourceId?: string): CommittedSource {
+    const reply = this.sourceReceipt('publishSource', sourceId);
+    const source = reply?.source;
+    if (!source || source.candidate.localRepository.facts.worktree.path !== this.config.location)
+      throw new StoreError(
+        'INVALID_SOURCE',
+        'No installed committed source is available in this local copy. Open a verified PR overview and inspect its source first.',
+      );
+    this.sourcePlan(source.id);
+    const journal = readRecord(join(this.rendezvous, `source-${source.id}.json`));
+    if (!object(journal) || journal.sourceDigest !== this.sourceDigest(source))
+      recovery(
+        'The source publication receipt and database disagree. Reconcile publication before reading.',
+      );
+    return source;
+  }
+  private sourceMarks(source: CommittedSource): string[] {
+    const row = this.database!.prepare(
+      `SELECT result FROM requests WHERE scope_id=? AND action IN ('publishSource','setReviewed')
+      AND coalesce(json_extract(result,'$.sourceId'),json_extract(result,'$.source.id'))=? ORDER BY rowid DESC LIMIT 1`,
+    ).get(this.lease!.scopeId, source.id);
+    const reviewed = row ? ((JSON.parse(String(row.result)) as StoreReply).reviewed ?? []) : [];
+    return source.files.filter((file) => reviewed.includes(file.id)).map((file) => file.id);
+  }
+  private saveSourceReply(request: StoreRequest, fields: Partial<StoreReply>): StoreReply {
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'Reconcile the pending Git operation before publishing source or progress.',
+      );
+    const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    const reply: StoreReply = {
+      view: { ...this.owned().view, revision: lease.revision },
+      lease,
+      ...fields,
+    };
+    transaction(this.database!, () => {
+      this.validate(request.lease, true);
+      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      saveReply(this.database!, request, lease, reply);
+    });
+    this.lease = lease;
+    this.saveControl({ ...this.control!, revision: lease.revision });
+    return reply;
+  }
+  private async sourceAction(request: StoreRequest): Promise<StoreReply> {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'Reconcile the pending Git operation before inspecting or changing source state.',
+      );
+    if (request.action === 'prepareSource') {
+      const candidate = this.readCandidate(request).candidate;
+      if (!candidate)
+        throw new StoreError(
+          'INVALID_SOURCE',
+          'Open and verify the PR overview before inspecting source.',
+        );
+      if (candidate.localRepository.facts.worktree.path !== this.config.location)
+        throw new StoreError('INVALID_SOURCE', 'This PR was registered in a different local copy.');
+      const plan: SourcePlan = {
+        id: request.id,
+        candidate,
+        headRef: `refs/code-review-workbench/sources/${request.id}/head`,
+        baseRef: `refs/code-review-workbench/sources/${request.id}/base`,
+      };
+      this.faults.publish(
+        'source-prepared',
+        native,
+        join(this.rendezvous, `source-${plan.id}.json`),
+        { intent: this.sourceIntent(plan) },
+      );
+      return this.saveSourceReply(request, { sourcePlan: plan });
+    }
+    if (request.action === 'prepareSourceFetch') {
+      const plan = this.sourcePlan(request.sourceId!);
+      if (!['old', 'new'].includes(String(request.side)))
+        throw new StoreError('INVALID_SOURCE', 'Fetch requires an exact source side.');
+      const pull = plan.candidate.pullRequest;
+      const ref = request.side === 'new' ? plan.headRef : plan.baseRef;
+      const newOid = request.side === 'new' ? pull.head.oid : pull.base.oid;
+      const remoteRef =
+        request.side === 'new' ? `refs/pull/${pull.number}/head` : `refs/heads/${pull.base.ref}`;
+      const url =
+        plan.candidate.localRepository.remote.transport === 'ssh'
+          ? `git@github.com:${pull.base.repository.fullName}.git`
+          : `https://github.com/${pull.base.repository.fullName}.git`;
+      const repository = this.repository();
+      repository.validateFetch(ref, newOid, remoteRef);
+      if (repository.refOid(ref) !== null)
+        throw new StoreError(
+          'INVALID_SOURCE',
+          'This source reference was already fetched. Reconcile publication or prepare a fresh source; fetch is not replayed.',
+        );
+      const facts = repository.facts();
+      return this.projectOperation(
+        {
+          protocol: 1,
+          id: request.id,
+          kind: 'fetch',
+          phase: 'prepared',
+          storeId: this.lease!.storeId,
+          incarnation: this.lease!.incarnation,
+          fence: this.lease!.fence,
+          ownerToken: this.lease!.token,
+          scopeId: this.lease!.scopeId,
+          ref,
+          newOid,
+          beforeOid: null,
+          fetch: { url, remoteRef },
+          facts,
+          storage: repository.referenceStorage(ref, facts),
+          child: null,
+        },
+        request,
+      );
+    }
+    if (request.action === 'publishSource') {
+      const plan = this.sourcePlan(request.sourceId!);
+      const existing = this.sourceReceipt('publishSource', plan.id)?.source;
+      if (existing) return { ...this.owned(), source: this.sourceRecord(plan.id) };
+      const repository = this.repository();
+      if (
+        repository.refOid(plan.headRef) !== plan.candidate.pullRequest.head.oid ||
+        repository.refOid(plan.baseRef) !== plan.candidate.pullRequest.base.oid
+      )
+        throw new StoreError(
+          'SOURCE_MISMATCH',
+          'Fetched head/base do not match the verified PR metadata. No mixed source was installed. Refresh the overview and Retry.',
+        );
+      // The receipt is independently durable before SQLite publication. A
+      // retry reconciles the same objects; it never repeats an external effect.
+      const journal = readRecord(join(this.rendezvous, `source-${plan.id}.json`)) as {
+        intent: unknown;
+        sourceDigest?: string;
+      };
+      const source = await new CommittedGit(repository).compare(plan);
+      if (journal.sourceDigest && journal.sourceDigest !== this.sourceDigest(source))
+        recovery(
+          'The interrupted source publication disagrees with its exact committed objects. No new source was installed.',
+        );
+      const prior = this.sourceReceipt('publishSource')?.source;
+      const retained =
+        prior &&
+        prior.candidate.pullRequest.base.repository.id ===
+          source.candidate.pullRequest.base.repository.id &&
+        prior.candidate.pullRequest.number === source.candidate.pullRequest.number
+          ? this.sourceMarks(prior).filter((id) => source.files.some((file) => file.id === id))
+          : [];
+      try {
+        this.faults.publish(
+          'source-published',
+          native,
+          join(this.rendezvous, `source-${plan.id}.json`),
+          { intent: this.sourceIntent(plan), sourceDigest: this.sourceDigest(source) },
+        );
+        this.faults.at('source-published.commit.before', this.database);
+        const reply = this.saveSourceReply(request, { source, reviewed: retained });
+        this.faults.at('source-published.commit.after');
+        return reply;
+      } catch (error) {
+        // A failed receipt/rolled-back publication has no repository effect to
+        // replay. Keep the preceding source current if both revisions agree.
+        // An uncertain commit/control boundary still poisons the store.
+        if (
+          metadata(this.database!).revision ===
+          readControl(this.controlPath(), this.registry!).revision
+        )
+          throw new StoreError(
+            'SOURCE_UNAVAILABLE',
+            `Source publication was interrupted. Reconcile source ${plan.id} to verify its pinned objects and publish without fetching again.`,
+          );
+        throw error;
+      }
+    }
+    if (request.action === 'readNavigation') {
+      const row = this.database!.prepare(
+        `SELECT result FROM requests WHERE scope_id=? AND action='saveNavigation' ORDER BY rowid DESC LIMIT 1`,
+      ).get(this.lease!.scopeId);
+      const saved = row ? (JSON.parse(String(row.result)) as StoreReply).navigation : undefined;
+      if (saved && this.sourceRecord(saved.anchor.sourceId))
+        return { ...this.owned(), navigation: saved };
+      return this.owned();
+    }
+    const source = this.sourceRecord(request.sourceId);
+    if (request.action === 'readSource') return { ...this.owned(), source };
+    if (request.action === 'readReviewed')
+      return { ...this.owned(), reviewed: this.sourceMarks(source) };
+    if (request.action === 'saveNavigation') {
+      const nav = request.navigation;
+      if (
+        !nav ||
+        !nav.anchor ||
+        !validRange(nav.anchor.range) ||
+        !['source', 'diff'].includes(nav.control) ||
+        !['editor', 'files'].includes(nav.focus) ||
+        !Number.isSafeInteger(nav.column) ||
+        nav.column < 1 ||
+        nav.column > 9
+      )
+        throw new StoreError(
+          'INVALID_SOURCE',
+          'Navigation requires an exact source range and known control/focus target.',
+        );
+      const file = source.files.find((file) => file.id === nav.anchor.fileId);
+      if (!file || !['old', 'new'].includes(nav.anchor.side))
+        throw new StoreError('INVALID_SOURCE', 'The original navigation side is unavailable.');
+      const content = await new CommittedGit(this.repository()).read(source, file, nav.anchor.side);
+      if (
+        content.status !== 'available' ||
+        Object.entries(content.anchor).some(
+          ([key, value]) => nav.anchor[key as keyof typeof nav.anchor] !== value,
+        )
+      )
+        throw new StoreError(
+          'INVALID_SOURCE',
+          'The navigation anchor does not match its committed object.',
+        );
+      const lines = content.text.split(/\r\n|\r|\n/);
+      const range = nav.anchor.range;
+      if (
+        range.endLine >= lines.length ||
+        range.startCharacter > lines[range.startLine]!.length ||
+        range.endCharacter > lines[range.endLine]!.length
+      )
+        throw new StoreError(
+          'INVALID_SOURCE',
+          'The original committed range is unavailable. No current line was substituted.',
+        );
+      const navigation: SourceNavigation = {
+        anchor: { ...content.anchor, range: { ...range } },
+        control: nav.control,
+        focus: nav.focus,
+        column: nav.column,
+      };
+      return this.saveSourceReply(request, { navigation });
+    }
+    const file = source.files.find((file) => file.id === request.fileId);
+    if (!file)
+      throw new StoreError('INVALID_SOURCE', 'This file is not in the committed comparison.');
+    if (request.action === 'readCommittedFile') {
+      if (!['old', 'new'].includes(String(request.side)))
+        throw new StoreError('INVALID_SOURCE', 'Select an exact original or new side.');
+      return {
+        ...this.owned(),
+        content: await new CommittedGit(this.repository()).read(source, file, request.side!),
+      };
+    }
+    if (typeof request.reviewed !== 'boolean')
+      throw new StoreError(
+        'INVALID_SOURCE',
+        'Reviewed requires an explicit human mark or unmark action.',
+      );
+    const current = this.sourceRecord();
+    if (current.id !== source.id)
+      throw new StoreError(
+        'INVALID_SOURCE',
+        'This Reviewed action belongs to an older comparison. Return to the inspected source before marking.',
+      );
+    const reviewed = new Set(this.sourceMarks(source));
+    if (request.reviewed) reviewed.add(file.id);
+    else reviewed.delete(file.id);
+    return this.saveSourceReply(request, { sourceId: source.id, reviewed: [...reviewed] });
+  }
+
   private projectOperation(record: OperationRecord, request?: StoreRequest): StoreReply {
     this.validate(this.lease, true);
     if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
@@ -895,13 +1231,13 @@ class SharedStore {
       this.faults.at('dispatch.before');
       native.startChild(child);
       this.faults.at('dispatch.after');
-      const status = await this.waitForChild(child);
+      const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record, true) ||
-        (actual !== record.newOid && actual !== record.beforeOid)
+        (record.kind !== 'fetch' && actual !== record.newOid && actual !== record.beforeOid)
       )
         recovery(
           'Repository state changed during Git. Preserve the operation and reconcile its actual outcome.',
@@ -912,7 +1248,13 @@ class SharedStore {
         {
           ...record,
           phase: 'observed',
-          outcome: actual === record.newOid ? 'applied' : 'not-applied',
+          outcome:
+            actual === record.newOid
+              ? 'applied'
+              : actual === record.beforeOid
+                ? 'not-applied'
+                : 'refused',
+          ...(record.kind === 'fetch' ? { observedOid: actual } : {}),
           exitCode: status.exitCode,
         },
         request,
@@ -922,8 +1264,8 @@ class SharedStore {
     }
   }
 
-  private async waitForChild(child: object) {
-    const deadline = Date.now() + 5000;
+  private async waitForChild(child: object, timeout = 5000) {
+    const deadline = Date.now() + timeout;
     for (;;) {
       const status = native.pollChild(child);
       if (status.settled) {
@@ -1015,7 +1357,9 @@ class SharedStore {
         'Return to the original account or local owner scope before recovering this operation.',
       );
     const repository = this.repository(record.facts.worktree);
-    repository.validateUpdate(record.ref, record.newOid);
+    if (record.kind === 'fetch')
+      repository.validateFetch(record.ref, record.newOid, record.fetch!.remoteRef);
+    else repository.validateUpdate(record.ref, record.newOid);
     if (!repository.sameFacts(record.facts))
       recovery(
         'HEAD, index or worktree files changed. Preserve that work and reconcile it before recovery; no Git command was repeated.',
@@ -1025,14 +1369,17 @@ class SharedStore {
         'Reference storage changed. Preserve its recovery records; no Git command was repeated.',
       );
     const actual = repository.refOid(record.ref);
-    if (actual !== record.beforeOid && actual !== record.newOid)
+    if (record.kind !== 'fetch' && actual !== record.beforeOid && actual !== record.newOid)
       recovery(
         'The reference has an unexpected value. Preserve it for manual Git recovery; no command was repeated.',
       );
     if (
       record.phase === 'observed' &&
       ((record.outcome === 'applied' && actual !== record.newOid) ||
-        (record.outcome === 'not-applied' && actual !== record.beforeOid))
+        (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
+        (record.kind === 'fetch' &&
+          record.observedOid !== undefined &&
+          actual !== record.observedOid))
     )
       recovery('The independent receipt and actual reference disagree.');
     this.poisoned = false;
@@ -1048,8 +1395,15 @@ class SharedStore {
         ? record.outcome!
         : actual === record.newOid
           ? 'applied'
-          : 'not-applied';
-    this.projectOperation({ ...record, phase: 'observed', outcome });
+          : actual === record.beforeOid
+            ? 'not-applied'
+            : 'refused';
+    this.projectOperation({
+      ...record,
+      phase: 'observed',
+      outcome,
+      ...(record.kind === 'fetch' ? { observedOid: actual } : {}),
+    });
     const reply = this.mutate(request, { id: record.id, phase: 'observed', outcome });
     this.recoveryOwner = false;
     return reply;
@@ -1074,6 +1428,15 @@ class SharedStore {
         'saveCandidate',
         'readCandidate',
         'readRegistration',
+        'prepareSource',
+        'prepareSourceFetch',
+        'publishSource',
+        'readSource',
+        'readCommittedFile',
+        'setReviewed',
+        'readReviewed',
+        'saveNavigation',
+        'readNavigation',
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -1111,6 +1474,20 @@ class SharedStore {
       if (request.action === 'saveCandidate') return this.saveCandidate(request);
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
+      if (
+        [
+          'prepareSource',
+          'prepareSourceFetch',
+          'publishSource',
+          'readSource',
+          'readCommittedFile',
+          'setReviewed',
+          'readReviewed',
+          'saveNavigation',
+          'readNavigation',
+        ].includes(request.action)
+      )
+        return await this.sourceAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {
@@ -1170,6 +1547,9 @@ class SharedStore {
           'REGISTRATION_CHANGED',
           'WORKSPACE_CHANGED',
           'INVALID_CANDIDATE',
+          'INVALID_SOURCE',
+          'SOURCE_MISMATCH',
+          'SOURCE_UNAVAILABLE',
         ].includes(error.code)
       )
         this.poisoned = true;

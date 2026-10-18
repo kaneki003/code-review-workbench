@@ -45,7 +45,9 @@ export interface OperationRecord {
   fence: number;
   ownerToken: string;
   scopeId: string;
-  kind: 'update-ref';
+  kind: 'update-ref' | 'fetch';
+  fetch?: { url: string; remoteRef: string };
+  observedOid?: string | null;
   phase: 'prepared' | 'armed' | 'observed';
   ref: string;
   newOid: string;
@@ -74,7 +76,15 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !uuid(value.ownerToken) ||
     !uuid(value.scopeId) ||
     !sequence(value.fence) ||
-    value.kind !== 'update-ref' ||
+    !['update-ref', 'fetch'].includes(String(value.kind)) ||
+    (value.kind === 'fetch' &&
+      (!object(value.fetch) ||
+        !/^https:\/\/github.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$|^git@github.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/.test(
+          String(value.fetch.url),
+        ) ||
+        !text(value.fetch.remoteRef, 1024) ||
+        !String(value.fetch.remoteRef).startsWith('refs/'))) ||
+    (value.observedOid !== undefined && value.observedOid !== null && !oid(value.observedOid)) ||
     !['prepared', 'armed', 'observed'].includes(String(value.phase)) ||
     !text(value.ref, 512) ||
     !oid(value.newOid) ||
@@ -161,6 +171,7 @@ export class RepositoryOperation {
     Object.assign(this.environment, {
       GIT_OPTIONAL_LOCKS: '0',
       GIT_NO_LAZY_FETCH: '1',
+      GIT_NO_REPLACE_OBJECTS: '1',
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
     });
@@ -197,6 +208,24 @@ export class RepositoryOperation {
         'Git could not inspect the repository without external helpers. No mutation was authorized.',
       );
     }
+  }
+  readArguments(args: string[]): string[] {
+    return [...this.prefix, ...args];
+  }
+  validateFetch(ref: string, newOid: string, remoteRef: string) {
+    if (!ref.startsWith('refs/code-review-workbench/sources/') || !oid(newOid))
+      throw new StoreError(
+        'INVALID_OPERATION',
+        'Fetch requires a source-owned reference and metadata object identity.',
+      );
+    this.git(['check-ref-format', ref]);
+    this.git(['check-ref-format', remoteRef]);
+    const backend = this.git(['config', '--get', 'extensions.refStorage'], true)?.toString().trim();
+    if (backend && backend !== 'files')
+      throw new StoreError(
+        'UNSUPPORTED_GIT',
+        'Source fetch currently requires file-based reference storage.',
+      );
   }
   refOid(ref: string): string | null {
     const result = this.git(['rev-parse', '--verify', '--quiet', ref], true);
@@ -329,22 +358,51 @@ export class RepositoryOperation {
   prepare(record: OperationRecord) {
     const expected = record.beforeOid ?? '0'.repeat(record.newOid.length);
     // --no-deref and compare-and-swap bind the effect to this exact app ref.
+    const environment = { ...this.environment };
+    if (record.kind === 'fetch') {
+      // Installed Git keeps its configured HTTPS helpers / SSH access. API
+      // tokens never enter this environment, the journal or the argument list.
+      delete environment.GIT_CONFIG_NOSYSTEM;
+      delete environment.GIT_CONFIG_GLOBAL;
+      environment.GIT_TERMINAL_PROMPT = '0';
+    }
+    const command =
+      record.kind === 'fetch'
+        ? [
+            '-c',
+            'gc.auto=0',
+            '-c',
+            'maintenance.auto=false',
+            '-c',
+            'fetch.writeCommitGraph=false',
+            '-c',
+            'fetch.prune=false',
+            '-c',
+            'fetch.pruneTags=false',
+            '-c',
+            'submodule.recurse=false',
+            'fetch',
+            '--no-tags',
+            '--no-write-fetch-head',
+            '--no-recurse-submodules',
+            '--no-auto-gc',
+            '--refmap=',
+            '--',
+            record.fetch!.url,
+            `${record.fetch!.remoteRef}:${record.ref}`,
+          ]
+        : ['update-ref', '--no-deref', '--create-reflog', record.ref, record.newOid, expected];
     return this.native.prepareChild(
       this.executable,
       [
         ...this.prefix,
         `--git-dir=${record.facts.gitDir}`,
         `--work-tree=${record.facts.worktree}`,
-        'update-ref',
-        '--no-deref',
-        '--create-reflog',
-        record.ref,
-        record.newOid,
-        expected,
+        ...command,
       ],
       this.location,
       {
-        ...this.environment,
+        ...environment,
         GIT_DIR: record.facts.gitDir,
         GIT_COMMON_DIR: record.facts.commonGitDir,
         GIT_WORK_TREE: record.facts.worktree,

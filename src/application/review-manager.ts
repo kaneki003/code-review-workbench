@@ -17,6 +17,12 @@ import {
   type PullRequestOverview,
   type ReviewCandidate,
 } from './pull-request';
+import type {
+  CommittedContent,
+  SourceResult,
+  SourceSide,
+  SourceNavigation,
+} from './committed-source';
 
 export interface HostEnvironment {
   vscode: string;
@@ -115,6 +121,86 @@ export class ReviewManager {
       candidateKey: { baseRepositoryId, pullNumber },
     });
     return reply.candidate;
+  }
+
+  async inspectPullRequestSource(
+    baseRepositoryId: string,
+    pullNumber: number,
+  ): Promise<SourceResult> {
+    const generation = this.overviewGeneration;
+    const prepared = await this.storeRequest(
+      'prepareSource',
+      { candidateKey: { baseRepositoryId, pullNumber } },
+      generation,
+    );
+    const plan = prepared.sourcePlan;
+    if (!plan) return { status: 'unavailable', detail: prepared.view.detail };
+    for (const side of ['new', 'old'] as const) {
+      const intent = await this.storeRequest(
+        'prepareSourceFetch',
+        { sourceId: plan.id, side },
+        generation,
+      );
+      if (!intent.operation)
+        return { status: 'unavailable', detail: intent.view.detail, sourceId: plan.id };
+      const outcome = await this.executeRepositoryOperation(intent.operation.id);
+      if (outcome.operation?.outcome !== 'applied')
+        return {
+          status: 'unavailable',
+          detail:
+            outcome.operation?.phase === 'observed'
+              ? 'Git transport failed or the fetched source does not match verified PR metadata. No new comparison was installed. Check configured Git HTTPS credentials / SSH access, refresh the PR overview and Retry. API sign-in does not configure Git transport.'
+              : outcome.view.detail,
+          sourceId: plan.id,
+        };
+    }
+    return this.publishCommittedSource(plan.id, generation);
+  }
+  async publishCommittedSource(
+    sourceId: string,
+    generation = this.overviewGeneration,
+  ): Promise<SourceResult> {
+    const reply = await this.storeRequest('publishSource', { sourceId }, generation);
+    return reply.source
+      ? { status: 'ready', source: reply.source }
+      : { status: 'unavailable', detail: reply.view.detail, sourceId };
+  }
+  async readCommittedSource(sourceId?: string): Promise<SourceResult> {
+    const reply = await this.storeRequest('readSource', sourceId ? { sourceId } : {});
+    return reply.source
+      ? { status: 'ready', source: reply.source }
+      : { status: 'unavailable', detail: reply.view.detail };
+  }
+  async readCommittedFile(
+    sourceId: string,
+    fileId: string,
+    side: SourceSide,
+  ): Promise<CommittedContent> {
+    const reply = await this.storeRequest('readCommittedFile', { sourceId, fileId, side });
+    return reply.content ?? { status: 'unavailable', detail: reply.view.detail };
+  }
+  async setFileReviewed(sourceId: string, fileId: string, reviewed: boolean): Promise<string[]> {
+    const reply = await this.storeRequest('setReviewed', { sourceId, fileId, reviewed });
+    if (!reply.reviewed) throw new StoreError(reply.view.code ?? 'MARK_FAILED', reply.view.detail);
+    return reply.reviewed;
+  }
+  async readReviewedMarks(sourceId: string): Promise<string[]> {
+    const reply = await this.storeRequest('readReviewed', { sourceId });
+    if (!reply.reviewed)
+      throw new StoreError(reply.view.code ?? 'MARK_UNAVAILABLE', reply.view.detail);
+    return reply.reviewed;
+  }
+  async saveSourceNavigation(navigation: SourceNavigation): Promise<SourceNavigation> {
+    const reply = await this.storeRequest('saveNavigation', {
+      sourceId: navigation.anchor.sourceId,
+      navigation,
+    });
+    if (!reply.navigation)
+      throw new StoreError(reply.view.code ?? 'NAVIGATION_FAILED', reply.view.detail);
+    return reply.navigation;
+  }
+  async readSourceNavigation(): Promise<SourceNavigation | undefined> {
+    return (await this.storeRequest('readNavigation')).navigation;
   }
 
   async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
@@ -259,6 +345,11 @@ export class ReviewManager {
       | 'actor'
       | 'candidateKey'
       | 'registrationPath'
+      | 'sourceId'
+      | 'fileId'
+      | 'side'
+      | 'reviewed'
+      | 'navigation'
     > = {},
     overviewGeneration?: number,
   ): Promise<StoreReply> {
