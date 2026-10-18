@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  configure,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { randomUUID } from 'node:crypto';
 import { fixture, draftTarget, integrationTimeout } from './fixtures/committed-review';
 import { DraftWriterClient } from '../src/webviews/draft-client';
@@ -13,6 +21,11 @@ vi.hoisted(() => {
   // native. esbuild needs those constructors to agree when bundling the worker.
   globalThis.Uint8Array = new TextEncoder().encode('').constructor as Uint8ArrayConstructor;
 });
+
+// These interactions await real Git/worker/SQLite round trips. Windows CI can
+// exceed RTL's one-second default before a durable acknowledgment arrives.
+// Autosave scheduling deadlines are checked separately at the manager seam.
+if (process.platform === 'win32') configure({ asyncUtilTimeout: 10_000 });
 
 const dispose: (() => void)[] = [];
 afterEach(() => {
