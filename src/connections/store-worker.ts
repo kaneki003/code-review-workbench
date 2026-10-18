@@ -68,7 +68,7 @@ import {
   reviewDraft,
   listDrafts,
   assertDraftVersion,
-  removeEarlierDraftBodies,
+  updateDraft,
   draftWriteError,
 } from './local-draft-storage';
 
@@ -761,8 +761,10 @@ class SharedStore {
   ): StoreReply | undefined {
     if (sourceId !== undefined && !uuid(sourceId))
       throw new StoreError('INVALID_SOURCE', 'An exact source identity is required.');
+    const planId = action === 'prepareSource' ? sourceId : undefined;
     const row = this.database!.prepare(
       `SELECT result FROM requests WHERE scope_id=? AND action=?
+      ${planId ? 'AND request_id=?' : ''}
       AND coalesce(json_extract(result,'$.sourcePlan.candidate.localRepository.facts.worktree.path'),
         json_extract(result,'$.source.candidate.localRepository.facts.worktree.path'))=?
       ${sourceId ? "AND coalesce(json_extract(result,'$.sourcePlan.id'),json_extract(result,'$.source.id'))=?" : ''}
@@ -771,6 +773,7 @@ class SharedStore {
     ).get(
       this.lease!.scopeId,
       action,
+      ...(planId ? [planId] : []),
       this.config.location,
       ...(sourceId ? [sourceId] : []),
       ...(review ? [review.baseRepositoryId, review.pullNumber] : []),
@@ -947,8 +950,10 @@ class SharedStore {
         'This account has no such draft in the selected review.',
       );
     }
-    // Bind all actions to the original account, registered copy and exact source.
-    this.sourceRecord(draft.target.anchor.sourceId);
+    // Creation already resolved the immutable target. Revalidate its original
+    // registration and ownership through the indexed source intent; do not scan
+    // publication history or require the old blob merely to retain feedback.
+    this.sourcePlan(draft.target.anchor.sourceId);
     if (request.action === 'readDraft') return { ...this.owned(), draft };
     assertDraftVersion(change, draft);
     if (!change || change.requestId !== request.id || draft.rowRevision === Number.MAX_SAFE_INTEGER)
@@ -992,9 +997,16 @@ class SharedStore {
   }
 
   private saveDraftReply(request: StoreRequest, draft: LocalDraft): StoreReply {
-    const reply = this.saveSourceReply(request, { draft, draftCommit: draftCommit(draft) }, () => {
-      removeEarlierDraftBodies(this.database!, this.lease!.scopeId, draft.id);
-    });
+    const reply = this.saveSourceReply(
+      request,
+      {
+        draftCommit: draftCommit(draft),
+        ...(request.action === 'createDraft' ? { draft } : {}),
+      },
+      request.action === 'createDraft'
+        ? undefined
+        : () => updateDraft(this.database!, this.lease!.scopeId, draft),
+    );
     return this.draftAcknowledgment(reply);
   }
   private async sourceAction(request: StoreRequest): Promise<StoreReply> {

@@ -3,8 +3,6 @@ import type { LocalDraft, DraftVersion } from '../application/local-draft';
 import { StoreError } from '../application/private-store';
 import { object, recovery, sequence, uuid } from './store-records';
 
-const mutations = "('createDraft','saveDraft','discardDraft')";
-
 export function draftWriteError(error: unknown): Error {
   if (error instanceof StoreError && error.code !== 'INJECTED_IO') return error;
   if (
@@ -56,10 +54,9 @@ export function readDraft(
     throw new StoreError('INVALID_DRAFT', 'An opaque draft identity is required.');
   const row = database
     .prepare(
-      `SELECT result FROM requests WHERE scope_id=? AND action IN ${mutations}
-     AND json_extract(result,'$.draft.id')=? ORDER BY rowid DESC LIMIT 1`,
+      `SELECT result FROM requests WHERE request_id=? AND scope_id=? AND action='createDraft'`,
     )
-    .get(scopeId, draftId);
+    .get(draftId, scopeId);
   return row ? draftFromResult(row.result) : undefined;
 }
 
@@ -70,7 +67,7 @@ export function reviewDraft(
 ): LocalDraft | undefined {
   const row = database
     .prepare(
-      `SELECT result FROM requests WHERE scope_id=? AND action IN ${mutations}
+      `SELECT result FROM requests WHERE scope_id=? AND action='createDraft'
      AND json_extract(result,'$.draft.review.baseRepositoryId')=?
      AND json_extract(result,'$.draft.review.pullNumber')=? ORDER BY rowid DESC LIMIT 1`,
     )
@@ -85,9 +82,7 @@ export function listDrafts(
 ): LocalDraft[] {
   const rows = database
     .prepare(
-      `SELECT result FROM requests WHERE rowid IN (
-       SELECT max(rowid) FROM requests WHERE scope_id=? AND action IN ${mutations}
-       GROUP BY json_extract(result,'$.draft.id'))
+      `SELECT result FROM requests WHERE scope_id=? AND action='createDraft'
      AND json_extract(result,'$.draft.target.anchor.sourceId')=?
      AND json_extract(result,'$.draft.deletionRevision')=0 ORDER BY rowid`,
     )
@@ -95,15 +90,17 @@ export function listDrafts(
   return rows.map((row) => draftFromResult(row.result));
 }
 
-// Retain only the latest body, plus small historical receipts/digests. Discard
-// uses this same transaction to erase the body before publishing its barrier.
-export function removeEarlierDraftBodies(database: DatabaseSync, scopeId: string, draftId: string) {
-  database
+// The creation row holds the current snapshot beside its immutable body-free
+// creation receipt. Later mutation receipts contain no body. One indexed row
+// update keeps per-edit write work independent of the retained save history.
+export function updateDraft(database: DatabaseSync, scopeId: string, draft: LocalDraft) {
+  const updated = database
     .prepare(
-      `UPDATE requests SET result=json_set(result,'$.draft.body','')
-     WHERE scope_id=? AND action IN ${mutations} AND json_extract(result,'$.draft.id')=?`,
+      `UPDATE requests SET result=json_set(result,'$.draft',json(?))
+     WHERE request_id=? AND scope_id=? AND action='createDraft'`,
     )
-    .run(scopeId, draftId);
+    .run(JSON.stringify(draft), draft.id, scopeId);
+  if (updated.changes !== 1) recovery('The current draft snapshot is missing.');
 }
 
 export function assertDraftVersion(

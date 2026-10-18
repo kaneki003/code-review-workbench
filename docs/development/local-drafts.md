@@ -20,7 +20,7 @@ The owner requested a working checkpoint and walkthrough when the change became 
 
 ## Storage and reading order
 
-This slice uses the existing durable `requests` journal and its ownership/schema protocol. Each draft mutation stores a complete current snapshot and a body-free receipt. The next mutation removes older copies of that draft's body in the same transaction; historical request digests and revision receipts remain. Reads select the newest snapshot for each identity. Discard keeps a content-free tombstone. This avoids introducing an unversioned table or a separate migration/backup workflow in this ticket. It does not perform the later all-managed-copy private-data clearing operation.
+This slice uses the existing durable `requests` journal and its ownership/schema protocol. The creation row holds the authoritative current draft snapshot beside its body-free creation receipt. Its primary key is the draft identity. Each save/discard updates that one snapshot and adds a body-free mutation receipt in the same transaction. Reads and edits use primary-key lookup; per-edit write work does not grow with the draft's save history. Discovery searches creation records, outside the typing path. Discard leaves a content-free tombstone in the current snapshot. This avoids introducing an unversioned table or a separate migration/backup workflow in this ticket. It does not perform the later all-managed-copy private-data clearing operation.
 
 Read the code in this order:
 
