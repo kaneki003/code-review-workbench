@@ -47,6 +47,8 @@ Failure cases use actual SQLite failures. A second connection holds a write tran
 
 These are local macOS arm64 behavioral checks. They do not establish installed-host writer behavior, another operating system, power-loss durability or visual/accessibility parity.
 
+At `4cfd9f8`, `pnpm validate` passed formatting, type checking and all 153 tests across nine files. The source/draft file passed all 25 cases. The environment was macOS arm64, Node 24.22.0 and Git 2.56.0. See the [two-axis checkpoint review](local-drafts-review.md) for its finding and resolution.
+
 ## Remaining work in #21
 
 - Host-owned live pending input and the 300 ms idle / one-second scheduling deadline, including an edit arriving during an in-flight save.
