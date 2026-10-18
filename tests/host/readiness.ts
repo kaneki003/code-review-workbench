@@ -210,6 +210,13 @@ suite('Installed readiness VSIX', () => {
     assert.ok(commands.includes('codeReviewWorkbench.openPrivateStore'));
     assert.ok(commands.includes('codeReviewWorkbench.releasePrivateStore'));
     assert.ok(commands.includes('codeReviewWorkbench.recoverPrivateStore'));
+    assert.ok(commands.includes('codeReviewWorkbench.openPullRequestOverview'));
+    const unsupported = await vscode.commands.executeCommand<{ status: string; detail: string }>(
+      'codeReviewWorkbench.openPullRequestOverview',
+      'https://example.test/not-a-pull-request',
+    );
+    assert.equal(unsupported?.status, 'unsupported');
+    assert.match(unsupported?.detail ?? '', /GitHub\.com pull request URL/);
   });
   test('installed recovery reconciles the actual worker after a separate owning host dies', async () => {
     const extension = vscode.extensions.getExtension<{

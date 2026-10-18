@@ -13,7 +13,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
-import { ReviewManager } from '../src/application/review-manager';
+import { ReviewManager, type ReadinessConnections } from '../src/application/review-manager';
 import { createStoreConnection } from '../src/connections/shared-store';
 import type {
   StoreConfiguration,
@@ -27,6 +27,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { StorageDiagnostics } from '../src/connections/storage-diagnostics';
 import { createRequire } from 'node:module';
+import { DatabaseSync } from 'node:sqlite';
 import type { NativeStore } from '../src/connections/store-records';
 
 // One integration case builds its fixture, starts real hosts/workers and runs
@@ -126,6 +127,7 @@ async function fixture() {
     data = 'data-A',
     actor?: StoreConfiguration['actor'],
     wrap: (connection: StoreConnection) => StoreConnection = (connection) => connection,
+    review: Pick<ReadinessConnections, 'github' | 'repository'> = {},
   ) {
     const store = wrap(
       createStoreConnection(worker, {
@@ -165,10 +167,84 @@ async function fixture() {
         detail: 'Separate probe',
       }),
       store,
+      ...(actor ? { account: actor } : {}),
+      ...review,
     });
   }
   return { directory, home, worker, manager, connections, contender };
 }
+
+test('an account owner durably saves a verified PR candidate and local registration', async () => {
+  const context = await fixture();
+  const location = join(context.directory, 'repository');
+  await mkdir(location);
+  const actor = { host: 'github.com' as const, userId: '1001' };
+  const pullRequest = {
+    id: '9001',
+    number: 248,
+    title: 'Keep exports deterministic',
+    body: 'Author description.',
+    state: 'open' as const,
+    draft: false,
+    url: 'https://github.com/acme/export-service/pull/248',
+    author: { userId: '2001', login: 'author' },
+    base: {
+      repository: { id: '3001', name: 'export-service', fullName: 'acme/export-service' },
+      ref: 'main',
+      oid: 'a'.repeat(40),
+    },
+    head: {
+      repository: { id: '4001', name: 'export-service', fullName: 'fork/export-service' },
+      ref: 'feature',
+      oid: 'b'.repeat(40),
+    },
+  };
+  const review = {
+    github: {
+      resolvePullRequest: async () => ({
+        status: 'ready' as const,
+        account: { ...actor, login: 'reviewer' },
+        pullRequest,
+      }),
+      resolveRepository: async () => undefined,
+    },
+    repository: {
+      inspect: async () => ({ path: location, repositoryIds: ['4001'], transport: 'ssh' as const }),
+    },
+  };
+  const first = context.manager('repository', 'data-A', actor, (connection) => connection, review);
+
+  const firstOverview = await first.openPullRequestOverview(pullRequest.url);
+  expect(firstOverview, JSON.stringify(firstOverview)).toMatchObject({
+    status: 'ready',
+    localRepository: { repositoryId: '4001', relation: 'head' },
+  });
+  await first.releasePrivateStore();
+  const database = new DatabaseSync(join(context.home, 'data-A', 'review.sqlite'), {
+    readOnly: true,
+  });
+  try {
+    const row = database
+      .prepare(
+        'SELECT candidate FROM review_candidates WHERE base_repository_id=? AND pull_number=?',
+      )
+      .get('3001', 248);
+    expect(JSON.parse(String(row?.candidate))).toMatchObject({
+      account: actor,
+      localRepository: { path: location, repositoryId: '4001', relation: 'head' },
+    });
+    expect(String(row?.candidate)).not.toContain('secret');
+  } finally {
+    database.close();
+  }
+
+  const second = context.manager('repository', 'data-A', actor, (connection) => connection, review);
+  const secondOverview = await second.openPullRequestOverview(pullRequest.url);
+  expect(secondOverview, JSON.stringify(secondOverview)).toMatchObject({
+    status: 'ready',
+    localRepository: { repositoryId: '4001', relation: 'head' },
+  });
+});
 
 async function repositoryFixture(directory: string) {
   const repository = join(directory, 'repository');

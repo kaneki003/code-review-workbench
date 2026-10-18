@@ -50,6 +50,10 @@
       {
         "command": "codeReviewWorkbench.recoverPrivateStore",
         "title": "Code Review Workbench: Recover Private Store"
+      },
+      {
+        "command": "codeReviewWorkbench.openPullRequestOverview",
+        "title": "Code Review Workbench: Open Pull Request Overview"
       }
     ]
   },
@@ -66,6 +70,7 @@
     "package": "pnpm run build && node scripts/package.mjs"
   },
   "dependencies": {
+    "octokit": "5.0.5",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

@@ -561,6 +561,87 @@ class SharedStore {
     return reply;
   }
 
+  private saveCandidate(request: StoreRequest): StoreReply {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return previous;
+    this.validate(request.lease, true);
+    const candidate = request.candidate;
+    if (
+      !candidate ||
+      candidate.account.host !== 'github.com' ||
+      !text(candidate.account.userId, 128) ||
+      candidate.account.userId !== this.config.actor?.userId ||
+      !text(candidate.baseRepositoryId, 128) ||
+      !text(candidate.pullRequestId, 128) ||
+      !Number.isSafeInteger(candidate.pullNumber) ||
+      candidate.pullNumber < 1 ||
+      !isAbsolute(candidate.localRepository.path) ||
+      !text(candidate.localRepository.repositoryId, 128) ||
+      !['base', 'head'].includes(candidate.localRepository.relation) ||
+      !['https', 'ssh'].includes(candidate.localRepository.transport) ||
+      !object(candidate.record)
+    ) {
+      throw new StoreError(
+        'INVALID_CANDIDATE',
+        'A review candidate needs verified account, PR and local repository identities.',
+      );
+    }
+    const requested = statSync(candidate.localRepository.path, { bigint: true });
+    const configured = statSync(this.config.location, { bigint: true });
+    if (
+      !requested.isDirectory() ||
+      requested.dev !== configured.dev ||
+      requested.ino < 1n ||
+      requested.ino !== configured.ino
+    ) {
+      throw new StoreError(
+        'WORKSPACE_CHANGED',
+        'The selected local repository changed before its mapping could be saved.',
+      );
+    }
+    const lease = { ...this.lease!, revision: this.lease!.revision + 1 };
+    const reply: StoreReply = {
+      view: { ...this.owned().view, revision: lease.revision },
+      lease,
+      candidate,
+    };
+    transaction(this.database!, () => {
+      this.validate(request.lease, true);
+      this.database!.exec(`CREATE TABLE IF NOT EXISTS review_candidates (
+        scope_id TEXT NOT NULL REFERENCES owner_scopes(scope_id),
+        base_repository_id TEXT NOT NULL,
+        pull_number INTEGER NOT NULL,
+        candidate TEXT NOT NULL,
+        PRIMARY KEY(scope_id,base_repository_id,pull_number)
+      ) STRICT`);
+      this.database!.prepare(
+        `INSERT INTO review_candidates VALUES (?,?,?,?)
+          ON CONFLICT(scope_id,base_repository_id,pull_number)
+          DO UPDATE SET candidate=excluded.candidate`,
+      ).run(
+        lease.scopeId,
+        candidate.baseRepositoryId,
+        candidate.pullNumber,
+        JSON.stringify(candidate),
+      );
+      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+      this.database!.prepare('UPDATE ownership SET heartbeat=? WHERE token=? AND scope_id=?').run(
+        Date.now(),
+        lease.token,
+        lease.scopeId,
+      );
+      saveReply(this.database!, request, lease, reply);
+    });
+    this.lease = lease;
+    this.saveControl({
+      ...this.control!,
+      revision: lease.revision,
+      owner: { ...this.control!.owner!, heartbeat: Date.now() },
+    });
+    return reply;
+  }
+
   private repository(location = this.config.location) {
     const hooks = join(this.rendezvous, 'no-hooks');
     native.ensurePrivateDirectory(hooks);
@@ -910,6 +991,7 @@ class SharedStore {
         'executeOperation',
         'recover',
         'inspectOperation',
+        'saveCandidate',
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -944,6 +1026,7 @@ class SharedStore {
       }
       if (request.action === 'recover') return this.recoverOperation(request);
       if (request.action === 'recordIntent') return this.recordIntent(request);
+      if (request.action === 'saveCandidate') return this.saveCandidate(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {

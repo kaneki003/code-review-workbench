@@ -47,12 +47,14 @@ export interface StoreRequest {
     | 'prepareRef'
     | 'executeOperation'
     | 'recover'
-    | 'inspectOperation';
+    | 'inspectOperation'
+    | 'saveCandidate';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
   refUpdate?: { ref: string; newOid: string };
   operationId?: string;
+  candidate?: ReviewCandidate;
   workspacePath?: string;
 }
 
@@ -73,6 +75,35 @@ export interface StoreReply {
     phase: 'prepared' | 'armed' | 'observed';
     outcome?: 'applied' | 'not-applied' | 'refused';
     exitCode?: number;
+  };
+  candidate?: ReviewCandidate;
+}
+
+export interface ReviewCandidate {
+  account: { host: 'github.com'; userId: string };
+  baseRepositoryId: string;
+  pullRequestId: string;
+  pullNumber: number;
+  localRepository: {
+    path: string;
+    repositoryId: string;
+    relation: 'base' | 'head';
+    transport: 'https' | 'ssh';
+  };
+  record: {
+    title: string;
+    body: string;
+    state: 'open' | 'closed';
+    draft: boolean;
+    url: string;
+    author: { userId: string; login: string };
+    baseFullName: string;
+    baseRef: string;
+    baseOid: string;
+    headRepositoryId: string;
+    headFullName: string;
+    headRef: string;
+    headOid: string;
   };
 }
 

@@ -8,7 +8,14 @@ import {
   type StoreView,
   type StoreReply,
   type StoreHandoff,
+  type ReviewCandidate,
 } from './private-store';
+import type {
+  GitHubAccount,
+  GitHubConnection,
+  PullRequestRecord,
+  PullRequestResolution,
+} from '../connections/github';
 
 export interface HostEnvironment {
   vscode: string;
@@ -29,12 +36,43 @@ export interface ReadinessConnections {
   sqlite(): Promise<Capability>;
   native(): Promise<Capability>;
   store?: StoreConnection;
+  account?: Pick<GitHubAccount, 'host' | 'userId'>;
+  github?: GitHubConnection;
+  repository?: LocalRepositoryConnection;
 }
+
+export interface LocalRepositoryInspection {
+  path: string;
+  repositoryIds: string[];
+  transport: 'https' | 'ssh';
+}
+
+export interface LocalRepositoryConnection {
+  inspect(path: string): Promise<LocalRepositoryInspection>;
+}
+
+export type PullRequestOverview =
+  | {
+      status: 'ready';
+      account: GitHubAccount;
+      pullRequest: PullRequestRecord;
+      localRepository: {
+        path: string;
+        repositoryId: string;
+        relation: 'base' | 'head';
+        transport: 'https' | 'ssh';
+      };
+    }
+  | Exclude<PullRequestResolution, { status: 'ready' }>
+  | { status: 'stale'; detail: string }
+  | { status: 'local-required'; detail: string }
+  | { status: 'blocked'; detail: string };
 
 // This public action only inspects capabilities. It never acquires review ownership.
 export class ReviewManager {
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
+  private overviewGeneration = 0;
   constructor(private readonly connections: ReadinessConnections) {}
   async dispose(): Promise<void> {
     try {
@@ -77,13 +115,104 @@ export class ReviewManager {
     return this.storeRequest('inspectOperation', { operationId });
   }
 
+  fencePullRequestOverview(): void {
+    this.overviewGeneration += 1;
+  }
+
+  async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
+    const generation = ++this.overviewGeneration;
+    const github = this.connections.github;
+    const repository = this.connections.repository;
+    if (!github || !repository) {
+      return { status: 'blocked', detail: 'This installation has no GitHub PR connection.' };
+    }
+    const resolved = await github.resolvePullRequest(url);
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (resolved.status !== 'ready') return resolved;
+    if (
+      !this.connections.account ||
+      this.connections.account.host !== resolved.account.host ||
+      this.connections.account.userId !== resolved.account.userId
+    ) {
+      return {
+        status: 'blocked',
+        detail:
+          'The verified GitHub account changed. Reopen this PR with that account; private review identity was not transferred.',
+      };
+    }
+    const host = this.connections.environment();
+    if (
+      [
+        checkWorkspace(host),
+        checkWorkspaceTrust(host),
+        checkEmbeddedRuntime(host),
+        checkPlatform(host),
+      ].some((check) => check.status !== 'passed')
+    ) {
+      return {
+        status: 'blocked',
+        detail: 'Use a trusted supported local desktop workspace to register this PR.',
+      };
+    }
+    let local: LocalRepositoryInspection;
+    try {
+      local = await repository.inspect(host.folders[0]!.path);
+    } catch {
+      return {
+        status: 'local-required',
+        detail:
+          'The selected folder has no verified GitHub base or fork remote. Open an existing local copy and configure its HTTPS helper or SSH transport, then retry. Nothing was cloned or switched.',
+      };
+    }
+    if (generation !== this.overviewGeneration) return staleOverview();
+    const relation = local.repositoryIds.includes(resolved.pullRequest.base.repository.id)
+      ? ('base' as const)
+      : local.repositoryIds.includes(resolved.pullRequest.head.repository.id)
+        ? ('head' as const)
+        : undefined;
+    if (!relation) {
+      return {
+        status: 'local-required',
+        detail:
+          "The selected local folder is not a verified copy of this pull request's base or head repository. Open an existing local copy; nothing was cloned or switched.",
+      };
+    }
+    const ownership = await this.openPrivateStore();
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (ownership.status !== 'owned') return { status: 'blocked', detail: ownership.detail };
+    const repositoryId =
+      relation === 'base'
+        ? resolved.pullRequest.base.repository.id
+        : resolved.pullRequest.head.repository.id;
+    const candidate = candidateRecord(resolved.account, resolved.pullRequest, {
+      path: local.path,
+      repositoryId,
+      relation,
+      transport: local.transport,
+    });
+    const saved = await this.storeRequest('saveCandidate', { candidate });
+    if (generation !== this.overviewGeneration) return staleOverview();
+    if (saved.view.status !== 'owned' || !saved.candidate) {
+      return { status: 'blocked', detail: saved.view.detail };
+    }
+    return {
+      status: 'ready',
+      account: resolved.account,
+      pullRequest: resolved.pullRequest,
+      localRepository: candidate.localRepository,
+    };
+  }
+
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
     return this.storeRequest(action).then((reply) => reply.view);
   }
 
   private storeRequest(
     action: StoreRequest['action'],
-    fields: Pick<StoreRequest, 'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId'> = {},
+    fields: Pick<
+      StoreRequest,
+      'handoff' | 'targetWindowId' | 'refUpdate' | 'operationId' | 'candidate'
+    > = {},
   ): Promise<StoreReply> {
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
       const host = this.connections.environment();
@@ -288,4 +417,40 @@ function meetsMinimumVersion(version: string, minimum: [number, number, number])
     return minor > minimumMinor;
   }
   return patch >= minimumPatch;
+}
+
+function staleOverview(): PullRequestOverview {
+  return {
+    status: 'stale',
+    detail: 'A newer account or pull request selection replaced this read. Its result was ignored.',
+  };
+}
+
+function candidateRecord(
+  account: GitHubAccount,
+  pullRequest: PullRequestRecord,
+  localRepository: ReviewCandidate['localRepository'],
+): ReviewCandidate {
+  return {
+    account: { host: account.host, userId: account.userId },
+    baseRepositoryId: pullRequest.base.repository.id,
+    pullRequestId: pullRequest.id,
+    pullNumber: pullRequest.number,
+    localRepository,
+    record: {
+      title: pullRequest.title,
+      body: pullRequest.body,
+      state: pullRequest.state,
+      draft: pullRequest.draft,
+      url: pullRequest.url,
+      author: pullRequest.author,
+      baseFullName: pullRequest.base.repository.fullName,
+      baseRef: pullRequest.base.ref,
+      baseOid: pullRequest.base.oid,
+      headRepositoryId: pullRequest.head.repository.id,
+      headFullName: pullRequest.head.repository.fullName,
+      headRef: pullRequest.head.ref,
+      headOid: pullRequest.head.oid,
+    },
+  };
 }
