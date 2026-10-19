@@ -7,7 +7,7 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
     id: 'guard',
     label: 'Packaged ownership helper',
     status: 'blocked',
-    detail: `The ownership helper could not run (${reason}; stage: ${stage}). Install the VSIX built for this OS and CPU on a supported local filesystem, then check again. Review writes remain disabled.`,
+    detail: `The ownership helper could not run (${reason}; stage: ${stage}). ${stage === 'cleanup' ? 'Temporary-file cleanup did not finish. Check again.' : 'Install the VSIX built for this OS and CPU on a supported local filesystem, then check again.'} Review writes remain disabled.`,
   });
   let worker: Worker;
   try {
@@ -17,7 +17,8 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
   }
   try {
     return await new Promise<Capability>((resolve) => {
-      const timeout = setTimeout(() => finish(blocked('timed out after five seconds')), 5000);
+      let timeout = setTimeout(() => finish(blocked('probe timed out after five seconds')), 5000);
+      let cleaningUp = false;
       let settled = false;
       const finish = (check: Capability) => {
         if (settled) return;
@@ -26,6 +27,7 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
         resolve(check);
       };
       worker.on('message', (message: unknown) => {
+        if (settled) return;
         if (
           typeof message === 'object' &&
           message !== null &&
@@ -34,6 +36,17 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
           /^[a-z-]{1,32}$/.test(message.stage)
         ) {
           stage = message.stage;
+          if (stage === 'cleanup' && !cleaningUp) {
+            // Every OS check and guard release has succeeded. Give disposable
+            // file removal its own bounded window, once; success still waits
+            // for the worker's acknowledgment after cleanup (at most 10 s total).
+            cleaningUp = true;
+            clearTimeout(timeout);
+            timeout = setTimeout(
+              () => finish(blocked('cleanup timed out after five seconds')),
+              5000,
+            );
+          }
           return;
         }
         if (

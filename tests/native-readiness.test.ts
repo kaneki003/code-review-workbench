@@ -8,6 +8,54 @@ import { ReviewManager } from '../src/application/review-manager';
 import { probeGit } from '../src/connections/git-readiness';
 import { probeNativeGuard } from '../src/connections/native-readiness';
 
+test('successful native verification can finish bounded cleanup after the initial deadline', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'crw-native-cleanup-'));
+  const worker = join(directory, 'probe.cjs');
+  try {
+    await build({
+      entryPoints: ['src/connections/native-probe-worker.ts'],
+      outfile: worker,
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      target: 'node24',
+      banner: {
+        // The real helper still performs every OS check and removes its files.
+        // Delays model one second of startup plus 4.5 seconds of Windows cleanup.
+        js: `const fixtureFs=require('node:fs');const fixtureRemove=fixtureFs.rmSync;
+             fixtureFs.rmSync=(...args)=>{Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,4500);return fixtureRemove(...args);};
+             Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1000);`,
+      },
+    });
+    await cp(resolve('native/build/Release/crw_guard.node'), join(directory, 'native-guard.node'));
+    const check = await probeNativeGuard(worker);
+    expect(check.status, check.detail).toBe('passed');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
+
+test('repeated cleanup progress cannot extend the cleanup deadline or acknowledge success', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'crw-native-stalled-cleanup-'));
+  const worker = join(directory, 'probe.cjs');
+  try {
+    await writeFile(
+      worker,
+      `const {parentPort}=require('node:worker_threads');
+       setInterval(()=>parentPort.postMessage({stage:'cleanup'}),25);`,
+    );
+    const check = await probeNativeGuard(worker);
+    expect(check).toMatchObject({
+      status: 'blocked',
+      detail: expect.stringContaining('cleanup timed out after five seconds; stage: cleanup'),
+    });
+    expect(check.detail).toContain('Check again.');
+    expect(check.detail).not.toContain('Install the VSIX');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 15_000);
+
 test('native readiness reports the failing phase and error code without leaking worker text', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'crw-native-failure-'));
   const worker = join(directory, 'probe.cjs');
