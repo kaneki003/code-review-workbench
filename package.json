@@ -102,11 +102,6 @@
         "command": "codeReviewWorkbench.showLocalDrafts",
         "title": "Code Review Workbench: Show Local Drafts",
         "icon": "$(comment-discussion)"
-      },
-      {
-        "command": "codeReviewWorkbench.recreateDraftWriter",
-        "title": "Code Review Workbench: Recreate Local Draft Writer",
-        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
@@ -158,11 +153,6 @@
           "command": "codeReviewWorkbench.showLocalDrafts",
           "when": "view == codeReviewWorkbench.files || view == codeReviewWorkbench.writer",
           "group": "drafts@1"
-        },
-        {
-          "command": "codeReviewWorkbench.recreateDraftWriter",
-          "when": "view == codeReviewWorkbench.writer",
-          "group": "drafts@2"
         }
       ],
       "view/item/context": [

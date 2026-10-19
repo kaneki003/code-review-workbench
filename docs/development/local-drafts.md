@@ -35,7 +35,7 @@ pnpm package
 3. Open a changed diff or **Open Exact-Revision Source**, select an eligible range on either committed side, and run **Write Private Local Draft** from the editor context menu or Command Palette. The **Private Feedback** panel shows that exact target.
 4. Type multiline Unicode or unfinished Markdown. Expect Saving, then Saved on this device after the actual commit. Switch Write/Preview. Press Escape or Close: the newest input saves and focus returns to the original source selection.
 5. Expand its native **Local draft** tag and choose **Open Local Draft**, or run **Show Local Drafts**. Expect the same text, identity and original target. Navigate to another file while writing; the displayed target stays fixed.
-6. Hide the panel immediately after typing, move **Local Draft** to the sidebar using VS Code's **Move View** action, or run **Recreate Local Draft Writer**. Reopen it: host-received pending input remains. After a host reload, verify the original overview/store and use **Open Local Draft** for its known saved record.
+6. Hide the panel immediately after typing or move **Local Draft** to the sidebar using VS Code's **Move View** action. Reopen it: host-received pending input remains. After a host reload, verify the original overview/store and use **Open Local Draft** for its known saved record.
 7. Use Discard draft. Expect removal only after deletion commits. Writing at the same range again creates a new record. Close alone keeps the saved draft.
 
 At a short panel height the view scrolls; keyboard focus reveals footer controls. Drag the panel divider or maximize it to see the whole composer. The layout wraps in narrow views and uses VS Code semantic theme colors, with Inter/JetBrains Mono fallbacks. Tailwind utilities are compiled into the packaged CSS.
@@ -43,6 +43,8 @@ At a short panel height the view scrolls; keyboard focus reveals footer controls
 ## Failures and recovery
 
 Busy, read-only, full-disk or failed commits keep input and the original target visible. Keep a copy, resolve the storage problem, then Retry. Close/Escape do not leave a failed writer. Failed Discard retries deletion. Oversized input stays visible for copying or trimming; no truncated prefix is acknowledged. A transport timeout exposes the same recovery controls.
+
+If the panel does not initialize, hide and reopen **Private Feedback**. The view reconnects to host-owned state automatically. The internal `codeReviewWorkbench.recreateDraftWriter` command only forces a fresh renderer for installed-host lifecycle tests; it is not listed in the Command Palette or panel toolbar and is not invoked for save recovery. It cannot recover browser-only input that never reached the host.
 
 [Transaction primitives](../../src/connections/store-database.ts) classify a write as retryable only after confirmed rollback and verification that the authoritative store revision is unchanged. SQLite may automatically roll back after `SQLITE_FULL`; that path does not attempt a second rollback. Unknown outcomes, failed rollback or inconsistent metadata require storage recovery rather than blind retry.
 

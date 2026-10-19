@@ -218,7 +218,7 @@ export function createDraftReview(
     while (!view?.visible || !bound?.ready) {
       if (Date.now() > deadline)
         throw new Error(
-          'The private writer did not become ready. Its host-owned input is retained; recreate the writer and Retry.',
+          'The private writer did not become ready. Hide and reopen Private Feedback. Host-received input is retained.',
         );
       // Native Comments can auto-open while its first thread is added. A
       // reveal inside the hide event can lose to that same transition. Wait
@@ -301,6 +301,7 @@ export function createDraftReview(
     ['writeLocalDraft', write],
     ['openLocalDraft', open],
     ['showLocalDrafts', () => open()],
+    // Internal lifecycle diagnostic for installed-host tests, not a user action.
     [
       'recreateDraftWriter',
       async () => {
