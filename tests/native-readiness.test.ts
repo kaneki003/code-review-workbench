@@ -56,7 +56,7 @@ test('repeated cleanup progress cannot extend the cleanup deadline or acknowledg
   }
 }, 15_000);
 
-test('native readiness reports the failing phase and error code without leaking worker text', async () => {
+test('worker errors retain their queued failure phase and code without leaking worker text', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'crw-native-failure-'));
   const worker = join(directory, 'probe.cjs');
   try {
@@ -65,14 +65,16 @@ test('native readiness reports the failing phase and error code without leaking 
       `require('node:worker_threads').parentPort.postMessage({stage:'cleanup'});
        const error=new Error('private worker text');error.code='EPERM';throw error;`,
     );
-    const check = await probeNativeGuard(worker);
-    expect(check.status).toBe('blocked');
-    expect(check.detail).toContain('worker error: EPERM; stage: cleanup');
-    expect(check.detail).not.toContain('private worker text');
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const check = await probeNativeGuard(worker);
+      expect(check.status).toBe('blocked');
+      expect(check.detail).toContain('worker error: EPERM; stage: cleanup');
+      expect(check.detail).not.toContain('private worker text');
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
-});
+}, 15_000);
 
 test('native readiness distinguishes an unresponsive worker from a native load failure', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'crw-native-timeout-'));

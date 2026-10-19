@@ -20,6 +20,7 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
       let timeout = setTimeout(() => finish(blocked('probe timed out after five seconds')), 5000);
       let cleaningUp = false;
       let settled = false;
+      let workerFailure: string | undefined;
       const finish = (check: Capability) => {
         if (settled) return;
         settled = true;
@@ -36,7 +37,7 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
           /^[a-z-]{1,32}$/.test(message.stage)
         ) {
           stage = message.stage;
-          if (stage === 'cleanup' && !cleaningUp) {
+          if (stage === 'cleanup' && !cleaningUp && !workerFailure) {
             // Every OS check and guard release has succeeded. Give disposable
             // file removal its own bounded window, once; success still waits
             // for the worker's acknowledgment after cleanup (at most 10 s total).
@@ -49,6 +50,7 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
           }
           return;
         }
+        if (workerFailure) return;
         if (
           typeof message !== 'object' ||
           message === null ||
@@ -75,9 +77,11 @@ export async function probeNativeGuard(workerPath: string): Promise<Capability> 
           typeof error.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
             ? `: ${error.code}`
             : '';
-        finish(blocked(`worker error${code}`));
+        // Errors can overtake queued progress. Node delivers all messages
+        // before exit, so retain the error and finish with the final stage there.
+        workerFailure = `worker error${code}`;
       });
-      worker.once('exit', (code) => finish(blocked(`worker exited: ${code}`)));
+      worker.once('exit', (code) => finish(blocked(workerFailure ?? `worker exited: ${code}`)));
     });
   } finally {
     await worker.terminate();
