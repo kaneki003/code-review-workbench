@@ -1,5 +1,6 @@
-@import 'tailwindcss/theme.css';
-@import 'tailwindcss/utilities.css';
+@layer theme, base, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
 @source "./*.tsx";
 
 @theme inline {
@@ -7,28 +8,44 @@
   --color-muted: var(--vscode-descriptionForeground);
   --color-action: var(--vscode-button-background);
   --color-action-text: var(--vscode-button-foreground);
+  --font-interface: Inter, var(--vscode-font-family);
+  --font-code: 'JetBrains Mono', var(--vscode-editor-font-family);
+  --color-surface: var(--vscode-editor-background);
+  --color-widget: var(--vscode-editorWidget-background);
+  --color-input: var(--vscode-input-background);
+  --color-input-text: var(--vscode-input-foreground);
+  --color-placeholder: var(--vscode-input-placeholderForeground);
+  --color-secondary: var(--vscode-button-secondaryBackground);
+  --color-secondary-hover: var(--vscode-button-secondaryHoverBackground);
+  --color-link: var(--vscode-textLink-foreground);
+  --color-code: var(--vscode-textCodeBlock-background);
+  --color-error: var(--vscode-errorForeground);
+  --color-warning: var(--vscode-inputValidation-warningBorder, var(--vscode-contrastBorder));
   --color-outline: var(--vscode-contrastBorder, var(--vscode-panel-border));
 }
 
-body {
-  margin: 0;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-foreground);
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-}
-button {
-  font: inherit;
-  border: 1px solid var(--vscode-button-border, transparent);
-  cursor: pointer;
-}
-button:hover:enabled {
-  background: var(--vscode-button-hoverBackground);
-}
-button:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: 3px;
-}
-p {
-  line-height: 1.5;
+@layer base {
+  body {
+    margin: 0;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+  }
+  button {
+    font: inherit;
+    border: 1px solid var(--vscode-button-border, transparent);
+    cursor: pointer;
+  }
+  button:hover:enabled {
+    background: var(--vscode-button-hoverBackground);
+  }
+  button:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 3px;
+  }
+  p {
+    line-height: 1.5;
+  }
 }

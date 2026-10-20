@@ -1,4 +1,5 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
+import type { LocalDraft, DraftEdit, DraftDiscard, DraftCommit } from './local-draft';
 import type {
   CommittedContent,
   CommittedSource,
@@ -69,7 +70,13 @@ export interface StoreRequest {
     | 'readReviewed'
     | 'saveNavigation'
     | 'validateNavigation'
-    | 'readNavigation';
+    | 'readNavigation'
+    | 'createDraft'
+    | 'saveDraft'
+    | 'discardDraft'
+    | 'readDraft'
+    | 'listDrafts'
+    | 'listReviewDrafts';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
@@ -85,6 +92,9 @@ export interface StoreRequest {
   side?: SourceSide;
   reviewed?: boolean;
   navigation?: SourceNavigation;
+  draftId?: string;
+  draftEdit?: DraftEdit;
+  draftDiscard?: DraftDiscard;
 }
 
 export interface StoreHandoff {
@@ -95,6 +105,9 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  draft?: LocalDraft;
+  drafts?: LocalDraft[];
+  draftCommit?: DraftCommit;
   sourceId?: string;
   sourcePlan?: SourcePlan;
   source?: CommittedSource;

@@ -56,6 +56,22 @@ import {
   type SourcePlan,
   type SourceNavigation,
 } from '../application/committed-source';
+import {
+  draftActions,
+  isDraftAction,
+  draftCommit,
+  validDraftBody,
+  type LocalDraft,
+} from '../application/local-draft';
+import {
+  readDraft,
+  reviewDraft,
+  listDrafts,
+  listReviewDrafts,
+  assertDraftVersion,
+  updateDraft,
+  draftWriteError,
+} from './local-draft-storage';
 
 const native = createRequire(__filename)(join(__dirname, 'native-guard.node')) as NativeStore;
 
@@ -746,8 +762,10 @@ class SharedStore {
   ): StoreReply | undefined {
     if (sourceId !== undefined && !uuid(sourceId))
       throw new StoreError('INVALID_SOURCE', 'An exact source identity is required.');
+    const planId = action === 'prepareSource' ? sourceId : undefined;
     const row = this.database!.prepare(
       `SELECT result FROM requests WHERE scope_id=? AND action=?
+      ${planId ? 'AND request_id=?' : ''}
       AND coalesce(json_extract(result,'$.sourcePlan.candidate.localRepository.facts.worktree.path'),
         json_extract(result,'$.source.candidate.localRepository.facts.worktree.path'))=?
       ${sourceId ? "AND coalesce(json_extract(result,'$.sourcePlan.id'),json_extract(result,'$.source.id'))=?" : ''}
@@ -756,6 +774,7 @@ class SharedStore {
     ).get(
       this.lease!.scopeId,
       action,
+      ...(planId ? [planId] : []),
       this.config.location,
       ...(sourceId ? [sourceId] : []),
       ...(review ? [review.baseRepositoryId, review.pullNumber] : []),
@@ -833,7 +852,11 @@ class SharedStore {
     const reviewed = row ? ((JSON.parse(String(row.result)) as StoreReply).reviewed ?? []) : [];
     return source.files.filter((file) => reviewed.includes(file.id)).map((file) => file.id);
   }
-  private saveSourceReply(request: StoreRequest, fields: Partial<StoreReply>): StoreReply {
+  private saveSourceReply(
+    request: StoreRequest,
+    fields: Partial<StoreReply>,
+    beforeWrite?: () => void,
+  ): StoreReply {
     this.validate(request.lease, true);
     if (this.control!.pending)
       throw new StoreError(
@@ -846,14 +869,159 @@ class SharedStore {
       lease,
       ...fields,
     };
-    transaction(this.database!, () => {
-      this.validate(request.lease, true);
-      this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
-      saveReply(this.database!, request, lease, reply);
-    });
+    try {
+      transaction(
+        this.database!,
+        () => {
+          this.validate(request.lease, true);
+          beforeWrite?.();
+          if (isDraftAction(request.action))
+            this.faults.at(`${request.action}.commit.before`, this.database!);
+          this.database!.prepare('UPDATE metadata SET revision=revision+1 WHERE id=1').run();
+          saveReply(this.database!, request, lease, reply);
+        },
+        isDraftAction(request.action)
+          ? (error) => {
+              // FULL can automatically roll back. Verify the unchanged durable
+              // sequence before classifying any failed transaction as Retry.
+              this.validate(request.lease, true);
+              return draftWriteError(error);
+            }
+          : undefined,
+      );
+    } finally {
+      if (isDraftAction(request.action)) this.faults.resetDatabase();
+    }
     this.lease = lease;
     this.saveControl({ ...this.control!, revision: lease.revision });
     return reply;
+  }
+
+  private async draftAction(request: StoreRequest): Promise<StoreReply> {
+    this.validate(request.lease, false);
+    const previous = previousReply(this.database!, request);
+    if (previous) return this.draftAcknowledgment(previous);
+    this.validate(request.lease, true);
+    if (this.control!.pending)
+      throw new StoreError(
+        'OPERATION_UNAVAILABLE',
+        'Reconcile the pending repository operation before editing private drafts.',
+      );
+    if (request.action === 'createDraft') {
+      const validated = await this.sourceAction({ ...request, action: 'validateNavigation' });
+      const target = validated.navigation;
+      if (!target || target.anchor.blob === null)
+        throw new StoreError(
+          'INVALID_DRAFT',
+          'Feedback requires an available original or new committed source range.',
+        );
+      const source = this.sourceRecord(target.anchor.sourceId);
+      const review = {
+        baseRepositoryId: source.candidate.pullRequest.base.repository.id,
+        pullNumber: source.candidate.pullRequest.number,
+      };
+      const earlier = reviewDraft(this.database!, this.lease!.scopeId, review);
+      return this.saveDraftReply(request, {
+        id: request.id,
+        reviewId: earlier?.reviewId ?? randomUUID(),
+        review,
+        contentGeneration: earlier?.contentGeneration ?? 1,
+        target,
+        body: '',
+        editRevision: 0,
+        committedRevision: 0,
+        rowRevision: 1,
+        deletionRevision: 0,
+      });
+    }
+    if (request.action === 'listDrafts' || request.action === 'listReviewDrafts') {
+      const source = this.sourceRecord(request.sourceId);
+      if (request.action === 'listReviewDrafts')
+        return {
+          ...this.owned(),
+          drafts: listReviewDrafts(
+            this.database!,
+            this.lease!.scopeId,
+            {
+              baseRepositoryId: source.candidate.pullRequest.base.repository.id,
+              pullNumber: source.candidate.pullRequest.number,
+            },
+            this.config.location,
+          ),
+        };
+      return {
+        ...this.owned(),
+        drafts: listDrafts(this.database!, this.lease!.scopeId, source.id),
+      };
+    }
+    const change = request.action === 'discardDraft' ? request.draftDiscard : request.draftEdit;
+    const draftId = request.action === 'readDraft' ? request.draftId : change?.draftId;
+    const draft = readDraft(this.database!, this.lease!.scopeId, draftId!);
+    if (!draft) {
+      if (request.action === 'readDraft') return this.owned();
+      throw new StoreError(
+        'DRAFT_UNAVAILABLE',
+        'This account has no such draft in the selected review.',
+      );
+    }
+    // Creation already resolved the immutable target. Revalidate its original
+    // registration and ownership through the indexed source intent; do not scan
+    // publication history or require the old blob merely to retain feedback.
+    this.sourcePlan(draft.target.anchor.sourceId);
+    if (request.action === 'readDraft') return { ...this.owned(), draft };
+    assertDraftVersion(change, draft);
+    if (!change || change.requestId !== request.id || draft.rowRevision === Number.MAX_SAFE_INTEGER)
+      throw new StoreError(
+        'INVALID_DRAFT',
+        'The draft change requires a unique request identity and an available revision.',
+      );
+    if (request.action === 'discardDraft')
+      return this.saveDraftReply(request, {
+        ...draft,
+        body: '',
+        rowRevision: draft.rowRevision + 1,
+        deletionRevision: draft.rowRevision + 1,
+      });
+    const edit = request.draftEdit;
+    if (
+      !edit ||
+      edit.requestId !== request.id ||
+      !validDraftBody(edit.body) ||
+      !Number.isSafeInteger(edit.editRevision) ||
+      edit.editRevision <= draft.committedRevision ||
+      draft.rowRevision === Number.MAX_SAFE_INTEGER
+    )
+      throw new StoreError(
+        'INVALID_DRAFT',
+        'The draft edit is out of order, malformed or exceeds 1 MiB UTF-8. Keep a copy of the original input; no truncated text was saved.',
+      );
+    return this.saveDraftReply(request, {
+      ...draft,
+      body: edit.body,
+      editRevision: edit.editRevision,
+      committedRevision: edit.editRevision,
+      rowRevision: draft.rowRevision + 1,
+    });
+  }
+
+  private draftAcknowledgment(reply: StoreReply): StoreReply {
+    // Historical receipts never project historical bodies over live typing.
+    const { draft: _draft, ...acknowledgment } = reply;
+    return acknowledgment;
+  }
+
+  private saveDraftReply(request: StoreRequest, draft: LocalDraft): StoreReply {
+    const reply = this.saveSourceReply(
+      request,
+      {
+        draftCommit: draftCommit(draft),
+        ...(request.action === 'createDraft' ? { draft } : {}),
+      },
+      request.action === 'createDraft'
+        ? undefined
+        : () => updateDraft(this.database!, this.lease!.scopeId, draft),
+    );
+    return this.draftAcknowledgment(reply);
   }
   private async sourceAction(request: StoreRequest): Promise<StoreReply> {
     this.validate(request.lease, false);
@@ -1457,6 +1625,7 @@ class SharedStore {
         'readCandidate',
         'readRegistration',
         ...sourceActions,
+        ...draftActions,
       ].includes(String(message.action))
     )
       throw new StoreError('INVALID_REQUEST', 'Unsupported storage request.');
@@ -1495,6 +1664,7 @@ class SharedStore {
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
       if (isSourceAction(request.action)) return await this.sourceAction(request);
+      if (isDraftAction(request.action)) return await this.draftAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);
       if (request.action === 'inspectOperation') {
@@ -1557,6 +1727,11 @@ class SharedStore {
           'INVALID_SOURCE',
           'SOURCE_MISMATCH',
           'SOURCE_UNAVAILABLE',
+          'INVALID_DRAFT',
+          'DRAFT_UNAVAILABLE',
+          'DRAFT_CONFLICT',
+          'DRAFT_DELETED',
+          'DRAFT_WRITE_FAILED',
         ].includes(error.code)
       )
         this.poisoned = true;
