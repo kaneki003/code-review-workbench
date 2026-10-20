@@ -1113,7 +1113,7 @@ class SharedStore {
         const source = this.sourceRecord(request.sourceId);
         ref = `refs/heads/code-review-workbench/${request.id}`;
         checkout = {
-          before: repository.cleanCheckoutState(source.head),
+          before: repository.checkoutState(source.head),
           target: { branch: ref, commit: source.head },
           create: true,
         };
@@ -1152,7 +1152,7 @@ class SharedStore {
             'INVALID_OPERATION',
             'This local copy has no verified entry receipt for that operation.',
           );
-        const before = repository.cleanCheckoutState(entry.checkout.before.commit);
+        const before = repository.checkoutState(entry.checkout.before.commit);
         if (
           before.branch !== entry.checkout.target.branch ||
           before.commit !== entry.checkout.target.commit
@@ -1520,6 +1520,40 @@ class SharedStore {
         'The preservation operation was not verified. Keep all artifacts and use Recover PR Checkout.',
       );
   }
+  private retryUnperformedPreservation(record: CheckoutReview, restore: boolean) {
+    const prior = record.priorWork!;
+    const id = restore ? prior.applyId : prior.stashId;
+    if (!existsSync(operationFile(this.rendezvous, id))) return prior;
+    const saved = readOperation(this.rendezvous, id);
+    if (saved.outcome !== 'not-applied') return prior;
+    const repository = this.repository();
+    if (
+      saved.kind !== (restore ? 'stash-apply' : 'stash-push') ||
+      saved.phase !== 'observed' ||
+      saved.scopeId !== record.scopeId ||
+      this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(id)
+        ?.record !== JSON.stringify(saved) ||
+      !repository.sameRepositoryIdentity(saved.facts) ||
+      repository.stashOutcome(saved) !== 'not-applied'
+    )
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'A fresh preservation attempt requires the settled unperformed receipt and unchanged original work. Keep all artifacts and Retry recovery.',
+      );
+    if (restore) return { ...prior, applyId: randomUUID() };
+    if (repository.refOid(priorWorkRef(prior.stashId)) !== null)
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'An unperformed stash has an unexpected recovery reference. Retain it for inspection.',
+      );
+    const stashId = randomUUID();
+    return {
+      ...prior,
+      stashId,
+      marker: `code-review-workbench prior-work ${stashId}`,
+      previousStash: repository.refOid('refs/stash'),
+    };
+  }
   private async preserveCheckoutWork(
     record: CheckoutReview,
     restore: boolean,
@@ -1554,7 +1588,7 @@ class SharedStore {
         );
       verifyStash(repository, prior, record.original.commit, prior.object);
       if (matchesManifest(repository, prior.manifest)) {
-        const actual = repository.cleanCheckoutState(undefined, true);
+        const actual = repository.checkoutState(undefined, 'inventory');
         if (actual.branch !== record.original.branch || actual.commit !== record.original.commit)
           throw new StoreError(
             'PRESERVATION_RECOVERY',
@@ -1612,7 +1646,7 @@ class SharedStore {
         'PRESERVATION_RECOVERY',
         'No unique verified operation-tagged stash was found. No checkout was authorized.',
       );
-    const clean = repository.cleanCheckoutState();
+    const clean = repository.checkoutState();
     if (clean.branch !== record.original.branch || clean.commit !== record.original.commit)
       throw new StoreError(
         'PRESERVATION_RECOVERY',
@@ -1680,10 +1714,10 @@ class SharedStore {
       let original;
       let priorWork;
       try {
-        original = repository.cleanCheckoutState(source.head);
+        original = repository.checkoutState(source.head);
       } catch (error) {
         if (!(error instanceof StoreError) || error.code !== 'DIRTY_CHECKOUT') throw error;
-        original = repository.cleanCheckoutState(source.head, true);
+        original = repository.checkoutState(source.head, 'inventory');
         const stashId = randomUUID();
         priorWork = {
           manifest: workManifest(repository),
@@ -1744,7 +1778,7 @@ class SharedStore {
       const next = await this.preserveCheckoutWork(record, request.action === 'restorePriorWork');
       return this.saveCheckout(request, { ...next, revision: record.revision + 1 }, state);
     }
-    const actual = repository.cleanCheckoutState(undefined, Boolean(record.priorWork));
+    const actual = repository.checkoutState(undefined, record.priorWork ? 'inventory' : 'clean');
     const original =
       JSON.stringify(actual) === JSON.stringify(record.original) &&
       (!record.priorWork || matchesManifest(repository, record.priorWork.manifest));
@@ -1900,6 +1934,7 @@ class SharedStore {
           JSON.stringify(actual) === JSON.stringify(record.priorWork.clean)
         ) {
           next.exitId = null;
+          next.priorWork = this.retryUnperformedPreservation(record, true);
           break;
         }
         if (
@@ -1924,6 +1959,7 @@ class SharedStore {
             );
           if (request.checkoutChoice === 'continue' && record.phase === 'entering') {
             next.entryId = randomUUID();
+            if (record.priorWork) next.priorWork = this.retryUnperformedPreservation(record, false);
             next.phase = 'entering';
           } else next.phase = 'restoring-editors';
         } else {
@@ -2476,6 +2512,8 @@ class SharedStore {
           'SOURCE_MISMATCH',
           'SOURCE_UNAVAILABLE',
           'UNSUPPORTED_CHECKOUT',
+          'UNSUPPORTED_PRESERVATION',
+          'PRESERVATION_RECOVERY',
           'DIRTY_CHECKOUT',
           'CHECKOUT_INTERFERENCE',
           'CHECKOUT_UNAVAILABLE',

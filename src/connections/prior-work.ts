@@ -83,7 +83,7 @@ function same(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 export function workManifest(repository: RepositoryOperation): WorkManifest {
-  const before = repository.cleanCheckoutState(undefined, true);
+  const before = repository.checkoutState(undefined, 'inventory');
   const facts = repository.facts();
   const index = entries(repository),
     head = entries(repository, before.commit);

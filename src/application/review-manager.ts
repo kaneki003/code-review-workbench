@@ -208,16 +208,42 @@ export class ReviewManager {
         }),
       );
     this.connections.editors!.assertSaved();
-    const prepared = await this.storeRequest(
-      'prepareCleanCheckout',
-      { sourceId: review.sourceId },
-      undefined,
-      review.entryId,
-    );
-    if (!prepared.operation)
-      throw new StoreError(prepared.view.code ?? 'CHECKOUT_RECOVERY', prepared.view.detail);
+    let prepared: StoreReply;
+    try {
+      prepared = await this.storeRequest(
+        'prepareCleanCheckout',
+        { sourceId: review.sourceId },
+        undefined,
+        review.entryId,
+      );
+      if (!prepared.operation)
+        throw new StoreError(prepared.view.code ?? 'CHECKOUT_RECOVERY', prepared.view.detail);
+    } catch (error) {
+      if (review.priorWork) {
+        try {
+          if ((await this.inspectPrivateStore()).status !== 'owned') throw error;
+          const rollback = this.checkoutReply(
+            await this.storeRequest('reconcileCheckout', { checkoutChoice: 'restore' }),
+          );
+          const restored =
+            rollback.phase === 'restoring-editors'
+              ? await this.restoreCheckoutEditors(rollback)
+              : rollback.phase === 'exiting' && !rollback.exitId
+                ? await this.continueCheckoutExit(rollback)
+                : undefined;
+          if (restored?.status === 'complete')
+            return {
+              status: 'blocked',
+              detail: `${error instanceof Error ? error.message : 'PR checkout preparation failed.'} Your original files, staging and editors were restored; keep no-switch reading.`,
+            };
+        } catch {
+          /* Uncertain effects or changed buffers retain the original failure and recovery. */
+        }
+      }
+      throw error;
+    }
     this.connections.editors!.assertSaved();
-    const result = await this.executeRepositoryOperation(prepared.operation.id);
+    const result = await this.executeRepositoryOperation(prepared.operation!.id);
     if (result.operation?.outcome !== 'applied') {
       if (result.operation?.phase === 'observed') {
         const reconciled = this.checkoutReply(

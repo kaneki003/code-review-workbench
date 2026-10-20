@@ -54,10 +54,10 @@ export interface OperationRecord {
   ownerToken: string;
   scopeId: string;
   kind: 'update-ref' | 'fetch' | 'checkout' | 'delete-ref' | 'stash-push' | 'stash-apply';
-  stash?: { prior: PriorWork; original: CleanCheckoutState };
+  stash?: { prior: PriorWork; original: CheckoutState };
   fetch?: { url: string; remoteRef: string };
   checkout?: {
-    before: CleanCheckoutState;
+    before: CheckoutState;
     target: { branch: string | null; commit: string; fingerprint?: string };
     create: boolean;
     entryId?: string;
@@ -73,12 +73,12 @@ export interface OperationRecord {
   outcome?: 'applied' | 'not-applied' | 'refused';
   exitCode?: number;
 }
-export interface CleanCheckoutState {
+export interface CheckoutState {
   branch: string | null;
   commit: string;
   fingerprint: string;
 }
-function checkoutState(value: unknown): value is CleanCheckoutState {
+function checkoutState(value: unknown): value is CheckoutState {
   return (
     object(value) &&
     (value.branch === null ||
@@ -450,7 +450,7 @@ export class RepositoryOperation {
   mergedIntoHead(commit: string) {
     return this.git(['merge-base', '--is-ancestor', commit, 'HEAD'], true) !== null;
   }
-  cleanCheckoutState(target?: string, allowDirty = false): CleanCheckoutState {
+  checkoutState(target?: string, requirement: 'clean' | 'inventory' = 'clean'): CheckoutState {
     // Refuse configurations whose checkout/status can execute repository-owned
     // programs, and representations this clean-only slice cannot verify.
     const backend = this.git(['config', '--get', 'extensions.refStorage'], true)?.toString().trim();
@@ -501,7 +501,7 @@ export class RepositoryOperation {
         'Submodules, unresolved entries and special index flags are not supported by clean checkout. Keep no-switch reading.',
       );
     if (
-      !allowDirty &&
+      requirement === 'clean' &&
       this.git([
         'status',
         '--porcelain=v1',
@@ -517,7 +517,7 @@ export class RepositoryOperation {
     // Status can trust cached stat fields even when bytes differ. Verify each
     // indexed blob directly, without invoking filters or refreshing the index.
     // Transformed working-file representations remain a safe no-switch case.
-    for (const entry of allowDirty ? [] : staged.split('\0').filter(Boolean)) {
+    for (const entry of requirement === 'inventory' ? [] : staged.split('\0').filter(Boolean)) {
       const match = /^(100644|100755|120000) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t(.+)$/s.exec(entry);
       if (!match)
         throw new StoreError(
@@ -597,8 +597,7 @@ export class RepositoryOperation {
         );
     }
     if (
-      JSON.stringify(this.cleanCheckoutState(checkout.target.commit)) !==
-      JSON.stringify(checkout.before)
+      JSON.stringify(this.checkoutState(checkout.target.commit)) !== JSON.stringify(checkout.before)
     )
       throw new StoreError(
         'CHECKOUT_INTERFERENCE',
@@ -607,7 +606,7 @@ export class RepositoryOperation {
   }
   checkoutOutcome(record: OperationRecord): 'applied' | 'not-applied' | 'refused' {
     const checkout = record.checkout!;
-    const actual = this.cleanCheckoutState(checkout.target.commit);
+    const actual = this.checkoutState(checkout.target.commit);
     if (
       actual.branch === checkout.target.branch &&
       actual.commit === checkout.target.commit &&
@@ -619,7 +618,7 @@ export class RepositoryOperation {
   }
   validateStash(record: OperationRecord) {
     const { prior, original } = record.stash!;
-    const actual = this.cleanCheckoutState(undefined, true);
+    const actual = this.checkoutState(undefined, 'inventory');
     if (actual.branch !== original.branch || actual.commit !== original.commit)
       throw new StoreError(
         'PRESERVATION_RECOVERY',
@@ -642,7 +641,7 @@ export class RepositoryOperation {
           'The exact prior-work protection is missing or moved. Retain all recovery records.',
         );
       verifyStash(this, prior, original.commit, prior.object);
-      if (JSON.stringify(this.cleanCheckoutState()) !== JSON.stringify(prior.clean))
+      if (JSON.stringify(this.checkoutState()) !== JSON.stringify(prior.clean))
         throw new StoreError(
           'PRESERVATION_RECOVERY',
           'Prior-work apply requires the verified original clean checkout. Resolve the changed files and Retry recovery.',
@@ -651,20 +650,20 @@ export class RepositoryOperation {
   }
   stashOutcome(record: OperationRecord): 'applied' | 'not-applied' | 'refused' {
     const { prior, original } = record.stash!;
-    const actual = this.cleanCheckoutState(undefined, true);
+    const actual = this.checkoutState(undefined, 'inventory');
     if (actual.branch !== original.branch || actual.commit !== original.commit) return 'refused';
     if (record.kind === 'stash-apply') {
       if (!prior.object || this.refOid(priorWorkRef(prior.stashId)) !== prior.object)
         return 'refused';
       verifyStash(this, prior, original.commit, prior.object);
       if (matchesManifest(this, prior.manifest)) return 'applied';
-      return JSON.stringify(this.cleanCheckoutState()) === JSON.stringify(prior.clean)
+      return JSON.stringify(this.checkoutState()) === JSON.stringify(prior.clean)
         ? 'not-applied'
         : 'refused';
     }
     const stash = findPriorStash(this, prior, original.commit);
     if (stash) {
-      this.cleanCheckoutState();
+      this.checkoutState();
       return 'applied';
     }
     return matchesManifest(this, prior.manifest) ? 'not-applied' : 'refused';
