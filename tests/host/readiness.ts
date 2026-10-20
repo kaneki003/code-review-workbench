@@ -736,9 +736,64 @@ suite('Installed readiness VSIX', () => {
         viewColumn: vscode.ViewColumn.Two,
       });
       await vscode.commands.executeCommand('codeReviewWorkbench.openChangedDiff', target);
-      await api.showOverview(source.candidate, source);
-      const beforeTabs = vscode.window.tabGroups.all.map((group) =>
-        group.tabs.map((tab) => tab.label),
+      const ordinaryTabs = () =>
+        vscode.window.tabGroups.all.map((group) =>
+          group.tabs
+            .filter(
+              (tab) =>
+                !(
+                  tab.input instanceof vscode.TabInputText &&
+                  tab.input.uri.scheme === 'crw-overview'
+                ) &&
+                !(
+                  tab.input instanceof vscode.TabInputWebview &&
+                  tab.label.startsWith('Preview pull-')
+                ),
+            )
+            .map((tab) => tab.label),
+        );
+      const beforeTabs = ordinaryTabs();
+      const longOverview = {
+        ...source.candidate,
+        pullRequest: {
+          ...source.candidate.pullRequest,
+          body: 'A detailed PR description remains ordinary review content.\n'.repeat(1200),
+        },
+      };
+      const firstOverview = await api.showOverview(longOverview, source);
+      await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+      const repeatedOverview = await api.showOverview(longOverview, source);
+      assert.equal(repeatedOverview?.toString(), firstOverview?.toString());
+      await vscode.window.tabGroups.close(
+        vscode.window.tabGroups.all.flatMap((group) =>
+          group.tabs.filter(
+            (tab) =>
+              tab.input instanceof vscode.TabInputText && tab.input.uri.scheme === 'crw-overview',
+          ),
+        ),
+      );
+      await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+      const previewOnlyReopen = await api.showOverview(longOverview, source);
+      assert.equal(previewOnlyReopen?.toString(), firstOverview?.toString());
+      assert.equal(
+        vscode.window.tabGroups.all.flatMap((group) =>
+          group.tabs.filter(
+            (tab) =>
+              tab.input instanceof vscode.TabInputText && tab.input.uri.scheme === 'crw-overview',
+          ),
+        ).length,
+        1,
+        'Repeated PR entry reuses the overview document',
+      );
+      assert.equal(
+        vscode.window.tabGroups.all.flatMap((group) =>
+          group.tabs.filter(
+            (tab) =>
+              tab.input instanceof vscode.TabInputWebview && tab.label.startsWith('Preview pull-'),
+          ),
+        ).length,
+        1,
+        'Repeated entry from another editor group reuses the overview preview',
       );
       const entered = await manager.enterPullRequestCheckout(source.id);
       assert.equal(
@@ -748,6 +803,12 @@ suite('Installed readiness VSIX', () => {
           entered,
           layout: await vscode.commands.executeCommand('vscode.getEditorLayout'),
         }),
+      );
+      assert.ok(
+        entered.review!.editors.groups.every((group) =>
+          group.tabs.every((tab) => !tab.uri.startsWith('crw-overview:')),
+        ),
+        'Generated overviews are excluded from prior-work restoration and its size budget',
       );
       assert.equal(git(['rev-parse', 'HEAD']), head);
       await vscode.window.tabGroups.close(

@@ -119,6 +119,8 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
     } else if (result.status === 'complete') {
+      await documents.close();
+      if (presentation !== checkoutPresentation) return result;
       committedReview.clear();
       draftReview.clear();
     }

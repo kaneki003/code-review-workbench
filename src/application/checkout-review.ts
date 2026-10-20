@@ -28,6 +28,8 @@ export interface EditorSnapshot {
   workspace: string;
   layout: EditorLayout;
   groups: { column: number; active: boolean; tabs: EditorTab[] }[];
+  /** Identify disposable review views after owner recreation without storing their content. */
+  overviewUris?: string[];
 }
 export interface CheckoutEditors {
   /** Rehydrates our own readonly documents after an authorized store read. */

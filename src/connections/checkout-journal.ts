@@ -48,6 +48,10 @@ export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
     !Array.isArray(value.groups) ||
     value.groups.length < 1 ||
     value.groups.length > 9 ||
+    (value.overviewUris !== undefined &&
+      (!Array.isArray(value.overviewUris) ||
+        value.overviewUris.length > 100 ||
+        !value.overviewUris.every((uri) => editorUri(uri) && uri.startsWith('crw-overview:')))) ||
     Buffer.byteLength(JSON.stringify(value), 'utf8') > 48000 ||
     leaves(value.layout.groups) !== value.groups.length ||
     value.groups.filter((group) => object(group) && group.active === true).length !== 1

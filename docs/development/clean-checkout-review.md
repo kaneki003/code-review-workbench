@@ -70,3 +70,9 @@ gh workflow run check.yml --repo kaneki003/code-review-workbench --ref feat/22-c
 ```
 
 Review totals: Standards — zero remaining findings (one P2 and two judgement calls resolved); Spec — zero remaining findings (checkpoint safety defects and availability edge resolved). Neither axis substitutes for execution-based evidence.
+
+## Overview lifecycle correction — 20 October 2026
+
+Repeated entry created fresh overview documents. Capture then stored each overview description in its text and preview records, consuming the editor snapshot budget; Exit restored those generated tabs even after the reviewer closed them. Overviews now use a stable verified account/PR/local-copy identity, reveal existing text and preview tabs in their current groups, and remain outside prior-work restoration. Only URI identities are saved for recognizing surviving previews after owner recreation. Successful Exit closes remaining review-owned overviews; older snapshots also omit them during restoration. Ordinary editor limits and Git safety checks remain intact.
+
+Six focused regressions cover reuse, long descriptions, cleanup, ordinary-tab restoration, closed tabs and consecutive owner recreations with a preview left open. All seven installed VS Code 1.142.0 cases pass, including cross-group and preview-only reuse followed by verified checkout/Exit and original ordinary editor restoration. One run stopped while loading the draft writer before reaching the overview checks; the unchanged rerun passed. Separate Standards and Spec reviews report zero remaining findings after correcting the group and recreation cases.

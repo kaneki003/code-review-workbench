@@ -11,9 +11,14 @@ import { StoreError } from '../application/private-store';
 import { validEditorSnapshot } from '../connections/checkout-journal';
 import type { createOverviewDocuments } from './overview-documents';
 import { restoreEditorScroll } from './editor-scroll';
+import {
+  activateEditorTab,
+  focusEditorGroup as focusGroup,
+  waitForEditor as waitFor,
+} from './editor-groups';
 type Overviews = Pick<
   ReturnType<typeof createOverviewDocuments>,
-  'read' | 'retain' | 'preview' | 'showPreview'
+  'read' | 'retain' | 'remember' | 'preview' | 'showPreview'
 >;
 
 const failure = (detail: string): never => {
@@ -52,10 +57,6 @@ function describe(tab: vscode.Tab, overviews?: Overviews): EditorTab {
         'An untitled, remote or unsupported editor cannot be safely restored. Save or close it before switching.',
       );
   const content = uri.scheme === 'crw-overview' ? overviews?.read(uriKey(uri)) : undefined;
-  if (uri.scheme === 'crw-overview' && content === undefined)
-    failure(
-      'The original overview content is unavailable. Reopen it before capturing the workspace.',
-    );
   return {
     kind: original ? 'diff' : 'text',
     uri: uriKey(uri),
@@ -77,6 +78,15 @@ function inventory(overviews?: Overviews) {
     active: group.isActive,
     tabs: group.tabs.map((tab) => describe(tab, overviews)),
   }));
+}
+function priorWork(groups: EditorSnapshot['groups']): EditorSnapshot['groups'] {
+  return groups.map((group) => {
+    // Generated PR overviews belong to the review UI, not the workspace Exit restores.
+    const tabs = group.tabs.filter((tab) => !tab.uri.startsWith('crw-overview:'));
+    if (tabs.length && !tabs.some((tab) => tab.active))
+      return { ...group, tabs: tabs.map((tab, index) => ({ ...tab, active: index === 0 })) };
+    return { ...group, tabs };
+  });
 }
 function tabShape(groups: EditorSnapshot['groups']) {
   return JSON.stringify(
@@ -105,50 +115,13 @@ function sameLayout(expected: EditorLayout, actual: EditorLayout): boolean {
     });
   return expected.orientation === actual.orientation && sameGroups(expected.groups, actual.groups);
 }
-async function waitFor(action: () => boolean, detail: string) {
-  const until = Date.now() + 5000;
-  while (!action()) {
-    if (Date.now() > until) failure(detail);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
-async function focusGroup(column: number) {
-  const ordinal = [
-    'First',
-    'Second',
-    'Third',
-    'Fourth',
-    'Fifth',
-    'Sixth',
-    'Seventh',
-    'Eighth',
-    'Ninth',
-  ][column - 1];
-  if (!ordinal) return failure('The saved editor group is outside the supported native layout.');
-  await vscode.commands.executeCommand(`workbench.action.focus${ordinal}EditorGroup`);
-  await waitFor(
-    () => vscode.window.tabGroups.activeTabGroup.viewColumn === column,
-    'The host could not focus the saved editor group.',
-  );
-}
 async function open(tab: EditorTab, column: number, overviews?: Overviews) {
   if (tab.content !== undefined) overviews?.retain(tab.uri, tab.content);
   const existing = vscode.window.tabGroups.all.find((group) => group.viewColumn === column);
-  if (
-    existing?.tabs.some((candidate) => identity(describe(candidate, overviews)) === identity(tab))
-  ) {
-    await focusGroup(column);
-    for (let attempt = 0; attempt <= existing.tabs.length; attempt += 1) {
-      const current = vscode.window.tabGroups.activeTabGroup.activeTab;
-      if (current && identity(describe(current, overviews)) === identity(tab)) return;
-      await vscode.commands.executeCommand('workbench.action.nextEditorInGroup');
-      await waitFor(
-        () => vscode.window.tabGroups.activeTabGroup.activeTab !== current,
-        'The host could not activate an existing saved tab.',
-      );
-    }
-    return failure('The saved editor tab disappeared during activation.');
-  }
+  const present = existing?.tabs.find(
+    (candidate) => identity(describe(candidate, overviews)) === identity(tab),
+  );
+  if (present) return activateEditorTab(present, column);
   const options = { viewColumn: column, preview: tab.preview, preserveFocus: false };
   if (tab.kind === 'markdown-preview') {
     if (!overviews) return failure('The original Markdown preview provider is unavailable.');
@@ -213,6 +186,7 @@ function views(tab: EditorTab, column: number): EditorView[] {
 
 export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
   function retain(snapshot: EditorSnapshot) {
+    for (const uri of snapshot.overviewUris ?? []) overviews?.remember(uri);
     for (const group of snapshot.groups)
       for (const tab of group.tabs)
         if (tab.content !== undefined) overviews?.retain(tab.uri, tab.content);
@@ -251,13 +225,27 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
       // Reject unsupported tabs before save dialogs or any editor rearrangement.
       inventory(overviews);
       await save();
-      const groups = inventory(overviews);
+      const original = inventory(overviews);
+      const groups = priorWork(original);
       const shape = tabShape(groups);
       const workspace = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
       const layout = await vscode.commands.executeCommand<EditorLayout>('vscode.getEditorLayout');
       if (!layout)
         return failure('The host could not capture its editor layout. Keep no-switch reading.');
-      const snapshot: EditorSnapshot = { protocol: 1, workspace, layout, groups };
+      const overviewUris = [
+        ...new Set(
+          original.flatMap((group) =>
+            group.tabs.filter((tab) => tab.uri.startsWith('crw-overview:')).map((tab) => tab.uri),
+          ),
+        ),
+      ];
+      const snapshot: EditorSnapshot = {
+        protocol: 1,
+        workspace,
+        layout,
+        groups,
+        ...(overviewUris.length ? { overviewUris } : {}),
+      };
       try {
         for (const group of groups)
           for (const tab of group.tabs) {
@@ -279,12 +267,12 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
               failure('The native editor did not expose the tab positions for verified capture.');
           }
       } finally {
-        await restoreActive(snapshot);
+        await restoreActive({ ...snapshot, groups: original });
       }
       assertSaved();
       if (!validEditorSnapshot(snapshot))
         failure('Editor state exceeds the supported snapshot bounds. Keep no-switch reading.');
-      if (shape !== tabShape(inventory(overviews)))
+      if (shape !== tabShape(priorWork(inventory(overviews))))
         failure(
           'Editor tabs or preview/pin states changed during capture. Retry without switching.',
         );
@@ -296,6 +284,8 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
         snapshot.workspace !== (await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath))
       )
         return failure('The editor snapshot belongs to an unavailable or different workspace.');
+      // Older saved transitions may include the review's own overview tabs.
+      snapshot = { ...snapshot, groups: priorWork(snapshot.groups) };
       await save();
       inventory(overviews);
       const tabs = vscode.window.tabGroups.all.flatMap((group) => [...group.tabs]);
