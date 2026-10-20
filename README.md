@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks and anchored private local drafts. Source checkout remains a later ticket.
+This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and clean PR checkout/Exit recovery. Dirty-work preservation remains a later ticket.
 
 ## Run the readiness slice
 
@@ -27,6 +27,8 @@ Then run **Code Review Workbench: Inspect Committed PR Diffs**. The Changed File
 Select a committed source range and choose **Write Private Local Draft**. The movable **Private Feedback** panel saves through the host and shows the exact original target. Close/Escape saves before returning to source; **Show Local Drafts** and native tags reopen the same record. Discard deletes that identity. Drafting sends nothing to GitHub and starts no AI request. See the [draft walkthrough, try-out steps and recovery limits](docs/development/local-drafts.md).
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
+
+From a clean supported repository, **Code Review Workbench: Enter PR Checkout** saves and captures the original editor state, then enters the exact PR on a fresh owned branch. **Exit Review** verifies the original branch/commit, clean files and editor state before completion. **Recover PR Checkout** reconciles interrupted transitions in the affected repository. Unfinished work stops switching and retains no-switch reading. See the [checkout walkthrough, recovery actions and representation limits](docs/development/clean-checkout.md).
 
 ## Project layout
 

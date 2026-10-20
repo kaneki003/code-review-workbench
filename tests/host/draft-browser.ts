@@ -136,7 +136,7 @@ export class DraftBrowser {
   }
   async click(name: string) {
     return this.writer(
-      `const button=[...doc.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent).trim()===${JSON.stringify(name)});if(!button)return null;button.click();return true;`,
+      `const button=[...doc.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')||b.textContent).trim()===${JSON.stringify(name)});if(!button||button.disabled)return null;button.click();return true;`,
     );
   }
   async escape() {

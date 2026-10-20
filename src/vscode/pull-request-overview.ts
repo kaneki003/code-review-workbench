@@ -14,6 +14,7 @@ authorMarkdown.renderer.rules.image = (tokens, index) =>
 export function createPullRequestOverviewMarkdown(
   overview: ReviewCandidate,
   source?: CommittedSource,
+  checkedOut = false,
 ): string {
   const { pullRequest: pull, account, localRepository: local } = overview;
   return [
@@ -52,7 +53,9 @@ export function createPullRequestOverviewMarkdown(
       ? [
           '## Inspected committed source',
           '',
-          '> No-switch reading. Ordinary working files and terminals remain on their earlier checkout. Saving or staging does not change inspected source.',
+          checkedOut
+            ? '> Active PR checkout. Ordinary working files and terminals use the owned review branch. Native diffs retain the exact committed source; saving or staging does not update inspected source.'
+            : '> No-switch reading. Ordinary working files and terminals remain on their earlier checkout. Saving or staging does not change inspected source.',
           '',
           `Inspected PR head: ${code(source.head)}  `,
           `Observed base tip: ${code(source.baseTip)}  `,

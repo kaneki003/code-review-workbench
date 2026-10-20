@@ -265,6 +265,7 @@ napi_value Poll(napi_env env, napi_callback_info info) {
 #else
   if (settled) {
     if (kill(-child->pid, 0) == 0) settled = false;
+    else if (errno == EPERM) settled = false;
     else if (errno != ESRCH) return Error(env, "CHILD_UNKNOWN", "Cannot establish process-group settlement.");
   }
 #endif
@@ -311,6 +312,9 @@ napi_value GroupSettled(napi_env env, napi_callback_info info) {
 #else
   if (kill(-pid,0) == 0) settled = false;
   else if (errno == ESRCH) settled = true;
+  // A group can still exist without a signalable member (including during exit
+  // on macOS). Permission denial never proves that its children have stopped.
+  else if (errno == EPERM) settled = false;
   else return Error(env,"CHILD_UNKNOWN","Cannot inspect the recorded process group.");
 #endif
   napi_value result; napi_get_boolean(env,settled,&result); return result;

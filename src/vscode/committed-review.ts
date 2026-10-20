@@ -298,14 +298,14 @@ export function createCommittedReview(initialManager: ReviewManager) {
     tree.description = `${source?.files.length ?? 0} files · ${reviewed.size} Reviewed`;
     changed.fire();
   }
-  async function show(snapshot: CommittedSource, owner = manager) {
+  async function show(snapshot: CommittedSource, owner = manager, checkedOut = false) {
     const expectedPresentation = ++presentation;
     manager = owner;
     const marks = await owner.readReviewedMarks(snapshot.id);
     assertPresentation(expectedPresentation);
     source = snapshot;
     reviewed = new Set(marks);
-    tree.message = `No-switch reading. Working files and ordinary terminals remain on their earlier checkout. Inspected head ${snapshot.head.slice(0, 8)}; base tip ${snapshot.baseTip.slice(0, 8)}; merge base ${snapshot.mergeBase?.slice(0, 8) ?? 'unavailable'}. ${snapshot.limitations.join(' ')} Text blobs load on demand; binary, LFS and large-file limits appear when opened.`;
+    tree.message = `${checkedOut ? 'Active PR checkout. Working files and ordinary terminals use the owned review branch; native diffs retain committed source.' : 'No-switch reading. Working files and ordinary terminals remain on their earlier checkout.'} Inspected head ${snapshot.head.slice(0, 8)}; base tip ${snapshot.baseTip.slice(0, 8)}; merge base ${snapshot.mergeBase?.slice(0, 8) ?? 'unavailable'}. ${snapshot.limitations.join(' ')} Text blobs load on demand; binary, LFS and large-file limits appear when opened.`;
     tree.description = `${snapshot.files.length} files · ${reviewed.size} Reviewed`;
     changed.fire();
     await vscode.commands.executeCommand('codeReviewWorkbench.files.focus');

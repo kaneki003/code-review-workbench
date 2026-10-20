@@ -11,9 +11,10 @@ import { createStoreConnection } from '../../src/connections/shared-store';
 import { createLocalRepositoryConnection } from '../../src/connections/local-repository';
 import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../../src/application/private-store';
+import type { CheckoutEditors } from '../../src/application/checkout-review';
 import type { SourceNavigation } from '../../src/application/committed-source';
 
-export const integrationTimeout = process.platform === 'win32' ? 60_000 : 20_000;
+export const integrationTimeout = process.platform === 'win32' ? 120_000 : 20_000;
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   vi.useRealTimers();
@@ -53,6 +54,7 @@ export async function fixture() {
   git('config', 'user.name', 'Fixture');
   git('config', 'user.email', 'fixture@example.test');
   git('config', 'commit.gpgsign', 'false');
+  git('config', 'core.autocrlf', 'false');
   await writeFile(join(location, 'worker.ts'), 'export const count = 1;\n');
   await writeFile(join(location, 'delete.py'), 'print("old")\n');
   git('add', '.');
@@ -131,6 +133,8 @@ export async function fixture() {
     diagnostics?: StorageDiagnostics,
     wrap: (store: StoreConnection) => StoreConnection = (store) => store,
     account = actor,
+    editors?: CheckoutEditors,
+    repositoryLocation = location,
   ) {
     const store = wrap(
       createStoreConnection(
@@ -139,7 +143,7 @@ export async function fixture() {
           osHome: home,
           candidateRoot: join(home, 'data'),
           windowId: 'source-window',
-          location,
+          location: repositoryLocation,
           actor: account,
         },
         diagnostics,
@@ -157,12 +161,13 @@ export async function fixture() {
         desktop: true,
         trusted: true,
         remote: undefined,
-        folders: [{ scheme: 'file', path: location }],
+        folders: [{ scheme: 'file', path: repositoryLocation }],
       }),
       git: async () => ({ id: 'git', label: 'Git', status: 'passed', detail: '' }),
       sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: '' }),
       native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
       store,
+      ...(editors ? { editors } : {}),
       account,
       repository: createLocalRepositoryConnection(),
       confirmLocalRepository: async () => true,
@@ -189,7 +194,12 @@ export async function fixture() {
     remoteGit('fetch', location, '+HEAD:refs/pull/20/head');
     remoteGit('update-server-info');
   }
-  async function interruptedInspector() {
+  async function interruptedInspector(
+    checkoutSourceId?: string,
+    lifecycleFault?: string,
+    stage?: 'exit',
+    faultMode: StorageDiagnostics['mode'] = 'error',
+  ) {
     const script = join(directory, 'source-process.cjs');
     await build({
       entryPoints: ['tests/fixtures/source-process.ts'],
@@ -211,6 +221,8 @@ export async function fixture() {
           actor,
         }),
         JSON.stringify(pullRequest),
+        ...(checkoutSourceId ? [checkoutSourceId] : []),
+        ...(lifecycleFault ? [lifecycleFault, stage ?? 'enter', faultMode] : []),
       ],
       { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] },
     );

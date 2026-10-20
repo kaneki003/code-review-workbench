@@ -1,4 +1,5 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
+import type { CheckoutReview, EditorSnapshot } from './checkout-review';
 import type { LocalDraft, DraftEdit, DraftDiscard, DraftCommit } from './local-draft';
 import type {
   CommittedContent,
@@ -34,6 +35,7 @@ export interface StoreView {
   process?: StoreProcess;
   ownerLocation?: string;
   code?: string;
+  checkoutPending?: boolean;
 }
 
 export interface StoreConfiguration {
@@ -55,6 +57,16 @@ export interface StoreRequest {
     | 'handoff'
     | 'recordIntent'
     | 'prepareRef'
+    | 'prepareCleanCheckout'
+    | 'prepareCleanRestore'
+    | 'beginCheckout'
+    | 'readCheckout'
+    | 'activateCheckout'
+    | 'beginCheckoutExit'
+    | 'finishCheckoutGit'
+    | 'completeCheckout'
+    | 'reconcileCheckout'
+    | 'cleanupCheckout'
     | 'executeOperation'
     | 'recover'
     | 'inspectOperation'
@@ -92,6 +104,10 @@ export interface StoreRequest {
   side?: SourceSide;
   reviewed?: boolean;
   navigation?: SourceNavigation;
+  editors?: EditorSnapshot;
+  checkoutId?: string;
+  checkoutRevision?: number;
+  checkoutChoice?: 'continue' | 'restore';
   draftId?: string;
   draftEdit?: DraftEdit;
   draftDiscard?: DraftDiscard;
@@ -105,6 +121,8 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
+  cleanup?: { removed: string[]; retained: string[] };
+  checkout?: CheckoutReview;
   draft?: LocalDraft;
   drafts?: LocalDraft[];
   draftCommit?: DraftCommit;
