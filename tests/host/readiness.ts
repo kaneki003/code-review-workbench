@@ -13,6 +13,7 @@ import type { ReviewConnections } from '../../src/application/review-manager';
 import type { ReviewCandidate } from '../../src/application/pull-request';
 import type { CommittedSource } from '../../src/application/committed-source';
 import { createServer } from 'node:http';
+import { restoreEditorScroll } from '../../src/vscode/editor-scroll';
 
 interface HostTestEvidence {
   status: string;
@@ -906,6 +907,70 @@ suite('Installed readiness VSIX', () => {
     } finally {
       tabSubscription!.dispose();
       clearTimeout(tabOpenTimeout!);
+    }
+  });
+  test('native scroll restoration waits for delayed viewport updates and corrects the reveal offset', async () => {
+    const location = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
+    const uri = vscode.Uri.file(join(location, 'scroll-position.txt'));
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    try {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await writeFile(
+        uri.fsPath,
+        Array.from({ length: 400 }, (_, line) => `line ${line}`).join('\n'),
+      );
+      const editor = await vscode.window.showTextDocument(uri, {
+        preview: false,
+        viewColumn: vscode.ViewColumn.One,
+      });
+      // Delay delivery at the native API boundary. The real editor still applies
+      // each reveal and publishes its actual visible ranges, including AtTop's offset.
+      for (const delay of [150, 450, 1200]) {
+        await restoreEditorScroll(editor, 0);
+        const delayed = {
+          document: editor.document,
+          get visibleRanges() {
+            return editor.visibleRanges;
+          },
+          revealRange(...args: Parameters<vscode.TextEditor['revealRange']>) {
+            timers.push(setTimeout(() => editor.revealRange(...args), delay));
+          },
+        };
+        await restoreEditorScroll(delayed, 115);
+        assert.equal(editor.visibleRanges[0]?.start.line, 115);
+        await new Promise((resolve) => setTimeout(resolve, delay + 100));
+        assert.equal(
+          editor.visibleRanges[0]?.start.line,
+          115,
+          'No pending reveal may move the restored viewport',
+        );
+      }
+      // Start at the native offset result itself. A request for line115 can
+      // leave this viewport unchanged, but restoration must still reach115.
+      editor.revealRange(new vscode.Range(115, 0, 115, 0), vscode.TextEditorRevealType.AtTop);
+      const until = Date.now() + 5000;
+      while (editor.visibleRanges[0]?.start.line === 115) {
+        if (Date.now() > until) throw new Error('Native AtTop did not expose its reveal offset');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await restoreEditorScroll(editor, 115);
+      assert.equal(editor.visibleRanges[0]?.start.line, 115);
+      await assert.rejects(
+        restoreEditorScroll(
+          {
+            document: editor.document,
+            visibleRanges: [new vscode.Range(0, 0, 0, 0)],
+            revealRange() {},
+          },
+          115,
+        ),
+        { code: 'EDITOR_RESTORATION' },
+        'A viewport that never restores must keep Exit in recovery',
+      );
+    } finally {
+      timers.forEach(clearTimeout);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await rm(uri.fsPath, { force: true });
     }
   });
 });

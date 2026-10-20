@@ -10,6 +10,7 @@ import type {
 import { StoreError } from '../application/private-store';
 import { validEditorSnapshot } from '../connections/checkout-journal';
 import type { createOverviewDocuments } from './overview-documents';
+import { restoreEditorScroll } from './editor-scroll';
 type Overviews = Pick<
   ReturnType<typeof createOverviewDocuments>,
   'read' | 'retain' | 'preview' | 'showPreview'
@@ -347,23 +348,7 @@ export function createCheckoutEditors(overviews?: Overviews): CheckoutEditors {
                     range.endCharacter,
                   ),
             );
-            for (let attempt = 0; attempt < 3; attempt += 1) {
-              const current = editor!.visibleRanges[0]?.start.line ?? 0;
-              if (attempt > 0 && current === saved.topLine) break;
-              const line = Math.min(
-                editor!.document.lineCount - 1,
-                Math.max(0, saved.topLine + (attempt > 0 ? saved.topLine - current : 0)),
-              );
-              editor!.revealRange(
-                new vscode.Range(line, 0, line, 0),
-                vscode.TextEditorRevealType.AtTop,
-              );
-              await new Promise((resolve) => setTimeout(resolve, 30));
-            }
-            if (editor!.visibleRanges[0]?.start.line !== saved.topLine)
-              failure(
-                'The saved editor scroll position did not restore. Retry; Exit is not complete.',
-              );
+            await restoreEditorScroll(editor!, saved.topLine);
           }
           if (
             tab.kind === 'diff' &&
