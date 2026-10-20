@@ -1,5 +1,6 @@
 import type { GitHubAccount, ReviewCandidate, LocalRepositoryRegistration } from './pull-request';
 import type { CheckoutReview, EditorSnapshot } from './checkout-review';
+import type { LocalDraft, DraftEdit, DraftDiscard, DraftCommit } from './local-draft';
 import type {
   CommittedContent,
   CommittedSource,
@@ -81,7 +82,13 @@ export interface StoreRequest {
     | 'readReviewed'
     | 'saveNavigation'
     | 'validateNavigation'
-    | 'readNavigation';
+    | 'readNavigation'
+    | 'createDraft'
+    | 'saveDraft'
+    | 'discardDraft'
+    | 'readDraft'
+    | 'listDrafts'
+    | 'listReviewDrafts';
   lease?: StoreLease;
   targetWindowId?: string;
   handoff?: StoreHandoff;
@@ -101,6 +108,9 @@ export interface StoreRequest {
   checkoutId?: string;
   checkoutRevision?: number;
   checkoutChoice?: 'continue' | 'restore';
+  draftId?: string;
+  draftEdit?: DraftEdit;
+  draftDiscard?: DraftDiscard;
 }
 
 export interface StoreHandoff {
@@ -113,6 +123,9 @@ export interface StoreHandoff {
 export interface StoreReply {
   cleanup?: { removed: string[]; retained: string[] };
   checkout?: CheckoutReview;
+  draft?: LocalDraft;
+  drafts?: LocalDraft[];
+  draftCommit?: DraftCommit;
   sourceId?: string;
   sourcePlan?: SourcePlan;
   source?: CommittedSource;

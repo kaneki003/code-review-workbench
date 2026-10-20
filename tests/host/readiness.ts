@@ -14,6 +14,8 @@ import type { ReviewCandidate } from '../../src/application/pull-request';
 import type { CommittedSource } from '../../src/application/committed-source';
 import { createServer } from 'node:http';
 import { restoreEditorScroll } from '../../src/vscode/editor-scroll';
+import { exerciseDraftWriter, exerciseFailedDraftDiscard } from './draft-writer';
+import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 
 interface HostTestEvidence {
   status: string;
@@ -21,6 +23,7 @@ interface HostTestEvidence {
   host?: unknown;
   report?: ReadinessReport;
   extensionPath?: string;
+  drafts?: unknown;
 }
 
 async function fingerprintFiles(directory: string): Promise<Record<string, string>> {
@@ -324,11 +327,12 @@ suite('Installed readiness VSIX', () => {
     // This case runs many real Git/SQLite/editor round trips. Windows CI
     // exceeded the earlier whole-case bounds; individual production
     // fetch, source-read and focus deadlines remain unchanged.
-    this.timeout(process.platform === 'win32' ? 180000 : 25000);
+    this.timeout(process.platform === 'win32' ? 180000 : 60000);
     const extension = vscode.extensions.getExtension<{
       createManager(
         configuration: StoreConfiguration,
         review?: Pick<ReviewConnections, 'github' | 'confirmLocalRepository'>,
+        diagnostics?: StorageDiagnostics,
       ): ReviewManager;
       showCommittedSource(source: CommittedSource, owner: ReviewManager): Promise<void>;
       showOverview(candidate: ReviewCandidate, source?: CommittedSource): Promise<vscode.Uri>;
@@ -419,26 +423,29 @@ suite('Installed readiness VSIX', () => {
       base: { repository: { id: '3001', fullName: 'acme/service' }, ref: 'main', oid: base },
       head: { repository: { id: '4001', fullName: 'fork/service' }, ref: 'feature', oid: head },
     };
-    let manager = api.createManager(
-      { osHome: home, candidateRoot: join(home, 'data'), location, windowId: 'source-host' },
-      {
-        confirmLocalRepository: async () => true,
-        github: {
-          sessionChanged() {},
-          resolvePullRequest: async () => ({
-            status: 'ready',
-            account: { host: 'github.com', userId: '1001', login: 'reviewer' },
-            pullRequest,
-            repositories: [
-              {
-                identity: pullRequest.base.repository,
-                remote: { owner: 'acme', repository: 'service', transport: 'https' },
-              },
-            ],
-          }),
+    const createSourceManager = (diagnostics: StorageDiagnostics) =>
+      api.createManager(
+        { osHome: home, candidateRoot: join(home, 'data'), location, windowId: 'source-host' },
+        {
+          confirmLocalRepository: async () => true,
+          github: {
+            sessionChanged() {},
+            resolvePullRequest: async () => ({
+              status: 'ready',
+              account: { host: 'github.com', userId: '1001', login: 'reviewer' },
+              pullRequest,
+              repositories: [
+                {
+                  identity: pullRequest.base.repository,
+                  remote: { owner: 'acme', repository: 'service', transport: 'https' },
+                },
+              ],
+            }),
+          },
         },
-      },
-    );
+        diagnostics,
+      );
+    let manager = createSourceManager({ boundary: 'saveDraft.commit.before', mode: 'commit' });
     const diffConfiguration = vscode.workspace.getConfiguration('diffEditor');
     const previousInline = diffConfiguration.get('renderSideBySide');
     const previousAdaptive = diffConfiguration.get('useInlineViewWhenSpaceIsLimited');
@@ -653,6 +660,7 @@ suite('Installed readiness VSIX', () => {
       }
       await vscode.commands.executeCommand('workbench.action.zoomIn');
       await vscode.commands.executeCommand('workbench.action.zoomOut');
+      evidence.drafts = await exerciseDraftWriter(manager, source, target);
       // Exercise the complete clean checkout through the installed manager and
       // its actual native editor adapter, after the no-switch assertions above.
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -775,6 +783,17 @@ suite('Installed readiness VSIX', () => {
       assert.deepEqual(restoredPrior.selections, priorSelections);
       assert.equal(restoredPrior.visibleRanges[0]?.start.line, priorTop);
       assert.equal((await manager.releasePrivateStore()).status, 'closed');
+      const retryingDiscard = createSourceManager({
+        boundary: 'discardDraft.commit.before',
+        mode: 'commit',
+      });
+      try {
+        await retryingDiscard.openPullRequestOverview(pullRequest.url);
+        await api.showCommittedSource(source, retryingDiscard);
+        await exerciseFailedDraftDiscard(retryingDiscard, target);
+      } finally {
+        await retryingDiscard.dispose();
+      }
     } finally {
       await diffConfiguration.update(
         'renderSideBySide',

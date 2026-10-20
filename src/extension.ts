@@ -19,6 +19,8 @@ import { createCommittedReview } from './vscode/committed-review';
 import type { CommittedSource } from './application/committed-source';
 import { createCheckoutEditors } from './vscode/checkout-editors';
 import type { CheckoutResult } from './application/checkout-review';
+import { createDraftReview } from './vscode/draft-review';
+import type { StorageDiagnostics } from './connections/storage-diagnostics';
 
 let activeManager: ReviewManager | undefined;
 
@@ -48,6 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
       ReviewConnections,
       'github' | 'repository' | 'account' | 'confirmLocalRepository'
     > = {},
+    diagnostics?: StorageDiagnostics,
   ) {
     return new ReviewManager({
       environment: readHostEnvironment,
@@ -63,6 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
       store: createStoreConnection(
         vscode.Uri.joinPath(context.extensionUri, 'dist', 'store-worker.cjs').fsPath,
         configuration,
+        diagnostics,
       ),
       github,
       repository: createLocalRepositoryConnection(),
@@ -86,6 +90,11 @@ export function activate(context: vscode.ExtensionContext) {
   activeManager = manager;
   const panel = createReadinessPanel(context.extensionUri, () => manager.checkReadiness());
   const committedReview = createCommittedReview(manager);
+  const draftReview = createDraftReview(context, committedReview, manager);
+  async function showCommitted(source: CommittedSource, owner = manager) {
+    await committedReview.show(source, owner);
+    await draftReview.showSource(source, owner);
+  }
   let selection = 0;
   let lastUrl = '';
   let selectedCandidate: ReviewCandidate | undefined;
@@ -104,11 +113,15 @@ export function activate(context: vscode.ExtensionContext) {
       if (retained.status === 'ready') {
         try {
           await committedReview.show(retained.source, manager, true);
+          await draftReview.showSource(retained.source, manager);
         } catch (error) {
           if (presentation === checkoutPresentation) throw error;
         }
       }
-    } else if (result.status === 'complete') committedReview.clear();
+    } else if (result.status === 'complete') {
+      committedReview.clear();
+      draftReview.clear();
+    }
     if (presentation !== checkoutPresentation) return result;
     if (result.status === 'active' || result.status === 'complete')
       void vscode.window.showInformationMessage(result.detail);
@@ -116,6 +129,7 @@ export function activate(context: vscode.ExtensionContext) {
     return result;
   }
   async function recoverCheckout(choice?: 'continue' | 'restore') {
+    if (!(await draftReview.prepareChange())) return undefined;
     if (!lastUrl) {
       const overview = await vscode.commands.executeCommand(
         'codeReviewWorkbench.openPullRequestOverview',
@@ -169,6 +183,7 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.exitReview', async () => {
+      if (!(await draftReview.prepareChange())) return undefined;
       selection += 1;
       checkoutPresentation += 1;
       committedReview.clear();
@@ -190,6 +205,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('codeReviewWorkbench.recoverPullRequestCheckout', () =>
       recoverCheckout(),
     ),
+    draftReview,
     vscode.commands.registerCommand('codeReviewWorkbench.checkReadiness', () => panel.show()),
     vscode.commands.registerCommand('codeReviewWorkbench.openPrivateStore', async () => {
       const view = await manager.openPrivateStore();
@@ -197,12 +213,14 @@ export function activate(context: vscode.ExtensionContext) {
       return view;
     }),
     vscode.commands.registerCommand('codeReviewWorkbench.releasePrivateStore', async () => {
-      checkoutPresentation += 1;
-      selection += 1;
-      selectedCandidate = undefined;
-      committedReview.clear();
-      manager.fencePullRequestOverview();
       const view = await manager.releasePrivateStore();
+      if (view.status === 'closed') {
+        checkoutPresentation += 1;
+        selection += 1;
+        selectedCandidate = undefined;
+        committedReview.clear();
+        draftReview.clear();
+      }
       void vscode.window.showInformationMessage(view.detail);
       return view;
     }),
@@ -214,10 +232,12 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'codeReviewWorkbench.openPullRequestOverview',
       async (providedUrl?: unknown) => {
+        if (!(await draftReview.prepareChange())) return undefined;
         checkoutPresentation += 1;
         const selected = ++selection;
         selectedCandidate = undefined;
         committedReview.clear();
+        draftReview.clear();
         manager.fencePullRequestOverview();
         const url =
           typeof providedUrl === 'string'
@@ -261,9 +281,10 @@ export function activate(context: vscode.ExtensionContext) {
       const active = await manager.readCheckoutReview();
       if (active && active.phase !== 'complete') {
         const retained = await manager.readCommittedSource(active.sourceId);
-        if (retained.status === 'ready')
+        if (retained.status === 'ready') {
           await committedReview.show(retained.source, manager, active.phase === 'active');
-        else void vscode.window.showWarningMessage(retained.detail);
+          await draftReview.showSource(retained.source, manager);
+        } else void vscode.window.showWarningMessage(retained.detail);
         return retained;
       }
       const result = await vscode.window.withProgress(
@@ -284,7 +305,7 @@ export function activate(context: vscode.ExtensionContext) {
         return result;
       }
       incompleteSourceId = undefined;
-      await committedReview.show(result.source);
+      await showCommitted(result.source);
       await documents.show(candidate, () => selected === selection, result.source);
       return result;
     }),
@@ -301,7 +322,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (selected !== selection) return result;
       if (result.status === 'ready') {
         incompleteSourceId = undefined;
-        await committedReview.show(result.source);
+        await showCommitted(result.source);
         await documents.show(result.source.candidate, () => selected === selection, result.source);
       } else void vscode.window.showWarningMessage(result.detail);
       return result;
@@ -312,6 +333,7 @@ export function activate(context: vscode.ExtensionContext) {
         checkoutPresentation += 1;
         selectedCandidate = undefined;
         committedReview.clear();
+        draftReview.clear();
         const changed = ++selection;
         void vscode.window
           .showWarningMessage(
@@ -331,6 +353,7 @@ export function activate(context: vscode.ExtensionContext) {
       checkoutPresentation += 1;
       selectedCandidate = undefined;
       committedReview.clear();
+      draftReview.clear();
       selection += 1;
       manager.fencePullRequestOverview();
     }),
@@ -350,7 +373,7 @@ export function activate(context: vscode.ExtensionContext) {
     showOverview: (candidate: ReviewCandidate, source?: CommittedSource) =>
       documents.show(candidate, () => true, source),
     showCommittedSource: (source: CommittedSource, owner: ReviewManager) =>
-      committedReview.show(source, owner),
+      showCommitted(source, owner),
     // A silent probe proves routing to the built-in provider without triggering
     // interactive login in an unattended host fixture.
     probeGitHubSignIn: async () => ({

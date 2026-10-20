@@ -1,0 +1,302 @@
+import {
+  DraftChunkAssembly,
+  maxDraftSnapshotBytes,
+  isDraftSnapshot,
+  isDraftSnapshotChunk,
+  draftEditRequests,
+  draftControlRequest,
+  type DraftSnapshot,
+  type DraftRequest,
+  type DraftControl,
+} from '../shared/draft-writer';
+
+interface RecoveryCopy {
+  draftId: string;
+  reviewId: string;
+  contentGeneration: number;
+  body: string;
+  label: string;
+}
+interface ClientState {
+  snapshot: DraftSnapshot | undefined;
+  body: string;
+  editRevision: number;
+  problem: string | undefined;
+  action: DraftControl | undefined;
+  recovery: RecoveryCopy | undefined;
+}
+// Temporary presentation/input only. The host owns received pending text and
+// storage; a transport acknowledgment is never a durable Saved acknowledgment.
+export class DraftWriterClient {
+  private state: ClientState = {
+    snapshot: undefined,
+    body: '',
+    editRevision: 0,
+    problem: undefined,
+    action: undefined,
+    recovery: undefined,
+  };
+  private readonly assembly = new DraftChunkAssembly(maxDraftSnapshotBytes);
+  private incomingSequence = 0;
+  private syncing = false;
+  private discardRequested = false;
+  private readonly fencedInputs = new Map<string, RecoveryCopy>();
+  private pendingControl: DraftControl | undefined;
+  private sentEditRevision = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly listeners = new Set<() => void>();
+  constructor(
+    readonly instanceId: string,
+    private readonly post: (message: DraftRequest) => void,
+  ) {}
+  read = () => this.state;
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+  private update(change: Partial<ClientState>) {
+    this.state = { ...this.state, ...change };
+    for (const listener of this.listeners) listener();
+  }
+  connect() {
+    this.send({
+      version: 1,
+      type: 'ready',
+      instanceId: this.instanceId,
+      requestId: crypto.randomUUID(),
+    });
+  }
+  private send(message: DraftRequest) {
+    try {
+      this.post(message);
+    } catch {
+      this.fail('The host did not receive this input. Keep a copy and Retry.');
+    }
+  }
+  private fail(problem: string) {
+    this.pendingControl = undefined;
+    this.syncing = false;
+    this.update({ problem, action: undefined });
+  }
+  private watch() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(
+      () => this.fail('The latest input has not been acknowledged. Keep a copy and Retry.'),
+      12_000,
+    );
+  }
+  private sync() {
+    if (this.syncing) return;
+    this.syncing = true;
+    this.send({
+      version: 1,
+      type: 'sync',
+      instanceId: this.instanceId,
+      requestId: crypto.randomUUID(),
+    });
+  }
+  receive(value: unknown) {
+    if (
+      !isDraftSnapshotChunk(value) ||
+      value.instanceId !== this.instanceId ||
+      value.sequence <= (this.state.snapshot?.sequence ?? 0)
+    )
+      return;
+    try {
+      if (value.sequence !== this.incomingSequence) {
+        this.incomingSequence = value.sequence;
+        this.assembly.clear();
+      }
+      this.assembly.push(value);
+      if (!this.assembly.complete) return;
+      const snapshot: unknown = JSON.parse(
+        this.assembly.finish(value.transferId, value.parts, value.byteLength),
+      );
+      if (
+        !isDraftSnapshot(snapshot) ||
+        snapshot.instanceId !== this.instanceId ||
+        snapshot.sequence !== value.sequence
+      )
+        throw new Error('The host projection was malformed. Keep the input and Retry.');
+      const previous = this.state.snapshot;
+      if (snapshot.fenced) {
+        for (const copy of [this.recoveryCopy(), this.state.recovery])
+          if (copy) this.fencedInputs.set(copy.draftId, copy);
+        this.pendingControl = undefined;
+        this.syncing = false;
+        this.discardRequested = false;
+        this.sentEditRevision = 0;
+        clearTimeout(this.timer);
+        this.update({
+          snapshot,
+          body: '',
+          editRevision: 0,
+          recovery: undefined,
+          action: undefined,
+          problem: undefined,
+        });
+        return;
+      }
+      if (previous && snapshot.sequence !== previous.sequence + 1 && !snapshot.reset) {
+        this.sync();
+        return;
+      }
+      if (snapshot.reset) this.syncing = false;
+      const resynchronizing = Boolean(this.pendingControl);
+      if (this.pendingControl && snapshot.reset) {
+        const control = this.pendingControl;
+        this.pendingControl = undefined;
+        const next = snapshot.state;
+        if (next && next.writerId === previous?.state?.writerId) {
+          // A reset establishes the authoritative revision after all prior
+          // requests. Keep visible text while rebasing; older frames are now
+          // below this sequence and cannot replace the recovery input.
+          try {
+            const requests = draftEditRequests(snapshot, this.state.body, next.editRevision);
+            this.sentEditRevision = next.editRevision + 1;
+            this.update({
+              snapshot,
+              editRevision: this.sentEditRevision,
+              problem: undefined,
+              action: undefined,
+            });
+            for (const request of requests) this.send(request);
+            if (!this.state.problem) this.control(control);
+          } catch (error) {
+            this.fail(error instanceof Error ? error.message : 'Keep a copy and Retry.');
+          }
+          return;
+        }
+      }
+      let { body, editRevision, recovery, action } = this.state;
+      const next = snapshot.state;
+      const fencedInput = next ? this.fencedInputs.get(next.id) : undefined;
+      if (
+        next &&
+        fencedInput?.reviewId === next.reviewId &&
+        fencedInput.contentGeneration === next.contentGeneration
+      ) {
+        recovery = fencedInput;
+        this.fencedInputs.delete(next.id);
+      }
+      if (next?.writerId !== previous?.state?.writerId) {
+        if (
+          previous?.state &&
+          (action !== 'close' || Boolean(next) || resynchronizing) &&
+          action !== 'discard' &&
+          !this.discardRequested &&
+          editRevision > previous.state.committedRevision &&
+          !recovery
+        )
+          recovery = this.recoveryCopy();
+        body = next?.body ?? '';
+        editRevision = next?.editRevision ?? 0;
+        this.sentEditRevision = editRevision;
+        action = undefined;
+        this.discardRequested = false;
+      } else if (next && next.editRevision > editRevision && !this.state.problem) {
+        body = next.body;
+        editRevision = next.editRevision;
+      } else if (next && next.editRevision === editRevision && next.body !== body) {
+        this.fail('The host projection disagrees with the visible input. Keep a copy and Retry.');
+        this.sync();
+        return;
+      }
+      if (
+        !next ||
+        next.status === 'failed' ||
+        (action === 'retry' && next.committedRevision === editRevision)
+      )
+        action = undefined;
+      if (next && next.editRevision >= editRevision) clearTimeout(this.timer);
+      if (next) this.sentEditRevision = Math.max(this.sentEditRevision, next.editRevision);
+      this.update({
+        snapshot,
+        body,
+        editRevision,
+        recovery,
+        action,
+        problem: this.state.problem ?? snapshot.problem,
+      });
+    } catch (error) {
+      this.assembly.clear();
+      this.fail(
+        error instanceof Error
+          ? error.message
+          : 'The projection is incomplete. Keep the input and Retry.',
+      );
+      this.sync();
+    }
+  }
+  private recoveryCopy(): RecoveryCopy | undefined {
+    const state = this.state.snapshot?.state;
+    if (!state || this.discardRequested || this.state.editRevision <= state.committedRevision)
+      return;
+    return {
+      draftId: state.id,
+      reviewId: state.reviewId,
+      contentGeneration: state.contentGeneration,
+      body: this.state.body,
+      label: `PR #${state.review.pullNumber} · ${state.target.anchor.path} · ${state.target.anchor.commit.slice(0, 8)}`,
+    };
+  }
+  edit(body: string): boolean {
+    const snapshot = this.state.snapshot;
+    if (!snapshot?.state || this.state.action || this.state.recovery) return false;
+    const expected = this.state.problem
+      ? Math.max(snapshot.state.editRevision, this.sentEditRevision)
+      : this.state.editRevision;
+    this.discardRequested = false;
+    this.update({ body, editRevision: expected + 1, problem: undefined });
+    try {
+      const requests = draftEditRequests(snapshot, body, expected);
+      this.sentEditRevision = expected + 1;
+      this.watch();
+      for (const request of requests) this.send(request);
+      return true;
+    } catch (error) {
+      this.fail(
+        error instanceof Error ? error.message : 'This input could not be sent. Keep a copy.',
+      );
+      return false;
+    }
+  }
+  control(type: DraftControl) {
+    const snapshot = this.state.snapshot;
+    if (!snapshot?.state) {
+      this.sync();
+      return;
+    }
+    if (this.state.action) return;
+    if (type === 'discard') this.discardRequested = true;
+    if (type === 'close') this.discardRequested = false;
+    try {
+      if (this.state.problem && type !== 'discard') {
+        this.pendingControl = type;
+        this.update({ action: type });
+        this.watch();
+        this.sync();
+        return;
+      }
+      const expected =
+        type === 'discard' && this.state.problem
+          ? snapshot.state.editRevision
+          : this.state.editRevision;
+      this.update({ action: type });
+      this.watch();
+      this.send(draftControlRequest(snapshot, type, expected));
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : 'Keep the input and Retry.');
+    }
+  }
+  dismissRecovery() {
+    this.update({ recovery: undefined });
+  }
+  dispose() {
+    clearTimeout(this.timer);
+    this.fencedInputs.clear();
+    this.listeners.clear();
+  }
+}

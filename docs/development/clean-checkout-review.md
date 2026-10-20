@@ -1,5 +1,15 @@
 # Clean-checkout implementation review
 
+## Integration after anchored local drafts (#35)
+
+PR #34 now incorporates `main` at `5e4d20a`, including the merged anchored local drafts. Shared storage keeps both action sets and account fences. Checkout presentation restores draft tags/discovery alongside retained committed source; Exit/recovery await draft Close, and releasing storage lets the manager flush before clearing the views. The shared extracted fixture retains both account-isolation and checkout/editor/crash seams, with all existing test cases preserved.
+
+Local formatting/typechecking and **201 tests across ten files pass**. The installed VS Code 1.142.0 host passes **all seven cases**, including native draft typing/Retry/Close/Discard and clean checkout/owner recreation/Exit. A native test exposed a Retry/Preview race: the host acknowledgment can arrive while the rendered button remains disabled. The browser helper now waits for an enabled button before clicking.
+
+Separate Standards and Spec integration reviews found the same missing draft projection on retained-checkout inspection. That path now restores both projections; both reviewers confirmed **zero remaining findings**. The cross-platform matrix reruns on the updated PR head.
+
+## Original implementation review
+
 Reviewed against freshly fetched `origin/main`, pinned at `91c7abd44c225119ff243a5cab3e63eda4593135`, as selected by the owner. Standards and spec reviews ran in separate agents, first at the guarded-Git checkpoint and then across the full [issue #22](https://github.com/kaneki003/code-review-workbench/issues/22) implementation through `ea1717c`, with focused follow-up review of the corrections below. The [walkthrough](clean-checkout.md) describes the final feature.
 
 ## Standards

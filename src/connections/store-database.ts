@@ -8,6 +8,7 @@ import type {
   StoreRequest,
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
+import { isDraftAction } from '../application/local-draft';
 import {
   recovery,
   sequence,
@@ -18,15 +19,23 @@ import {
 import { createHash, randomUUID } from 'node:crypto';
 
 const APPLICATION_ID = 0x43525731;
-export function transaction<T>(database: DatabaseSync, action: () => T): T {
-  database.exec('BEGIN IMMEDIATE');
+export function transaction<T>(
+  database: DatabaseSync,
+  action: () => T,
+  afterRollback?: (error: unknown) => Error,
+): T {
+  let began = false;
   try {
+    database.exec('BEGIN IMMEDIATE');
+    began = true;
     const result = action();
     database.exec('COMMIT');
     return result;
   } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
+    // A failed BEGIN has no effects. Only a confirmed rollback permits a caller
+    // to classify a failed write as retryable. A failed rollback stays unknown.
+    if (began && database.isTransaction) database.exec('ROLLBACK');
+    throw afterRollback ? afterRollback(error) : error;
   }
 }
 
@@ -207,7 +216,13 @@ export function claimDatabase(
 }
 
 export function requestDigest(request: StoreRequest) {
-  return createHash('sha256').update(JSON.stringify(request)).digest('hex');
+  // The owner fence stays authoritative. Its global revision advances after
+  // unrelated commits, so it is not part of a draft request's content identity.
+  const identity =
+    isDraftAction(request.action) && request.lease
+      ? { ...request, lease: { ...request.lease, revision: 0 } }
+      : request;
+  return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
 }
 
 export function previousReply(

@@ -20,6 +20,16 @@ const nodeBundleOptions = {
   external: ['vscode', ...builtinModules, ...builtinModules.map((name) => `node:${name}`)],
 };
 const bundles = [
+  {
+    bundle: true,
+    platform: 'browser',
+    target: 'chrome150',
+    format: 'iife',
+    minify: !watchMode,
+    define: { 'process.env.NODE_ENV': JSON.stringify(watchMode ? 'development' : 'production') },
+    entryPoints: ['src/webviews/draft-main.tsx'],
+    outfile: 'dist/draft-writer.js',
+  },
   { ...nodeBundleOptions, entryPoints: ['src/extension.ts'], outfile: 'dist/extension.cjs' },
   {
     ...nodeBundleOptions,

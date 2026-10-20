@@ -30,6 +30,15 @@ import {
   type CheckoutResult,
   type CheckoutReview,
 } from './checkout-review';
+import { DraftWriter } from './draft-writer';
+import { DraftWriterProtocol } from './draft-writer-protocol';
+import {
+  isDraftAction,
+  type LocalDraft,
+  type DraftEdit,
+  type DraftDiscard,
+  type DraftCommit,
+} from './local-draft';
 
 export interface HostEnvironment {
   vscode: string;
@@ -59,6 +68,8 @@ export interface ReviewConnections {
 
 // The owning manager coordinates actions independently of editor/view lifetime.
 export class ReviewManager {
+  private readonly draftWriter: DraftWriter;
+  private readonly draftProtocol: DraftWriterProtocol;
   private storeLease: StoreLease | undefined;
   private storeQueue: Promise<unknown> = Promise.resolve();
   private overviewGeneration = 0;
@@ -68,11 +79,22 @@ export class ReviewManager {
   constructor(private readonly connections: ReviewConnections) {
     this.account = connections.account;
     this.sourceAuthorized = Boolean(connections.account);
+    this.draftWriter = new DraftWriter({
+      read: (id) => this.readLocalDraft(id),
+      save: (edit) => this.saveLocalDraft(edit),
+      discard: (change) => this.discardLocalDraft(change),
+      authority: () =>
+        this.sourceAuthorized && this.storeLease
+          ? { incarnation: this.storeLease.incarnation, fence: this.storeLease.fence }
+          : undefined,
+    });
+    this.draftProtocol = new DraftWriterProtocol(this.draftWriter);
   }
   async dispose(): Promise<void> {
     try {
       if (this.storeLease) await this.releasePrivateStore();
     } finally {
+      this.draftWriter.reset();
       await this.connections.store?.dispose();
     }
   }
@@ -83,7 +105,15 @@ export class ReviewManager {
       ...(this.account ? { actor: this.account } : {}),
     }).then((reply) => reply.view);
   }
-  releasePrivateStore(): Promise<StoreView> {
+  async releasePrivateStore(): Promise<StoreView> {
+    if (!(await this.draftWriter.flush()))
+      return {
+        status: 'recovery',
+        code: 'DRAFT_SAVE_FAILED',
+        detail:
+          'The latest draft is not saved. Keep the writer open, copy the input if needed and Retry before releasing storage.',
+      };
+    this.draftWriter.reset();
     this.fencePullRequestOverview();
     return this.storeAction('release');
   }
@@ -346,6 +376,9 @@ export class ReviewManager {
     this.sourceAuthorized = false;
     this.overviewGeneration += 1;
     this.connections.github?.sessionChanged();
+    this.draftWriter.fence();
+    this.draftProtocol.invalidate();
+    this.draftWriter.changed();
   }
 
   handleGitHubSessionChange(requestingFirstSession: boolean): boolean {
@@ -457,6 +490,97 @@ export class ReviewManager {
   }
   async readSourceNavigation(): Promise<SourceNavigation | undefined> {
     return (await this.storeRequest('readNavigation')).navigation;
+  }
+
+  async createLocalDraft(target: SourceNavigation): Promise<LocalDraft> {
+    const navigation = structuredClone(target);
+    const reply = await this.storeRequest('createDraft', {
+      sourceId: navigation.anchor.sourceId,
+      navigation,
+    });
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    const draft = await this.readLocalDraft(reply.draftCommit.draftId);
+    if (!draft) throw new StoreError('DRAFT_UNAVAILABLE', 'The new draft could not be reopened.');
+    return draft;
+  }
+  openDraftWriter(id: string) {
+    return this.draftWriter.open(id);
+  }
+  readDraftWriter() {
+    return this.draftWriter.read();
+  }
+  editDraftWriter(writerId: string, expectedEditRevision: number, body: string) {
+    return this.draftWriter.edit(writerId, expectedEditRevision, body);
+  }
+  flushDraftWriter() {
+    return this.draftWriter.flush();
+  }
+  closeDraftWriter(writerId: string) {
+    return this.draftWriter.close(writerId);
+  }
+  discardDraftWriter(writerId: string) {
+    return this.draftWriter.discard(writerId);
+  }
+  retryDraftWriter(writerId: string) {
+    return this.draftWriter.retry(writerId);
+  }
+  onDraftWriterChange(listener: () => void) {
+    return this.draftWriter.subscribe(listener);
+  }
+  attachDraftWriter(instanceId: string) {
+    return this.draftProtocol.attach(instanceId);
+  }
+  detachDraftWriter(instanceId: string) {
+    this.draftProtocol.detach(instanceId);
+  }
+  snapshotDraftWriter(instanceId: string, reset = false) {
+    return this.draftProtocol.snapshot(instanceId, reset);
+  }
+  handleDraftWriterMessage(message: unknown) {
+    return this.draftProtocol.handle(message);
+  }
+  async readLocalDraft(draftId: string): Promise<LocalDraft | undefined> {
+    const reply = await this.storeRequest('readDraft', { draftId });
+    if (reply.view.status !== 'owned')
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.draft;
+  }
+  async listLocalDrafts(sourceId: string): Promise<LocalDraft[]> {
+    const reply = await this.storeRequest('listDrafts', { sourceId });
+    if (!reply.drafts)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.drafts;
+  }
+  async listReviewDrafts(sourceId: string): Promise<LocalDraft[]> {
+    const reply = await this.storeRequest('listReviewDrafts', { sourceId });
+    if (!reply.drafts)
+      throw new StoreError(reply.view.code ?? 'DRAFT_UNAVAILABLE', reply.view.detail);
+    return reply.drafts;
+  }
+  async saveLocalDraft(edit: DraftEdit): Promise<DraftCommit> {
+    const change = structuredClone(edit);
+    const reply = await this.storeRequest(
+      'saveDraft',
+      { draftEdit: change },
+      undefined,
+      change.requestId,
+    );
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_SAVE_FAILED', reply.view.detail);
+    return reply.draftCommit;
+  }
+  async discardLocalDraft(discard: DraftDiscard): Promise<DraftCommit> {
+    const change = structuredClone(discard);
+    const reply = await this.storeRequest(
+      'discardDraft',
+      { draftDiscard: change },
+      undefined,
+      change.requestId,
+    );
+    if (!reply.draftCommit)
+      throw new StoreError(reply.view.code ?? 'DRAFT_DISCARD_FAILED', reply.view.detail);
+    return reply.draftCommit;
   }
 
   async openPullRequestOverview(url: string): Promise<PullRequestOverview> {
@@ -615,14 +739,18 @@ export class ReviewManager {
       | 'checkoutId'
       | 'checkoutRevision'
       | 'checkoutChoice'
+      | 'draftId'
+      | 'draftEdit'
+      | 'draftDiscard'
     > = {},
     overviewGeneration?: number,
-    requestId?: string,
+    requestId: string = randomUUID(),
   ): Promise<StoreReply> {
+    const privateAction =
+      isSourceAction(action) || isCheckoutAction(action) || isDraftAction(action);
     const requestedGeneration = overviewGeneration ?? this.overviewGeneration;
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
-      const accountAction = isSourceAction(action) || isCheckoutAction(action);
-      if (accountAction && !this.sourceAuthorized)
+      if (privateAction && !this.sourceAuthorized)
         return {
           view: {
             status: 'blocked',
@@ -631,7 +759,7 @@ export class ReviewManager {
           },
         };
       if (
-        (overviewGeneration !== undefined || accountAction) &&
+        (overviewGeneration !== undefined || privateAction) &&
         requestedGeneration !== this.overviewGeneration
       )
         return {
@@ -683,7 +811,7 @@ export class ReviewManager {
           };
         const request: StoreRequest = {
           protocol: 1,
-          id: requestId ?? randomUUID(),
+          id: requestId,
           action,
           workspacePath: host.folders[0]!.path,
           ...fields,
@@ -698,13 +826,18 @@ export class ReviewManager {
         )
           this.storeLease = reply.lease;
         if (action === 'release' && reply.view.status === 'closed') this.account = undefined;
-        if (accountAction && requestedGeneration !== this.overviewGeneration)
+        if (privateAction && requestedGeneration !== this.overviewGeneration)
           return {
             view: {
               status: 'blocked',
               detail:
                 'The account or selected review changed while this source request was running. Its durable receipt was retained; reopen the verified overview before continuing.',
             },
+            // Fence presentation, not an already committed mutation outcome.
+            // These receipts contain identity/revisions only, never draft text.
+            ...((action === 'saveDraft' || action === 'discardDraft') && reply.draftCommit
+              ? { draftCommit: reply.draftCommit }
+              : {}),
           };
         return reply;
       } catch (error) {
