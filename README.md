@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and clean PR checkout/Exit recovery. Dirty-work preservation remains a later ticket.
+This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and PR checkout/Exit recovery. A [working checkpoint for prior-work preservation](docs/development/prior-work.md) extends Enter/Exit to supported staged, unstaged and new-file work; its full fault/platform acceptance remains open. Review-time edit preservation remains a later ticket.
 
 ## Run the readiness slice
 

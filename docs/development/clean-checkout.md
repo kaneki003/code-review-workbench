@@ -2,6 +2,8 @@
 
 [Issue #22](https://github.com/kaneki003/code-review-workbench/issues/22) adds explicit clean PR checkout and Exit Review to the committed-source reader. Ordinary source/diff reading remains available without switching. Unfinished prior work and review-time edits require later preservation slices; this transition refuses them while retaining the work.
 
+The [#23 working checkpoint](prior-work.md) now extends these same public actions to preserve supported prior work. The clean-only behavior and evidence below describe the #22 baseline; the preservation walkthrough records the new behavior, current limits and remaining acceptance work.
+
 ## Try the feature
 
 Build/install the VSIX using the README, open one trusted, already-cloned local repository root and run:

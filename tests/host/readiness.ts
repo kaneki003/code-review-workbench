@@ -661,7 +661,7 @@ suite('Installed readiness VSIX', () => {
       await vscode.commands.executeCommand('workbench.action.zoomIn');
       await vscode.commands.executeCommand('workbench.action.zoomOut');
       evidence.drafts = await exerciseDraftWriter(manager, source, target);
-      // Exercise the complete clean checkout through the installed manager and
+      // Exercise prior-work preservation through the installed manager and
       // its actual native editor adapter, after the no-switch assertions above.
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       git(['config', 'core.autocrlf', 'false']);
@@ -684,38 +684,24 @@ suite('Installed readiness VSIX', () => {
         'original clean workspace',
       ]);
       const priorBranch = git(['symbolic-ref', 'HEAD']);
-      let priorCommit = git(['rev-parse', 'HEAD']);
+      const priorCommit = git(['rev-parse', 'HEAD']);
       const priorUri = vscode.Uri.file(join(location, 'view.txt'));
       const priorEditor = await vscode.window.showTextDocument(priorUri, {
         preview: false,
         viewColumn: vscode.ViewColumn.One,
       });
       await priorEditor.edit((edit) =>
+        edit.insert(new vscode.Position(0, 0), 'staged prior work\n'),
+      );
+      assert.equal(await priorEditor.document.save(), true);
+      git(['add', 'view.txt']);
+      const priorIndex = git(['ls-files', '--stage', '-z']);
+      await priorEditor.edit((edit) =>
         edit.insert(new vscode.Position(0, 0), 'saved through normal host behavior\n'),
       );
       assert.equal(priorEditor.document.isDirty, true);
-      const refused = await manager.enterPullRequestCheckout(source.id);
-      assert.equal(refused.status, 'blocked', JSON.stringify(refused));
-      assert.equal(priorEditor.document.isDirty, false, 'The normal host save completed');
-      assert.match(await readFile(priorUri.fsPath, 'utf8'), /^saved through normal host behavior/);
-      assert.equal(
-        git(['rev-parse', 'HEAD']),
-        priorCommit,
-        'Saving unfinished work does not authorize switching',
-      );
-      git(['add', 'view.txt']);
-      git([
-        '-c',
-        'user.name=Fixture',
-        '-c',
-        'user.email=fixture@example.test',
-        '-c',
-        'commit.gpgsign=false',
-        'commit',
-        '-m',
-        'commit normally saved work',
-      ]);
-      priorCommit = git(['rev-parse', 'HEAD']);
+      const priorBytes = priorEditor.document.getText();
+      await writeFile(join(location, 'prior-notes.txt'), 'new prior work 🐈\n');
       const priorSelections = [
         new vscode.Selection(150, 5, 149, 2),
         new vscode.Selection(155, 0, 155, 2),
@@ -811,6 +797,12 @@ suite('Installed readiness VSIX', () => {
         'Generated overviews are excluded from prior-work restoration and its size budget',
       );
       assert.equal(git(['rev-parse', 'HEAD']), head);
+      assert.equal(priorEditor.document.isDirty, false, 'Normal host saving precedes preservation');
+      assert.equal(
+        git(['status', '--porcelain=v1']),
+        '',
+        'Prior work is protected outside the PR checkout',
+      );
       await vscode.window.tabGroups.close(
         vscode.window.tabGroups.all.flatMap((group) => [...group.tabs]),
       );
@@ -834,6 +826,12 @@ suite('Installed readiness VSIX', () => {
       assert.equal(exited.status, 'complete', JSON.stringify(exited));
       assert.equal(git(['symbolic-ref', 'HEAD']), priorBranch);
       assert.equal(git(['rev-parse', 'HEAD']), priorCommit);
+      assert.equal(git(['ls-files', '--stage', '-z']), priorIndex, 'Original staging was restored');
+      assert.equal(await readFile(priorUri.fsPath, 'utf8'), priorBytes);
+      assert.equal(
+        await readFile(join(location, 'prior-notes.txt'), 'utf8'),
+        'new prior work 🐈\n',
+      );
       assert.deepEqual(
         vscode.window.tabGroups.all.map((group) => group.tabs.map((tab) => tab.label)),
         beforeTabs,
