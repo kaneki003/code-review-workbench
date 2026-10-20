@@ -200,6 +200,14 @@ export class ReviewManager {
   }
   private async continueCheckoutEntry(review: CheckoutReview): Promise<CheckoutResult> {
     this.connections.editors!.assertSaved();
+    if (review.priorWork)
+      review = this.checkoutReply(
+        await this.storeRequest('preservePriorWork', {
+          checkoutId: review.id,
+          checkoutRevision: review.revision,
+        }),
+      );
+    this.connections.editors!.assertSaved();
     const prepared = await this.storeRequest(
       'prepareCleanCheckout',
       { sourceId: review.sourceId },
@@ -222,6 +230,16 @@ export class ReviewManager {
             detail:
               'PR checkout was refused. Your original checkout and editors were restored; continue no-switch reading.',
           };
+        }
+        if (reconciled.phase === 'exiting' && reconciled.priorWork) {
+          const restored = await this.continueCheckoutExit(reconciled);
+          if (restored.status === 'complete')
+            return {
+              status: 'blocked',
+              detail:
+                'PR checkout was refused. Your original files, staging and editors were restored. Keep no-switch reading; resolve the checkout collision before Retry.',
+            };
+          return restored;
         }
       }
       throw new StoreError(result.view.code ?? 'CHECKOUT_RECOVERY', result.view.detail);
@@ -279,6 +297,21 @@ export class ReviewManager {
   }
   private async continueCheckoutExit(review: CheckoutReview): Promise<CheckoutResult> {
     this.connections.editors!.assertSaved();
+    if (review.priorWork && !review.exitId) {
+      review = this.checkoutReply(
+        await this.storeRequest('restorePriorWork', {
+          checkoutId: review.id,
+          checkoutRevision: review.revision,
+        }),
+      );
+      review = this.checkoutReply(
+        await this.storeRequest('finishCheckoutGit', {
+          checkoutId: review.id,
+          checkoutRevision: review.revision,
+        }),
+      );
+      return this.restoreCheckoutEditors(review);
+    }
     const prepared = await this.storeRequest(
       'prepareCleanRestore',
       { operationId: review.entryId },
@@ -294,6 +327,15 @@ export class ReviewManager {
         result.view.code ?? 'CHECKOUT_RECOVERY',
         'Exit did not verify Git restoration. Preserve the transition and use Recover PR Checkout.',
       );
+    if (review.priorWork) {
+      this.connections.editors!.assertSaved();
+      review = this.checkoutReply(
+        await this.storeRequest('restorePriorWork', {
+          checkoutId: review.id,
+          checkoutRevision: review.revision,
+        }),
+      );
+    }
     review = this.checkoutReply(
       await this.storeRequest('finishCheckoutGit', {
         checkoutId: review.id,
@@ -327,7 +369,7 @@ export class ReviewManager {
       };
     return {
       status: 'complete',
-      detail: `Exit complete: the original branch/commit, clean files and native editor state were verified.${cleanup.cleanup?.retained.length ? ' Recovery artifacts were retained to keep their unmerged, moved or uncertain commits reachable.' : ''}`,
+      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${complete.priorWork ? ' The verified prior-work stash remains available in Git.' : ''}${cleanup.cleanup?.retained.length ? ' Recovery artifacts were retained to keep their unmerged, moved or uncertain commits reachable.' : ''}`,
       review: complete,
     };
   }

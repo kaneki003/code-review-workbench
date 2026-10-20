@@ -1,5 +1,6 @@
 import type { SourceRange } from './committed-source';
 import type { LocalRepositoryFacts } from './pull-request';
+import type { PriorWork } from './prior-work';
 
 export interface EditorLayout {
   orientation?: number;
@@ -55,6 +56,7 @@ export interface CheckoutReview {
   editors: EditorSnapshot;
   entryId: string;
   exitId: string | null;
+  priorWork?: PriorWork;
 }
 export interface CheckoutResult {
   status: 'active' | 'complete' | 'blocked' | 'recovery';
@@ -63,6 +65,8 @@ export interface CheckoutResult {
 }
 export const checkoutActions = [
   'beginCheckout',
+  'preservePriorWork',
+  'restorePriorWork',
   'readCheckout',
   'activateCheckout',
   'beginCheckoutExit',

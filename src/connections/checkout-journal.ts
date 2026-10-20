@@ -15,6 +15,7 @@ import {
   type NativeStore,
 } from './store-records';
 import { oid } from './repository-operation';
+import { validPriorWork } from './prior-work';
 import type { StorageFaults } from './storage-diagnostics';
 
 export function validEditorSnapshot(value: unknown): value is EditorSnapshot {
@@ -125,6 +126,7 @@ function validReview(value: unknown): value is CheckoutReview {
     (value.original.branch === null ||
       (text(value.original.branch) && value.original.branch.startsWith('refs/heads/'))) &&
     oid(value.original.commit) &&
+    (value.priorWork === undefined || validPriorWork(value.priorWork)) &&
     text(value.original.fingerprint, 64) &&
     object(value.repository) &&
     object(value.repository.worktree) &&

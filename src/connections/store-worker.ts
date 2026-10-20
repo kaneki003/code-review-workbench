@@ -48,6 +48,13 @@ import {
 
 import { StorageFaults } from './storage-diagnostics';
 import {
+  findPriorStash,
+  matchesManifest,
+  priorWorkRef,
+  verifyStash,
+  workManifest,
+} from './prior-work';
+import {
   CheckoutJournal,
   checkoutRecoveryApplies,
   validEditorSnapshot,
@@ -1117,7 +1124,8 @@ class SharedStore {
           (session.entryId !== request.id ||
             session.sourceId !== source.id ||
             session.scopeId !== this.lease!.scopeId ||
-            JSON.stringify(session.original) !== JSON.stringify(checkout.before))
+            JSON.stringify(session.priorWork?.clean ?? session.original) !==
+              JSON.stringify(checkout.before))
         )
           throw new StoreError(
             'CHECKOUT_INTERFERENCE',
@@ -1496,6 +1504,151 @@ class SharedStore {
     this.faults.at(`checkout-${record.phase}.commit.after`);
     return reply;
   }
+  private async runCheckoutOperation(record: OperationRecord) {
+    this.projectOperation(record);
+    const result = await this.executeOperation({
+      protocol: 1,
+      id: randomUUID(),
+      action: 'executeOperation',
+      operationId: record.id,
+      lease: this.lease!,
+      workspacePath: this.config.location,
+    });
+    if (result.operation?.outcome !== 'applied')
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'The preservation operation was not verified. Keep all artifacts and use Recover PR Checkout.',
+      );
+  }
+  private async preserveCheckoutWork(
+    record: CheckoutReview,
+    restore: boolean,
+  ): Promise<CheckoutReview> {
+    const prior = record.priorWork;
+    if (!prior) return record;
+    const repository = this.repository();
+    const id = restore ? prior.applyId : prior.stashId;
+    const ref = restore ? priorWorkRef(prior.stashId) : 'refs/stash';
+    const kind = restore ? ('stash-apply' as const) : ('stash-push' as const);
+    const saved = existsSync(operationFile(this.rendezvous, id))
+      ? readOperation(this.rendezvous, id)
+      : undefined;
+    if (
+      saved &&
+      (saved.kind !== kind ||
+        saved.scopeId !== record.scopeId ||
+        saved.phase !== 'observed' ||
+        saved.outcome !== 'applied' ||
+        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(id)
+          ?.record !== JSON.stringify(saved))
+    )
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'The stash/apply receipt is incomplete or refused. Reconcile its actual files and journal; no operation was repeated.',
+      );
+    if (restore) {
+      if (!prior.object || repository.refOid(ref) !== prior.object)
+        throw new StoreError(
+          'PRESERVATION_RECOVERY',
+          'The prior-work recovery reference is missing or moved. Keep the saved journal and recover the exact stash through ordinary Git.',
+        );
+      verifyStash(repository, prior, record.original.commit, prior.object);
+      if (matchesManifest(repository, prior.manifest)) {
+        const actual = repository.cleanCheckoutState(undefined, true);
+        if (actual.branch !== record.original.branch || actual.commit !== record.original.commit)
+          throw new StoreError(
+            'PRESERVATION_RECOVERY',
+            'Prior-work files are present on a different branch/commit. Restore the expected original destination before Retry.',
+          );
+        return record;
+      }
+      if (saved)
+        throw new StoreError(
+          'PRESERVATION_RECOVERY',
+          'A prior apply was recorded, but the files no longer match. Keep protection and reconcile manually; apply was not repeated.',
+        );
+    } else if (prior.clean) {
+      if (!prior.object || repository.refOid(priorWorkRef(prior.stashId)) !== prior.object)
+        throw new StoreError(
+          'PRESERVATION_RECOVERY',
+          'Prior-work protection is missing or moved. No checkout was authorized.',
+        );
+      verifyStash(repository, prior, record.original.commit, prior.object);
+      return record;
+    }
+    if (!saved) {
+      const operation: OperationRecord = {
+        protocol: 1,
+        id,
+        kind,
+        phase: 'prepared',
+        storeId: this.lease!.storeId,
+        incarnation: this.lease!.incarnation,
+        fence: this.lease!.fence,
+        ownerToken: this.lease!.token,
+        scopeId: this.lease!.scopeId,
+        ref,
+        newOid: restore ? prior.object! : record.original.commit,
+        beforeOid: repository.refOid(ref),
+        facts: repository.facts(),
+        storage: repository.referenceStorage(ref, repository.facts()),
+        child: null,
+        stash: { prior, original: record.original },
+      };
+      repository.validateStash(operation);
+      await this.runCheckoutOperation(operation);
+    }
+    if (restore) {
+      if (!matchesManifest(repository, prior.manifest))
+        throw new StoreError(
+          'PRESERVATION_RECOVERY',
+          'Applied prior work differs from the saved disk/index manifest. Keep the stash and Retry recovery.',
+        );
+      return record;
+    }
+    const stash = findPriorStash(repository, prior, record.original.commit);
+    if (!stash)
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'No unique verified operation-tagged stash was found. No checkout was authorized.',
+      );
+    const clean = repository.cleanCheckoutState();
+    if (clean.branch !== record.original.branch || clean.commit !== record.original.commit)
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'HEAD changed during preservation. Keep all artifacts.',
+      );
+    const pin = priorWorkRef(prior.stashId),
+      observed = repository.refOid(pin);
+    if (observed !== null && observed !== stash)
+      throw new StoreError(
+        'PRESERVATION_RECOVERY',
+        'The owned prior-work reference moved. It was retained.',
+      );
+    if (observed === null) {
+      const facts = repository.facts();
+      repository.validateUpdate(pin, stash);
+      await this.runCheckoutOperation({
+        protocol: 1,
+        id: randomUUID(),
+        kind: 'update-ref',
+        phase: 'prepared',
+        storeId: this.lease!.storeId,
+        incarnation: this.lease!.incarnation,
+        fence: this.lease!.fence,
+        ownerToken: this.lease!.token,
+        scopeId: this.lease!.scopeId,
+        ref: pin,
+        newOid: stash,
+        beforeOid: null,
+        facts,
+        storage: repository.referenceStorage(pin, facts),
+        child: null,
+      });
+    }
+    this.faults.at('prior-work.pin.after');
+    return { ...record, priorWork: { ...prior, object: stash, clean } };
+  }
   private async checkoutAction(request: StoreRequest): Promise<StoreReply> {
     this.validate(request.lease, false);
     const previousReplyValue = previousReply(this.database!, request);
@@ -1523,6 +1676,25 @@ class SharedStore {
           'INVALID_CHECKOUT',
           'A stable restorable editor snapshot from this local workspace is required.',
         );
+      const repository = this.repository();
+      let original;
+      let priorWork;
+      try {
+        original = repository.cleanCheckoutState(source.head);
+      } catch (error) {
+        if (!(error instanceof StoreError) || error.code !== 'DIRTY_CHECKOUT') throw error;
+        original = repository.cleanCheckoutState(source.head, true);
+        const stashId = randomUUID();
+        priorWork = {
+          manifest: workManifest(repository),
+          stashId,
+          applyId: randomUUID(),
+          marker: `code-review-workbench prior-work ${stashId}`,
+          previousStash: repository.refOid('refs/stash'),
+          object: null,
+          clean: null,
+        };
+      }
       const record: CheckoutReview = {
         protocol: 1,
         id: request.id,
@@ -1533,7 +1705,8 @@ class SharedStore {
         phase: 'entering',
         sourceId: source.id,
         repository: source.candidate.localRepository.facts,
-        original: this.repository().cleanCheckoutState(source.head),
+        original,
+        ...(priorWork ? { priorWork } : {}),
         editors: request.editors,
         entryId: randomUUID(),
         exitId: null,
@@ -1560,8 +1733,30 @@ class SharedStore {
         'The review transition changed. Read its current recovery state before continuing.',
       );
     const repository = this.repository();
-    const actual = repository.cleanCheckoutState();
-    const original = JSON.stringify(actual) === JSON.stringify(record.original);
+    if (request.action === 'preservePriorWork' || request.action === 'restorePriorWork') {
+      if (request.action === 'preservePriorWork' && record.phase !== 'entering')
+        throw new StoreError(
+          'INVALID_CHECKOUT',
+          'Only an entering review can preserve prior work.',
+        );
+      if (request.action === 'restorePriorWork' && record.phase !== 'exiting')
+        throw new StoreError('INVALID_CHECKOUT', 'Only an exiting review can restore prior work.');
+      const next = await this.preserveCheckoutWork(record, request.action === 'restorePriorWork');
+      return this.saveCheckout(request, { ...next, revision: record.revision + 1 }, state);
+    }
+    const actual = repository.cleanCheckoutState(undefined, Boolean(record.priorWork));
+    const original =
+      JSON.stringify(actual) === JSON.stringify(record.original) &&
+      (!record.priorWork || matchesManifest(repository, record.priorWork.manifest));
+    if (record.priorWork?.clean && record.phase !== 'complete') {
+      const prior = record.priorWork;
+      if (!prior.object || repository.refOid(priorWorkRef(prior.stashId)) !== prior.object)
+        throw new StoreError(
+          'PRESERVATION_RECOVERY',
+          'The prior-work protection is missing or moved. Keep all recovery records and restore the exact artifact before Retry.',
+        );
+      verifyStash(repository, prior, record.original.commit, prior.object);
+    }
     if (request.action === 'cleanupCheckout') {
       if (record.phase !== 'complete' || !original)
         throw new StoreError(
@@ -1699,6 +1894,28 @@ class SharedStore {
       case 'reconcileCheckout':
         if (record.phase === 'complete' && state!.agrees)
           return { ...this.owned(), checkout: record };
+        if (
+          record.priorWork?.clean &&
+          record.phase === 'exiting' &&
+          JSON.stringify(actual) === JSON.stringify(record.priorWork.clean)
+        ) {
+          next.exitId = null;
+          break;
+        }
+        if (
+          record.priorWork &&
+          record.phase === 'entering' &&
+          actual.branch === record.original.branch &&
+          actual.commit === record.original.commit &&
+          !original
+        ) {
+          const preserved = await this.preserveCheckoutWork(record, false);
+          if (request.checkoutChoice === 'restore') {
+            // Persist Exit before applying, even when checkout never started.
+            next = { ...preserved, phase: 'exiting', revision: record.revision + 1 };
+          } else next = { ...preserved, revision: record.revision + 1 };
+          break;
+        }
         if (original) {
           if (request.checkoutChoice === 'continue' && record.phase === 'active')
             throw new StoreError(
@@ -1861,6 +2078,7 @@ class SharedStore {
       );
     const repository = this.repository(record.facts.worktree);
     if (record.kind === 'checkout') repository.validateCheckout(record);
+    if (record.stash) repository.validateStash(record);
     if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
     if (
       !repository.sameFacts(record.facts) ||
@@ -1877,6 +2095,7 @@ class SharedStore {
       this.projectOperation(record);
       this.validate(this.lease, true);
       if (record.kind === 'checkout') repository.validateCheckout(record);
+      if (record.stash) repository.validateStash(record);
       if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
       if (
         !repository.sameFacts(record.facts) ||
@@ -1890,13 +2109,31 @@ class SharedStore {
       this.validate(this.lease, true);
       this.faults.at('dispatch.before');
       if (record.kind === 'checkout') this.faults.at('checkout.dispatch.before');
+      if (record.stash) this.faults.at(`${record.kind}.dispatch.before`);
       native.startChild(child);
       this.faults.at('dispatch.after');
       if (record.kind === 'checkout') this.faults.at('checkout.dispatch.after');
+      if (record.stash) this.faults.at(`${record.kind}.dispatch.after`);
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
       const expectedAfter = record.kind === 'delete-ref' ? null : record.newOid;
+      if (record.stash) {
+        const outcome = repository.stashOutcome(record);
+        if (
+          !repository.sameRepositoryIdentity(record.facts) ||
+          !repository.sameReferenceStorage(record, true) ||
+          outcome === 'refused'
+        )
+          recovery(
+            'Preservation left unexpected repository facts. Keep the stash, files and journal, then use Recover PR Checkout.',
+          );
+        this.faults.at(`${record.kind}.effect.after`);
+        return this.projectOperation(
+          { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
+          request,
+        );
+      }
       if (record.kind === 'checkout') {
         const outcome = repository.checkoutOutcome(record);
         if (
@@ -2043,11 +2280,16 @@ class SharedStore {
     if (record.kind === 'fetch')
       repository.validateFetch(record.ref, record.newOid, record.fetch!.remoteRef);
     else if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
-    else if (record.kind !== 'checkout') repository.validateUpdate(record.ref, record.newOid);
+    else if (record.kind !== 'checkout' && !record.stash)
+      repository.validateUpdate(record.ref, record.newOid);
     const checkoutOutcome =
-      record.kind === 'checkout' ? repository.checkoutOutcome(record) : undefined;
-    if (
       record.kind === 'checkout'
+        ? repository.checkoutOutcome(record)
+        : record.stash
+          ? repository.stashOutcome(record)
+          : undefined;
+    if (
+      record.kind === 'checkout' || record.stash
         ? checkoutOutcome === 'refused' || !repository.sameRepositoryIdentity(record.facts)
         : !repository.sameFacts(record.facts)
     )
@@ -2063,6 +2305,7 @@ class SharedStore {
     if (
       record.kind !== 'fetch' &&
       record.kind !== 'checkout' &&
+      !record.stash &&
       actual !== record.beforeOid &&
       actual !== expectedAfter
     )
@@ -2071,7 +2314,7 @@ class SharedStore {
       );
     if (
       record.phase === 'observed' &&
-      (record.kind === 'checkout'
+      (record.kind === 'checkout' || record.stash
         ? record.outcome !== checkoutOutcome
         : (record.outcome === 'applied' && actual !== expectedAfter) ||
           (record.outcome === 'not-applied' && actual !== record.beforeOid) ||

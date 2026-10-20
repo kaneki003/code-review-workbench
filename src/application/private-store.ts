@@ -60,6 +60,8 @@ export interface StoreRequest {
     | 'prepareCleanCheckout'
     | 'prepareCleanRestore'
     | 'beginCheckout'
+    | 'preservePriorWork'
+    | 'restorePriorWork'
     | 'readCheckout'
     | 'activateCheckout'
     | 'beginCheckoutExit'
