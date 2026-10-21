@@ -104,6 +104,11 @@ export function workManifest(repository: RepositoryOperation): WorkManifest {
   const paths = [
     ...new Set([...head.map((file) => file.path), ...index.map((file) => file.path), ...untracked]),
   ].sort();
+  if (paths.length > 10000)
+    throw new StoreError(
+      'REPOSITORY_LIMIT',
+      'Preservation inventory exceeds the current 10,000-file bound.',
+    );
   if (
     paths.some((path) => !safePath(path)) ||
     new Set(paths.map((path) => path.toLowerCase())).size !== paths.length
@@ -127,35 +132,46 @@ export function workManifest(repository: RepositoryOperation): WorkManifest {
     )
       unsupported('Effective Git attributes require validated preservation support.');
   }
-  const files = paths
-    .map((path): WorkFile => {
-      let parent = dirname(path);
-      while (parent !== '.') {
-        try {
-          if (lstatSync(join(facts.worktree, parent)).isSymbolicLink())
-            unsupported('A path crosses a symbolic-link directory.');
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        parent = dirname(parent);
-      }
-      const absolute = join(facts.worktree, path);
-      let metadata;
+  let bytes = 0;
+  const inventory = paths.map((path) => {
+    let parent = dirname(path);
+    while (parent !== '.') {
       try {
-        metadata = lstatSync(absolute);
+        if (lstatSync(join(facts.worktree, parent)).isSymbolicLink())
+          unsupported('A path crosses a symbolic-link directory.');
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        return { path, mode: 'missing', oid: null };
       }
-      if (!metadata.isFile())
-        unsupported(
-          'Symbolic links, nested repositories and special files require validated preservation support.',
-        );
-      if (
-        process.platform !== 'win32' &&
-        (metadata.mode & 0o777) !== (metadata.mode & 0o111 ? 0o755 : 0o644)
-      )
-        unsupported('Nonstandard file permissions require validated preservation support.');
+      parent = dirname(parent);
+    }
+    const absolute = join(facts.worktree, path);
+    let metadata;
+    try {
+      metadata = lstatSync(absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return { path, absolute, metadata: null };
+    }
+    if (!metadata.isFile())
+      unsupported(
+        'Symbolic links, nested repositories and special files require validated preservation support.',
+      );
+    if (
+      process.platform !== 'win32' &&
+      (metadata.mode & 0o777) !== (metadata.mode & 0o111 ? 0o755 : 0o644)
+    )
+      unsupported('Nonstandard file permissions require validated preservation support.');
+    bytes += metadata.size;
+    if (bytes > 128 * 1024 * 1024)
+      throw new StoreError(
+        'REPOSITORY_LIMIT',
+        'Preservation inventory exceeds the current 128 MiB bound.',
+      );
+    return { path, absolute, metadata };
+  });
+  const files = inventory
+    .map(({ path, absolute, metadata }): WorkFile => {
+      if (!metadata) return { path, mode: 'missing', oid: null };
       const content = readFileSync(absolute);
       return {
         path,

@@ -1,7 +1,47 @@
 import { expect, test } from 'vitest';
-import { readFile, writeFile, mkdir, symlink, rename, chmod, stat } from 'node:fs/promises';
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  symlink,
+  rename,
+  chmod,
+  stat,
+  truncate,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { fixture, integrationTimeout, checkoutEditors } from './fixtures/committed-review';
+
+test(
+  'preservation bounds retained ignored files removed from the index before reading their bytes',
+  async () => {
+    const context = await fixture();
+    context.git('checkout', '-b', 'prior-work', context.base);
+    context.git('rm', '--cached', 'worker.ts');
+    await writeFile(join(context.location, '.git', 'info', 'exclude'), 'worker.ts\n');
+    await truncate(join(context.location, 'worker.ts'), 128 * 1024 * 1024 + 1);
+    const index = context.git('ls-files', '--stage', '-z');
+    const manager = context.manager(
+      undefined,
+      undefined,
+      undefined,
+      checkoutEditors(context.location),
+    );
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const result = await manager.enterPullRequestCheckout(source.source.id);
+    expect(result).toMatchObject({ status: 'blocked' });
+    expect(result.detail).toContain('128 MiB');
+    expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
+    expect(context.git('ls-files', '--stage', '-z')).toBe(index);
+    expect((await stat(join(context.location, 'worker.ts'))).size).toBe(128 * 1024 * 1024 + 1);
+    expect(context.git('stash', 'list')).toBe('');
+    expect(await manager.readCheckoutReview()).toBeUndefined();
+    await manager.releasePrivateStore();
+  },
+  integrationTimeout,
+);
 
 test(
   'entry reserves enough journal space for preservation proof and all bounded recovery attempts before stashing',
