@@ -2032,7 +2032,13 @@ class SharedStore {
     // external effect completed. The independent receipt is retained.
     const boundary = `${operationBoundary(record)}.${record.phase}`;
     this.faults.at(`${boundary}.before`);
-    this.faults.publish(record.phase, native, operationFile(this.rendezvous, record.id), record);
+    this.faults.publish(
+      record.phase,
+      native,
+      operationFile(this.rendezvous, record.id),
+      record,
+      boundary,
+    );
     this.faults.at(`${boundary}.record.after`);
     const pending = {
       id: record.id,

@@ -685,11 +685,49 @@ suite('Installed readiness VSIX', () => {
       ]);
       const priorBranch = git(['symbolic-ref', 'HEAD']);
       const priorCommit = git(['rev-parse', 'HEAD']);
+      const untitled = await vscode.workspace.openTextDocument({
+        content: 'unsaved fixture buffer 🐈\n',
+      });
+      await vscode.window.showTextDocument(untitled, { preview: false });
+      const refusedUntitled = await manager.enterPullRequestCheckout(source.id);
+      assert.equal(refusedUntitled.status, 'blocked', JSON.stringify(refusedUntitled));
+      assert.match(refusedUntitled.detail, /untitled/i);
+      assert.equal(untitled.getText(), 'unsaved fixture buffer 🐈\n');
+      assert.equal(git(['rev-parse', 'HEAD']), priorCommit);
+      assert.equal(await manager.readCheckoutReview(), undefined);
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
       const priorUri = vscode.Uri.file(join(location, 'view.txt'));
       const priorEditor = await vscode.window.showTextDocument(priorUri, {
         preview: false,
         viewColumn: vscode.ViewColumn.One,
       });
+      let hookEdit: PromiseLike<boolean> | undefined;
+      const saveHook = vscode.workspace.onDidSaveTextDocument((document) => {
+        if (document.uri.toString() === priorUri.toString() && !hookEdit)
+          hookEdit = priorEditor.edit((edit) =>
+            edit.insert(new vscode.Position(0, 0), 'continuing save hook\n'),
+          );
+      });
+      await priorEditor.edit((edit) =>
+        edit.insert(new vscode.Position(0, 0), 'normal save before hook\n'),
+      );
+      const refusedHook = await manager.enterPullRequestCheckout(source.id);
+      saveHook.dispose();
+      assert.equal(await hookEdit, true, 'The native save hook changed the buffer');
+      assert.ok(['blocked', 'recovery'].includes(refusedHook.status), JSON.stringify(refusedHook));
+      assert.equal(priorEditor.document.isDirty, true);
+      assert.equal(
+        git(['rev-parse', 'HEAD']),
+        priorCommit,
+        'A continuing save hook prevents switching',
+      );
+      assert.equal(git(['stash', 'list']), '', 'No stash precedes verified normal saving');
+      await vscode.commands.executeCommand('workbench.action.files.revert');
+      const hookTransition = await manager.readCheckoutReview();
+      if (hookTransition && hookTransition.phase !== 'complete') {
+        const restoredHook = await manager.recoverPullRequestCheckout('restore');
+        assert.equal(restoredHook.status, 'complete', JSON.stringify(restoredHook));
+      }
       await priorEditor.edit((edit) =>
         edit.insert(new vscode.Position(0, 0), 'staged prior work\n'),
       );

@@ -2,21 +2,11 @@ import { expect, test } from 'vitest';
 import { chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { fixture, integrationTimeout } from './fixtures/committed-review';
-import type { CheckoutEditors } from '../src/application/checkout-review';
-
-function editors(workspace: string): CheckoutEditors {
-  return {
-    capture: async () => ({
-      protocol: 1,
-      workspace,
-      layout: { groups: [{ size: 1 }] },
-      groups: [{ column: 1, active: true, tabs: [] }],
-    }),
-    assertSaved() {},
-    restore: async () => {},
-  };
-}
+import {
+  fixture,
+  integrationTimeout,
+  checkoutEditors as editors,
+} from './fixtures/committed-review';
 
 test(
   'Enter and Exit restore staged and unstaged bytes, renames and new files alongside unrelated stashes',
@@ -257,7 +247,7 @@ test(
 );
 
 test(
-  'Recover finds a stash after Git succeeded before its object was recorded, without creating another stash',
+  'Recover finds its marked stash before object recording even when an unrelated newer stash exists',
   async () => {
     const context = await fixture();
     context.git('checkout', '-b', 'prior-work', context.base);
@@ -278,15 +268,20 @@ test(
     const exited = once(child, 'exit');
     child.kill('SIGKILL');
     await exited;
+    await writeFile(join(context.location, 'worker.ts'), 'unrelated newer bytes\n');
+    context.git('stash', 'push', '-m', 'unrelated newer stash');
+    const newer = context.git('rev-parse', 'refs/stash');
     const recovered = context.manager(undefined, undefined, undefined, editors(context.location));
     const resumed = await recovered.recoverPullRequestCheckout('continue');
     expect(resumed, JSON.stringify(resumed)).toMatchObject({ status: 'active' });
-    expect(context.git('stash', 'list', '--format=%H')).toBe(stash);
+    expect(context.git('stash', 'list', '--format=%H').split('\n')).toEqual([newer, stash]);
     expect(await recovered.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
     expect(context.git('show', ':worker.ts')).toBe('recover staged bytes');
     expect(await readFile(join(context.location, 'worker.ts'), 'utf8')).toBe(
       'recover unstaged bytes\n',
     );
+    expect(context.git('stash', 'list', '--format=%H').split('\n')).toEqual([newer, stash]);
+    expect(context.git('show', `${newer}:worker.ts`)).toBe('unrelated newer bytes');
     await recovered.releasePrivateStore();
   },
   integrationTimeout,

@@ -8,6 +8,14 @@ import type { StorageDiagnostics } from '../src/connections/storage-diagnostics'
 test.each([
   { boundary: 'checkout-entering.commit.before', stage: undefined, mode: 'commit' as const },
   { boundary: 'checkout-entering.record', stage: undefined, mode: 'native' as const },
+  { boundary: 'stash-push.observed.record', stage: undefined, mode: 'native' as const },
+  { boundary: 'stash-push.observed.commit.before', stage: undefined, mode: 'commit' as const },
+  { boundary: 'stash-apply.observed.record', stage: 'exit' as const, mode: 'native' as const },
+  {
+    boundary: 'stash-apply.observed.commit.before',
+    stage: 'exit' as const,
+    mode: 'commit' as const,
+  },
   ...[
     'checkout-entering.record.after',
     'stash-push.prepared.before',
@@ -49,7 +57,7 @@ test.each([
     'prior-work-cleanup.observed.record.after',
   ].map((boundary) => ({ boundary, stage: 'exit' as const })),
 ])(
-  'Restore verifies original work after a worker crash at $boundary',
+  'Restore verifies original work after a storage interruption at $boundary',
   async ({
     boundary,
     stage,
@@ -80,7 +88,10 @@ test.each([
       stage,
       mode,
     );
-    expect(['recovery', 'blocked'], JSON.stringify({ status: result.status, detail: result.detail })).toContain(result.result.status);
+    expect(
+      ['recovery', 'blocked'],
+      JSON.stringify({ status: result.status, detail: result.detail }),
+    ).toContain(result.result.status);
     const exited = once(child, 'exit');
     child.kill('SIGKILL');
     await exited;
@@ -99,7 +110,10 @@ test.each([
       await new Promise((resolve) => setTimeout(resolve, 20));
       restored = await recovered.recoverPullRequestCheckout('restore');
     }
-    expect(restored, JSON.stringify({ status: restored.status, detail: restored.detail })).toMatchObject({ status: 'complete' });
+    expect(
+      restored,
+      JSON.stringify({ status: restored.status, detail: restored.detail }),
+    ).toMatchObject({ status: 'complete' });
     expect(context.git('symbolic-ref', 'HEAD')).toBe('refs/heads/prior-work');
     expect(context.git('rev-parse', 'HEAD')).toBe(context.base);
     expect(context.git('ls-files', '--stage', '-z')).toBe(index);
@@ -143,7 +157,9 @@ test(
     context.git('stash', 'push', '-m', 'later user stash');
     const later = context.git('rev-parse', 'refs/stash');
     const exited = await manager.exitPullRequestCheckout();
-    expect(exited, JSON.stringify({ status: exited.status, detail: exited.detail })).toMatchObject({ status: 'complete' });
+    expect(exited, JSON.stringify({ status: exited.status, detail: exited.detail })).toMatchObject({
+      status: 'complete',
+    });
     expect(
       context.git('for-each-ref', '--format=%(refname)', 'refs/code-review-workbench/recovery/'),
     ).toBe('');
@@ -198,7 +214,9 @@ test(
       await new Promise((resolve) => setTimeout(resolve, 20));
       result = await recovered.recoverPullRequestCheckout('continue');
     }
-    expect(result, JSON.stringify({ status: result.status, detail: result.detail })).toMatchObject({ status: 'active' });
+    expect(result, JSON.stringify({ status: result.status, detail: result.detail })).toMatchObject({
+      status: 'active',
+    });
     expect(await recovered.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
     expect(context.git('show', ':worker.ts')).toBe('staged original bytes');
     expect(await readFile(join(context.location, 'worker.ts'), 'utf8')).toBe(

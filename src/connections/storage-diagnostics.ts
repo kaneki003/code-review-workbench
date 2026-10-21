@@ -66,9 +66,13 @@ export class StorageFaults {
     this.reset = undefined;
     reset?.();
   }
-  publish(phase: string, native: NativeStore, path: string, record: unknown) {
+  publish(phase: string, native: NativeStore, path: string, record: unknown, boundary = phase) {
     this.at(`${phase}.record.before`);
-    if (!this.used && this.fault?.mode === 'native' && this.fault.boundary === `${phase}.record`) {
+    if (
+      !this.used &&
+      this.fault?.mode === 'native' &&
+      [phase, boundary].some((name) => this.fault!.boundary === `${name}.record`)
+    ) {
       this.used = true;
       native.publishRecord(path, JSON.stringify(record), this.fault.stage!);
     } else native.publishRecord(path, JSON.stringify(record));
