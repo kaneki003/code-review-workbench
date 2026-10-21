@@ -1,16 +1,16 @@
-# Prior-work preservation checkpoint review
+# Prior-work preservation review
 
 Issue: [Preserve prior work during PR review (#23)](https://github.com/kaneki003/code-review-workbench/issues/23).
 
-Fixed comparison baseline: `e85fa114957a628056cc7e78e3aa053c21eaecb9` (main at branch creation). The Standards and Spec reviewers ran independently through the code-review skill. They reviewed `5bdd474` and rechecked the fixes in `7089e9a`.
+Fixed comparison baseline: `e85fa114957a628056cc7e78e3aa053c21eaecb9` (main at branch creation). The Standards and Spec reviewers ran independently through the code-review skill. They reviewed the initial checkpoint at `5bdd474`, rechecked `7089e9a`, reviewed the completed implementation through `81e24c3`, then checked the final fixes and native fixtures at `e6d1e57`/`10dc129`.
 
-## Standards
+## Initial checkpoint: Standards
 
 No documented-standard violations found. The tests use the agreed public manager seam with real Git and retain the existing ownership/recovery boundaries.
 
 One low-priority judgment: `cleanCheckoutState(target, allowDirty)` and `CleanCheckoutState` suggested verified cleanliness even when inventory intentionally admitted unfinished work. Resolved by renaming the result to `CheckoutState` and using an explicit `'clean' | 'inventory'` requirement. The reviewer confirmed the judgment was resolved and found no new standards findings in the fix.
 
-## Spec
+## Initial checkpoint: Spec
 
 Two P2 findings in the initial checkpoint:
 
@@ -19,4 +19,24 @@ Two P2 findings in the initial checkpoint:
 
 The Spec reviewer rechecked both fixes at `7089e9a`, confirmed both findings were resolved and found no introduced concrete bug. No scope creep was identified.
 
-Initial totals: Standards 0 violations plus 1 naming judgment; Spec 2 P2 findings. All three are resolved. The full fault/interference/platform matrix remains a completion gate for #23; this is a working checkpoint for owner review.
+Initial totals: Standards 0 violations plus 1 naming judgment; Spec 2 P2 findings. All three were resolved before the checkpoint walkthrough.
+
+## Completed implementation: Standards
+
+One P2 documented-standard finding: the manifest includes HEAD paths, while the existing repository-facts inventory bounds only indexed/nonignored new paths. A retained file removed from the index and then ignored could bypass the 128 MiB bound before `readFileSync`. This conflicts with the bounded-work requirement in `docs/design/extension-architecture.md`. `e6d1e57` preflights the actual HEAD/index/new-path union for count and cumulative bytes before reading contents. A public Enter fixture failed before the fix and now refuses before stash, preserving the original HEAD, index and retained file.
+
+One low-priority possible Duplicated Code judgment: the prior-work tests had their own copy of the new shared editor fixture. They now use `checkoutEditors`.
+
+The reviewer confirmed both findings were resolved. No new concrete standards or test-seam findings were identified in the operation-specific native diagnostic label or the real installed-host untitled/save-hook fixtures. Diagnostics remain host-owned.
+
+## Completed implementation: Spec
+
+No new concrete implementation defect or scope creep was identified. Review confirmed that cleanup requires matching ownership receipts and exact reference values after verified completion, leaving ordinary stashes untouched.
+
+One partial acceptance-coverage finding: the initial expanded matrix used crashes after stash/apply but exercised actual SQLite/native publication failures only at entry intent. `10dc129` adds four public recovery cases for native directory-flush and SQLite observed-commit failures after both stash creation and application. All four restored the exact original branch/index/files and retained the unrelated stash. The interrupted stash-before-object fixture additionally inserts a newer unrelated stash; recovery finds its unique marker and retains both objects.
+
+The reviewer confirmed the coverage finding was resolved and found no defect in the inventory fix or native buffer-refusal assertions. Full installed-host execution is still failing in the browser writer; that cause is unknown. Two local runs passed the preservation portion before failing in the later discard writer, while another failed before reaching it. Windows/minimum-Git acceptance remains outstanding, as requested by the owner; no review treats CI as green.
+
+Full validation also exposed an older clean-checkout assertion expecting `blocked` after the owner manually returns to the original branch and chooses Continue. The manager now retains the saved active review in this refusal, so the truthful result is `recovery`. The Spec reviewer confirmed that returning recovery context keeps the required Restore action available for clean and prior-work reviews alike. The test now asserts that context while retaining the exact Restore instruction, no editor restoration and unchanged HEAD reflog checks; the focused scenario passes.
+
+Final totals: Standards 1 P2 violation plus 1 duplication judgment, both resolved; Spec 1 partial acceptance-coverage finding, resolved. No outstanding concrete finding in either reviewed axis. The open platform/host validation limits are recorded in [the feature walkthrough](prior-work.md).
