@@ -60,3 +60,7 @@ CRW_VSCODE_VERSION=1.141.2 pnpm test:host
 ```
 
 See the [review record](clean-checkout-review.md) and PR checks for final findings and platform evidence.
+
+# Superseded implementation note
+
+> This walkthrough documents the earlier owned-branch and editor-restoration implementation. [ADR 0006](../adr/0006-use-ordinary-git-for-review-checkouts.md) supersedes those guarantees with ordinary Git and manual recovery.

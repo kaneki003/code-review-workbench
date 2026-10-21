@@ -30,7 +30,7 @@ Each webview has its own browser context and communicates with the host through 
 
 Keep host work asynchronous. Filesystem/network calls and child-process output must not block the extension host. Bound captured output and expensive parsing; if profiling shows sustained CPU work, isolate that work behind the existing connection boundary in a worker or child process. No extra service or worker framework is required initially.
 
-One review manager exists in the owning window; it is not a magical singleton shared across VS Code processes. The one-active-review product rule also applies across windows. The storage decision must define ownership/locking and recovery; another window must not start conflicting operations while ownership is held or uncertain. Do not claim that an in-memory flag solves this.
+Each window has its own review manager. One active review is allowed per repository/window, so different repositories may proceed concurrently. A repository-local receipt prevents another process from starting a conflicting transition in the same checkout; ordinary SQLite transactions coordinate shared saved state. An in-memory flag alone is insufficient.
 
 ## Native surfaces and owned screens
 
@@ -47,7 +47,7 @@ One review manager exists in the owning window; it is not a magical singleton sh
 
 View locations are defaults: VS Code users can move and hide views. Do not promise fixed widths or automatic sidebar-width reclamation. Hiding or disposing a webview is not Exit Review. Commands remain reachable when the companion is hidden.
 
-Source navigation carries repository/review identity, inspected source identity, comparison side, path and range. Return also carries the initiating concern and expansion/focus target. Renamed, deleted, outdated and unavailable sources retain their original identities. An unavailable target explains the limitation instead of opening an unrelated current line. Reuse existing ordinary tabs where appropriate and preserve the pre-review editor state for restoration; the Git/restoration decision owns its recovery protocol.
+Source navigation carries repository/review identity, inspected source identity, comparison side, path and range. Return also carries the initiating concern. Renamed, deleted, outdated and unavailable sources retain their original identities. An unavailable target explains the limitation instead of opening an unrelated current line. Reuse existing ordinary tabs where appropriate; VS Code owns incidental tab/layout/focus state and the workbench does not serialize it for Exit.
 
 ## Ownership, modules and dependency direction
 

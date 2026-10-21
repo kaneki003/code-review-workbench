@@ -78,11 +78,14 @@ A PR accepted into the repository's merge queue whose eventual merge has not yet
 _Avoid_: Merged
 
 **Exit Review**:
-The explicit action that ends the active review and restores the previous workspace, branch and unfinished work.
+The explicit action that ends the active review and asks Git to restore the previous branch or detached commit plus unfinished staged, unstaged and untracked work. It does not reconstruct incidental VS Code tabs, layout, selections or scroll state.
 _Avoid_: Hide companion, submit review, merge
 
 **Prior work**:
-The workspace, source position and unfinished local changes present before entering a review, which Exit Review restores.
+The branch or detached commit and unfinished staged, unstaged and nonignored untracked changes present before entering a review, which Exit Review asks Git to restore.
+
+**Checkout receipt**:
+A small repository-local record of an active or interrupted Enter/Exit transition. It prevents another workbench window from driving the same checkout and supplies facts for user-controlled Git recovery; it is not an automatic recovery journal.
 
 **Review-time changes**:
 Local source changes made while a review is active, distinct from prior work and unfinished feedback.

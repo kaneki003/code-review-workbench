@@ -66,3 +66,7 @@ Records contain minimal metadata, apart from restorable database snapshots. Publ
 This is the combined protocol, not a rename-flag-only claim. Tests inject write, file-flush, rename and final-durability failures and real worker/process crashes. They do not simulate hardware power loss or certify every volume. [MoveFileEx](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw), [FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers), [SQLite atomic commit](https://sqlite.org/atomiccommit.html), [Windows jobs](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
 The owner approved the native bridge on 17 October 2026, amending the earlier JavaScript-only packaging boundary. `node-gyp` 13.1.0 builds Electron 43.7.7 / Node-API 8 assets for macOS arm64, Windows x64 and Linux x64. Users need no compiler or install hook. Developers need Python plus Xcode Command Line Tools, Linux C++/make or Visual Studio C++ Build Tools. Headers use a private temporary cache because gyp's Unix include paths cannot contain spaces; source paths may contain spaces.
+
+# Superseded implementation note
+
+> This walkthrough records the earlier native global-ownership checkpoint. [ADR 0007](../adr/0007-coordinate-review-state-per-repository.md) supersedes it with concurrent SQLite access and repository-scoped checkout coordination.

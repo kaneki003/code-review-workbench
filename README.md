@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and PR checkout/Exit recovery. [Prior-work preservation](docs/development/prior-work.md) extends Enter/Exit to supported staged, unstaged and new-file work, with verified restoration and recovery. Platform and installed-host validation remain open in [draft PR #36](https://github.com/kaneki003/code-review-workbench/pull/36). Review-time edit preservation remains a later ticket.
+This repository contains the accepted planning baseline, installable readiness, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and a PR checkout/Exit flow based on ordinary Git. Enter preserves staged, unstaged and nonignored new-file work in a named stash; Exit applies it with index restoration. Failed commands expose their real diagnostics and leave recovery to the user. Platform and installed-host validation remain open in [draft PR #36](https://github.com/kaneki003/code-review-workbench/pull/36). Review-time edit preservation remains a later ticket.
 
 ## Run the readiness slice
 
@@ -18,7 +18,7 @@ Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install f
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
-The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands coordinate one owner across windows. Recover Private Store reconciles interrupted typed operations without replaying Git. The guarded Git interface updates workbench-owned references and fetches verified PR source; it is not an arbitrary command runner. Install the VSIX built for your OS and CPU.
+The private-state architecture is being simplified under [ADR 0007](docs/adr/0007-coordinate-review-state-per-repository.md): different repositories/windows may work concurrently, while a repository-local receipt excludes overlapping transitions in the same checkout. The older native global-ownership implementation remains in the tree only while source/draft storage is migrated away from it.
 
 Run **Code Review Workbench: Open Pull Request Overview** in the root of an existing local repository, paste a GitHub.com PR URL and sign in through VS Code. The overview retains the selected local copy and verified account/repository identities in the owning private store. It shows real metadata and the author description in a read-only Markdown tab/preview. API sign-in does not configure Git transport. See the [implementation walkthrough, try-out steps and validation limits](docs/development/pr-overview.md).
 
@@ -28,7 +28,7 @@ Select a committed source range and choose **Write Private Local Draft**. The mo
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 
-From a supported repository, **Code Review Workbench: Enter PR Checkout** saves and captures the original editor state, preserves supported unfinished work, then enters the exact PR on a fresh owned branch. Ordinary `.gitattributes` LF/CRLF rules are supported when native Git can restore the exact bytes. **Exit Review** verifies the original branch/commit, saved files, staging and editor state before completion. **Recover PR Checkout** reconciles interrupted transitions in the affected repository. Unsupported work retains no-switch reading. See the [prior-work walkthrough and representation limits](docs/development/prior-work.md) and the [clean-checkout baseline](docs/development/clean-checkout.md).
+From a local repository, **Code Review Workbench: Enter PR Checkout** asks VS Code to save dirty documents, uses `git stash push --include-untracked` when needed, records the stash object and switches to the exact PR commit in detached mode. **Exit Review** switches back and runs `git stash apply --index`; VS Code retains responsibility for its own editor state. A failed command shows its command, exit code and Git output and retains the bounded checkout receipt for manual recovery. One review may be active per repository/window, and different repositories may be reviewed concurrently. See [ADR 0006](docs/adr/0006-use-ordinary-git-for-review-checkouts.md).
 
 ## Project layout
 

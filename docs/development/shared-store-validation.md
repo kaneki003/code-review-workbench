@@ -38,3 +38,7 @@ The final review found same-owner recovery using the caller's old revision after
 Earlier generic-command, descendant-settlement, publication-order and scope findings were addressed before this final review. The full review compares against main `69e9ab2c3ef25fc47cbfecf1878bbd235e35c768`.
 
 Standards: 2 required findings fixed, 0 open violations, 1 optional cleanup. Spec: 1 finding fixed, 0 open findings. The draft PR stays unmerged and #18 stays open for the owner's review.
+
+# Superseded validation note
+
+> These results cover the earlier native global-owner design. [ADR 0007](../adr/0007-coordinate-review-state-per-repository.md) removes that behavior; retain this file only as historical evidence until its implementation and tests are deleted.

@@ -91,7 +91,7 @@ The workbench does not judge whether a review was sufficiently thorough, quick o
 | GitHub PR review | Accessible public and authorized private GitHub.com PRs; peer and self-review; published discussion. | Associated GitHub PR, subject to permission and valid source correspondence. |
 | Local committed comparison | Compare two commits or branches, such as a feature branch against main. | Private local investigation unless a valid PR destination is associated. |
 
-MVP supports one active review at a time. Other PRs remain in the personal list and retain saved progress. Repository-level synchronization remains a batch operation across relevant PRs; it does not imply several simultaneous active reviews.
+MVP supports one active review per repository/window. Different local repositories may be reviewed concurrently in different VS Code windows, while two windows never drive the same working checkout at the same time. Other PRs remain in the personal list and retain saved progress. Repository-level synchronization remains a batch operation across relevant PRs.
 
 Review is iterative: commit a change, review that committed version, make further edits, commit again and Sync to review the newer version. Saving a file or staging changes does not update the inspected review source.
 
@@ -454,9 +454,9 @@ The proposed dedicated data-processing notice and file/folder exclusion controls
 
 ## FR01 - Open the selected change safely
 
-**Required behavior.** Open a relevant GitHub PR through the repository-filtered personal list or a pasted link, or inspect local commits/branches. Review committed source only; staged, unstaged and unsaved edits are not review inputs. Further work enters the review after a new commit and source Sync. Support any-language/mixed-language entry and one active review. For a PR, obtain the local repository, preserve prior unfinished work and automatically enter the target repository/branch. Explicit Exit Review restores the previous workspace and work.
+**Required behavior.** Open a relevant GitHub PR through the repository-filtered personal list or a pasted link, or inspect local commits/branches. Review committed source only; staged, unstaged and unsaved edits are not review inputs. Further work enters the review after a new commit and source Sync. Support any-language/mixed-language entry and one active review per repository/window, with concurrent reviews in different repositories. For a PR, obtain the local repository, preserve prior unfinished work and automatically enter the exact target commit. Explicit Exit Review restores the previous repository checkout and unfinished work; VS Code remains responsible for incidental editor/view state.
 
-**Observable checks.** Missing local copies initiate cloning; failed setup offers recovery and does not claim remote-only review. A local read fallback leaves prior work intact when switching is unsafe. Open/history filters and relevant-list categories work. Local-only review has no invented GitHub destination.
+**Observable checks.** Missing local copies initiate cloning; failed setup reports the exact failed Git command and its output, preserves a bounded recovery receipt and does not claim remote-only review. Recovery uses ordinary Git under user control rather than automatic replay or repair. A local read fallback leaves prior work intact when switching is unsafe. Different repositories do not block one another; a second transition in the same checkout is refused. Open/history filters and relevant-list categories work. Local-only review has no invented GitHub destination.
 
 ## FR02 - Explain intent and give a provisional assessment
 
@@ -714,7 +714,7 @@ These are plausible difficulties the product targets when a reviewer moves among
 | Incremental investigation | Unvisited areas may remain unexamined. A quiet suggestion list is not exhaustive assurance. |
 | Saved contextual understanding | Retained statements can become stale or mistaken; provenance and rechecking remain essential. |
 | Cloud AI and variable environments | Access, cost, responsiveness and model/tool behavior vary. Local inference is deferred. |
-| One active review, GitHub.com-only MVP | Parallel review and broader hosting/team administration are outside the current scope. |
+| One active review per repository/window, GitHub.com-only MVP | Different repositories may be reviewed concurrently; two windows cannot drive the same checkout. Broader hosting/team administration remains outside the current scope. |
 | User-controlled depth and publication | The reviewer still supplies judgment and decides how much evidence is enough; persuasive AI output can still be wrong. |
 
 The workbench intends to make the review experience coherent while keeping responsibility with the developer. Its own setup, context and integration burden must remain visible in the product description; theoretical convenience is not a demonstrated net advantage.

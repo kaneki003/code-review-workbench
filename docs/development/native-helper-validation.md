@@ -41,3 +41,7 @@ One P2 finding resolved: macOS identity used mutable boot wall-clock time. Apple
 The separate reviewer confirmed the fix and found no remaining actionable checkpoint regressions or unasked scope. #18 still requires one shared durable store and safe refusal/recovery across windows; this checkpoint does not complete that requirement.
 
 Standards: 2 findings resolved, 0 open. Spec: 1 finding resolved, 0 actionable regressions open; full #18 ownership acceptance remains open.
+
+# Superseded validation note
+
+> These results cover the earlier native ownership/process helper. [ADR 0007](../adr/0007-coordinate-review-state-per-repository.md) removes it from the target architecture; retain this file only as historical evidence during migration.

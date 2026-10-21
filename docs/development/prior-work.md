@@ -69,3 +69,7 @@ On macOS arm64 with Git 2.56.0, development Node 24.22.0 and pnpm 12.11.2:
 - The independent [Standards and Spec review](prior-work-review.md) records the findings, fixes and remaining validation limitations.
 
 The completed fault/interference implementation still needs a passing current platform CI matrix and minimum/current Git/platform acceptance before advertising those support combinations. The local macOS installed-host reruns pass; they do not establish Windows/Linux or minimum-Git support. Keep the PR in draft for owner review.
+
+# Superseded implementation note
+
+> This walkthrough documents the earlier verified-manifest implementation. [ADR 0006](../adr/0006-use-ordinary-git-for-review-checkouts.md) supersedes its automatic reconciliation, byte verification and editor-restoration behavior. Keep it only as historical validation evidence while the old implementation is deleted.
