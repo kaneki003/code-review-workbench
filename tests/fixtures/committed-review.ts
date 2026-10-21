@@ -15,6 +15,18 @@ import type { CheckoutEditors } from '../../src/application/checkout-review';
 import type { SourceNavigation } from '../../src/application/committed-source';
 
 export const integrationTimeout = process.platform === 'win32' ? 120_000 : 20_000;
+export function checkoutEditors(workspace: string): CheckoutEditors {
+  return {
+    capture: async () => ({
+      protocol: 1,
+      workspace,
+      layout: { groups: [{ size: 1 }] },
+      groups: [{ column: 1, active: true, tabs: [] }],
+    }),
+    assertSaved() {},
+    restore: async () => {},
+  };
+}
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   vi.useRealTimers();

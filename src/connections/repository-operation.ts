@@ -425,7 +425,7 @@ export class RepositoryOperation {
   }
   validateDelete(ref: string, commit: string) {
     if (
-      !/^refs\/(?:heads\/code-review-workbench\/[a-f0-9-]{36}|code-review-workbench\/recovery\/[a-f0-9-]{36}\/original)$/.test(
+      !/^refs\/(?:heads\/code-review-workbench\/[a-f0-9-]{36}|code-review-workbench\/recovery\/[a-f0-9-]{36}\/(?:original|prior-work))$/.test(
         ref,
       ) ||
       !oid(commit)

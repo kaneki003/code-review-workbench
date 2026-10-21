@@ -121,6 +121,12 @@ function validReview(value: unknown): value is CheckoutReview {
     ) &&
     uuid(value.sourceId) &&
     uuid(value.entryId) &&
+    (value.earlierEntryIds === undefined ||
+      (Array.isArray(value.earlierEntryIds) &&
+        value.earlierEntryIds.length <= 32 &&
+        value.earlierEntryIds.every(uuid) &&
+        new Set(value.earlierEntryIds).size === value.earlierEntryIds.length &&
+        !value.earlierEntryIds.includes(value.entryId))) &&
     (value.exitId === null || uuid(value.exitId)) &&
     object(value.original) &&
     (value.original.branch === null ||

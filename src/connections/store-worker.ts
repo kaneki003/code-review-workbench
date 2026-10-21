@@ -1554,6 +1554,40 @@ class SharedStore {
       previousStash: repository.refOid('refs/stash'),
     };
   }
+  private freshCheckoutEntry(record: CheckoutReview): CheckoutReview {
+    const earlierEntryIds = [...(record.earlierEntryIds ?? []), record.entryId];
+    if (earlierEntryIds.length > 32)
+      throw new StoreError(
+        'CHECKOUT_RECOVERY',
+        'This transition reached its bounded checkout retry limit. Choose Restore before starting another entry. All protection was retained.',
+      );
+    return { ...record, entryId: randomUUID(), earlierEntryIds };
+  }
+  private ownsReferenceReceipt(repository: RepositoryOperation, ref: string, expected: string) {
+    const rows = this.database!.prepare(
+      "SELECT record FROM operation_records WHERE json_extract(record,'$.ref')=? AND json_extract(record,'$.newOid')=?",
+    ).all(ref, expected);
+    return rows.some((row) => {
+      try {
+        const stored = JSON.parse(String(row.record)) as OperationRecord;
+        const operation = readOperation(this.rendezvous, stored.id);
+        return (
+          JSON.stringify(operation) === row.record &&
+          operation.storeId === this.lease!.storeId &&
+          operation.incarnation === this.lease!.incarnation &&
+          operation.scopeId === this.lease!.scopeId &&
+          operation.phase === 'observed' &&
+          operation.outcome === 'applied' &&
+          repository.sameRepositoryIdentity(operation.facts) &&
+          (ref.startsWith('refs/heads/')
+            ? operation.kind === 'checkout' && operation.checkout?.create === true
+            : operation.kind === 'update-ref')
+        );
+      } catch {
+        return false;
+      }
+    });
+  }
   private async preserveCheckoutWork(
     record: CheckoutReview,
     restore: boolean,
@@ -1797,39 +1831,23 @@ class SharedStore {
           'CHECKOUT_INTERFERENCE',
           'Keep artifacts until completed restoration and current clean repository facts agree.',
         );
-      if (!existsSync(operationFile(this.rendezvous, record.entryId))) {
-        const pin = originalCheckoutRef(record.entryId);
-        return {
-          ...this.owned(),
-          checkout: record,
-          cleanup: { removed: [], retained: repository.refOid(pin) ? [pin] : [] },
-        };
-      }
-      const entry = readOperation(this.rendezvous, record.entryId);
-      if (
-        entry.kind !== 'checkout' ||
-        !entry.checkout?.create ||
-        entry.phase !== 'observed' ||
-        !entry.outcome ||
-        entry.scopeId !== record.scopeId ||
-        entry.facts.worktree !== this.config.location ||
-        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
-          entry.id,
-        )?.record !== JSON.stringify(entry)
-      )
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'Cleanup has no proven-owned entry receipt. Retain all artifacts.',
-        );
       const cleanup = { removed: [] as string[], retained: [] as string[] };
-      for (const [ref, expected] of [
-        [originalCheckoutRef(record.entryId), record.original.commit],
-        [entry.ref, entry.newOid],
-      ]) {
+      const source = this.sourceRecord(record.sourceId);
+      const artifacts: [string, string][] = [
+        record.entryId,
+        ...(record.earlierEntryIds ?? []),
+      ].flatMap((id) => [
+        [originalCheckoutRef(id), record.original.commit] as [string, string],
+        [`refs/heads/code-review-workbench/${id}`, source.head] as [string, string],
+      ]);
+      if (record.priorWork?.object)
+        artifacts.push([priorWorkRef(record.priorWork.stashId), record.priorWork.object]);
+      for (const [ref, expected] of artifacts) {
         const current = repository.refOid(ref!);
         if (current === null) continue;
         if (
           current !== expected ||
+          !this.ownsReferenceReceipt(repository, ref, expected) ||
           (ref!.startsWith('refs/heads/') && !repository.mergedIntoHead(expected!))
         ) {
           cleanup.retained.push(ref!);
@@ -1948,7 +1966,7 @@ class SharedStore {
           if (request.checkoutChoice === 'restore') {
             // Persist Exit before applying, even when checkout never started.
             next = { ...preserved, phase: 'exiting', revision: record.revision + 1 };
-          } else next = { ...preserved, revision: record.revision + 1 };
+          } else next = { ...this.freshCheckoutEntry(preserved), revision: record.revision + 1 };
           break;
         }
         if (original) {
@@ -1958,7 +1976,7 @@ class SharedStore {
               'The original checkout is present, but no Exit was recorded. Choose Restore to restore the saved editors and finish Exit, or keep the recovery record while inspecting manual changes.',
             );
           if (request.checkoutChoice === 'continue' && record.phase === 'entering') {
-            next.entryId = randomUUID();
+            next = { ...this.freshCheckoutEntry(record), revision: record.revision + 1 };
             if (record.priorWork) next.priorWork = this.retryUnperformedPreservation(record, false);
             next.phase = 'entering';
           } else next.phase = 'restoring-editors';

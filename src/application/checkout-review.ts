@@ -55,6 +55,8 @@ export interface CheckoutReview {
   original: { branch: string | null; commit: string; fingerprint: string };
   editors: EditorSnapshot;
   entryId: string;
+  /** Retain reference ownership across fresh checkout attempts after recovery. */
+  earlierEntryIds?: string[];
   exitId: string | null;
   priorWork?: PriorWork;
 }

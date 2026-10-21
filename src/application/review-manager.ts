@@ -395,7 +395,7 @@ export class ReviewManager {
       };
     return {
       status: 'complete',
-      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${complete.priorWork ? ' The verified prior-work stash remains available in Git.' : ''}${cleanup.cleanup?.retained.length ? ' Recovery artifacts were retained to keep their unmerged, moved or uncertain commits reachable.' : ''}`,
+      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${complete.priorWork?.object ? ` Your prior-work stash ${complete.priorWork.object} remains in the ordinary Git stash list (${complete.priorWork.marker}).` : ''}${cleanup.cleanup?.retained.length ? ` Retained references: ${cleanup.cleanup.retained.join(', ')}. They may contain unmerged, moved or unproven work; inspect them with Git or retry cleanup through Recover PR Checkout.` : ''}`,
       review: complete,
     };
   }
