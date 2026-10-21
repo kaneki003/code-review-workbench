@@ -40,3 +40,24 @@ The reviewer confirmed the coverage finding was resolved and found no defect in 
 Full validation also exposed an older clean-checkout assertion expecting `blocked` after the owner manually returns to the original branch and chooses Continue. The manager now retains the saved active review in this refusal, so the truthful result is `recovery`. The Spec reviewer confirmed that returning recovery context keeps the required Restore action available for clean and prior-work reviews alike. The test now asserts that context while retaining the exact Restore instruction, no editor restoration and unchanged HEAD reflog checks; the focused scenario passes.
 
 Final totals: Standards 1 P2 violation plus 1 duplication judgment, both resolved; Spec 1 partial acceptance-coverage finding, resolved. No outstanding concrete finding in either reviewed axis. The open platform/host validation limits are recorded in [the feature walkthrough](prior-work.md).
+
+## Git attributes follow-up
+
+Fixed comparison baseline: `4244d5de6ab46c3ea783a9f4647adaf4efef6579`. The reviewers independently checked the approved canonical/raw conversion change and rechecked its fixes before the follow-up commit.
+
+### Standards
+
+No documented-standard violations or material smell findings. Conversion logic stays in the Git connection, scratch writes retain explicit limits, and the public Enter/Exit/Recover fixtures use disposable real Git. The frozen protocol-1 fingerprint fixture is deliberate compatibility evidence: directory identities vary between runs, so a static digest cannot represent the older record. The new 9 MiB integration fixture alone receives a 60-second budget after exceeding the ordinary 20-second budget in the full run; existing fixture timeouts and assertions are unchanged.
+
+### Spec
+
+Two findings were fixed and rechecked:
+
+1. **P1: adding attributes to every repository fingerprint broke older saved reviews.** Their protocol-1 original/clean identities could never match after upgrading. Repository/check-out fingerprints now retain the previous algorithm. New preservation records track conversion policy separately and recheck it after preview, before stash/apply, and before Exit/recovery while the PR is still checked out. Old manifests without a policy record require nonconverting rules. Two regressions freeze the previous identity format and reopen clean/unfinished reviews through the public Restore action.
+2. **P2: target-only working-tree fallback escaped preflight.** A target index without `.gitattributes` can still use an ignored working-tree attribute file for a new target path. Target preflight now checks both cached and ordinary attribute lookup through the scratch target index. A public clean Enter fixture with ignored encoding rules failed before this fix and now refuses before checkout or a saved transition.
+
+Both compatibility cases and the ignored-attribute case failed before their fixes and all three pass afterward. The Spec reviewer confirmed both findings were resolved and found no new concrete defect or scope creep. No platform acceptance is inferred from this review.
+
+Follow-up totals: Standards 0 findings; Spec 1 P1 and 1 P2 finding, both resolved. No outstanding concrete finding in either axis.
+
+Follow-up validation: all 316 tests across 15 files pass. Current/minimum macOS installed hosts (VS Code 1.143.0/1.141.2) each pass all seven checks, including native prior-work preservation with committed LF attributes. Earlier platform CI failures and minimum-Git acceptance remain open; see the walkthrough for the complete measured limits.

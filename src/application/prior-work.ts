@@ -8,6 +8,8 @@ export interface WorkManifest {
   index: WorkFile[];
   files: WorkFile[];
   untracked: string[];
+  /** Native Git conversion policy and only the files whose stored bytes differ. */
+  representation?: { attributes: string; stored: WorkFile[] };
 }
 export interface PriorWork {
   manifest: WorkManifest;

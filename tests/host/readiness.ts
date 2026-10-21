@@ -665,6 +665,7 @@ suite('Installed readiness VSIX', () => {
       // its actual native editor adapter, after the no-switch assertions above.
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       git(['config', 'core.autocrlf', 'false']);
+      await writeFile(join(location, '.gitattributes'), '* text=auto eol=lf\n');
       await writeFile(
         join(location, 'view.txt'),
         Array.from({ length: 400 }, (_, index) => `line ${index}: original editor position`).join(

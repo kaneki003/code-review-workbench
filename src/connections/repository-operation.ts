@@ -36,6 +36,13 @@ import {
   uuid,
   type NativeStore,
 } from './store-records';
+import {
+  assertCheckoutAttributes,
+  assertPreservationPolicy,
+  assertSupportedAttributes,
+  blobOid,
+  checkoutFiles,
+} from './git-attributes';
 
 export interface RepositoryFacts {
   worktree: string;
@@ -257,11 +264,12 @@ export class RepositoryOperation {
       location,
     ];
   }
-  git(args: string[], optional = false): Buffer | null {
+  git(args: string[], optional = false, input?: Buffer): Buffer | null {
     try {
       return execFileSync(this.executable, [...this.prefix, ...args], {
         env: this.environment,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        input,
         timeout: 3000,
         maxBuffer: 8 * 1024 * 1024,
         windowsHide: true,
@@ -479,6 +487,7 @@ export class RepositoryOperation {
         'UNSUPPORTED_CHECKOUT',
         'Configured filters, sparse/split index, worktree config and non-file references require validated preservation support. Keep reading committed source without switching.',
       );
+    assertSupportedAttributes(this, []);
     const facts = this.facts();
     for (const marker of [
       'MERGE_HEAD',
@@ -509,6 +518,27 @@ export class RepositoryOperation {
         'UNSUPPORTED_CHECKOUT',
         'Submodules, unresolved entries and special index flags are not supported by clean checkout. Keep no-switch reading.',
       );
+    const indexedFiles = staged
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => {
+        const match = /^(100644|100755|120000) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t(.+)$/s.exec(entry);
+        if (!match)
+          throw new StoreError(
+            'UNSUPPORTED_CHECKOUT',
+            'An index entry has an unsupported representation.',
+          );
+        return {
+          path: match[3]!,
+          mode: match[1] as '100644' | '100755' | '120000',
+          oid: match[2]!,
+        };
+      });
+    const converts = assertSupportedAttributes(
+      this,
+      indexedFiles.map((file) => file.path),
+    );
+    if (target) assertCheckoutAttributes(this, target);
     if (
       requirement === 'clean' &&
       this.git([
@@ -523,19 +553,20 @@ export class RepositoryOperation {
         'DIRTY_CHECKOUT',
         'Unfinished index/worktree changes prevent this clean-only checkout. Commit or preserve them using ordinary Git, then Retry; committed-source reading remains available.',
       );
-    // Status can trust cached stat fields even when bytes differ. Verify each
-    // indexed blob directly, without invoking filters or refreshing the index.
-    // Transformed working-file representations remain a safe no-switch case.
-    for (const entry of requirement === 'inventory' ? [] : staged.split('\0').filter(Boolean)) {
-      const match = /^(100644|100755|120000) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t(.+)$/s.exec(entry);
-      if (!match)
-        throw new StoreError(
-          'UNSUPPORTED_CHECKOUT',
-          'An index entry has an unsupported representation.',
-        );
-      const mode = match[1]!,
-        expected = match[2]!,
-        file = match[3]!;
+    // Compare real bytes with the indexed blob's approved checkout representation,
+    // including normal CRLF output. Status/stat caches alone cannot prove this.
+    const checkout = new Map(
+      (requirement === 'inventory' || !converts
+        ? []
+        : checkoutFiles(
+            this,
+            indexedFiles.filter((file) => file.mode !== '120000'),
+          )
+      ).map((file) => [file.path, file.oid]),
+    );
+    for (const { mode, oid: expected, path: file } of requirement === 'inventory'
+      ? []
+      : indexedFiles) {
       const path = join(facts.worktree, file);
       const metadata = lstatSync(path);
       const symlink = metadata.isSymbolicLink();
@@ -545,12 +576,9 @@ export class RepositoryOperation {
           'A working-file type differs from its indexed type. Keep no-switch reading.',
         );
       const content = symlink ? Buffer.from(readlinkSync(path)) : readFileSync(path);
-      const actual = createHash(expected.length === 40 ? 'sha1' : 'sha256')
-        .update(`blob ${content.length}\0`)
-        .update(content)
-        .digest('hex');
+      const actual = blobOid(content, expected);
       if (
-        actual !== expected ||
+        actual !== (checkout.get(file) ?? expected) ||
         (process.platform !== 'win32' &&
           !symlink &&
           Boolean(metadata.mode & 0o111) !== (mode === '100755'))
@@ -628,6 +656,7 @@ export class RepositoryOperation {
   validateStash(record: OperationRecord) {
     const { prior, original } = record.stash!;
     const actual = this.checkoutState(undefined, 'inventory');
+    assertPreservationPolicy(this, prior.manifest);
     if (actual.branch !== original.branch || actual.commit !== original.commit)
       throw new StoreError(
         'PRESERVATION_RECOVERY',
@@ -661,6 +690,7 @@ export class RepositoryOperation {
     const { prior, original } = record.stash!;
     const actual = this.checkoutState(undefined, 'inventory');
     if (actual.branch !== original.branch || actual.commit !== original.commit) return 'refused';
+    assertPreservationPolicy(this, prior.manifest);
     if (record.kind === 'stash-apply') {
       if (!prior.object || this.refOid(priorWorkRef(prior.stashId)) !== prior.object)
         return 'refused';

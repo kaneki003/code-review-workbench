@@ -13,6 +13,7 @@ import type {
   StoreView,
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
+import { assertPreservationPolicy } from './git-attributes';
 import {
   accountScope,
   claimDatabase,
@@ -1827,6 +1828,8 @@ class SharedStore {
       const next = await this.preserveCheckoutWork(record, request.action === 'restorePriorWork');
       return this.saveCheckout(request, { ...next, revision: record.revision + 1 }, state);
     }
+    if (record.priorWork && record.phase !== 'complete')
+      assertPreservationPolicy(repository, record.priorWork.manifest, true);
     const actual = repository.checkoutState(undefined, record.priorWork ? 'inventory' : 'clean');
     const original =
       JSON.stringify(actual) === JSON.stringify(record.original) &&

@@ -28,7 +28,7 @@ Select a committed source range and choose **Write Private Local Draft**. The mo
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 
-From a clean supported repository, **Code Review Workbench: Enter PR Checkout** saves and captures the original editor state, then enters the exact PR on a fresh owned branch. **Exit Review** verifies the original branch/commit, clean files and editor state before completion. **Recover PR Checkout** reconciles interrupted transitions in the affected repository. Unfinished work stops switching and retains no-switch reading. See the [checkout walkthrough, recovery actions and representation limits](docs/development/clean-checkout.md).
+From a supported repository, **Code Review Workbench: Enter PR Checkout** saves and captures the original editor state, preserves supported unfinished work, then enters the exact PR on a fresh owned branch. Ordinary `.gitattributes` LF/CRLF rules are supported when native Git can restore the exact bytes. **Exit Review** verifies the original branch/commit, saved files, staging and editor state before completion. **Recover PR Checkout** reconciles interrupted transitions in the affected repository. Unsupported work retains no-switch reading. See the [prior-work walkthrough and representation limits](docs/development/prior-work.md) and the [clean-checkout baseline](docs/development/clean-checkout.md).
 
 ## Project layout
 

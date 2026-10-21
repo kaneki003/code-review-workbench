@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { PriorWork, WorkFile, WorkManifest } from '../application/prior-work';
 import { StoreError } from '../application/private-store';
 import type { RepositoryOperation } from './repository-operation';
 import { object, text, uuid } from './store-records';
+import { assertPreservationPolicy, previewPreservedWork } from './git-attributes';
 
 const oid = (value: unknown): value is string =>
   typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
@@ -38,11 +39,37 @@ export function validPriorWork(value: unknown): value is PriorWork {
       )
     );
   }
+  function representation(manifest: Record<string, unknown>) {
+    const value = manifest.representation;
+    if (value === undefined) return true;
+    if (
+      !object(value) ||
+      typeof value.attributes !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.attributes) ||
+      !files(value.stored) ||
+      !files(manifest.files)
+    )
+      return false;
+    const raw = manifest.files;
+    return (
+      value.stored.every(
+        (file) =>
+          file.mode !== 'missing' &&
+          raw.some(
+            (original) =>
+              original.path === file.path &&
+              original.mode === file.mode &&
+              original.oid !== file.oid,
+          ),
+      ) && new Set(value.stored.map((file) => file.path)).size === value.stored.length
+    );
+  }
   return (
     object(value) &&
     object(value.manifest) &&
     files(value.manifest.index) &&
     files(value.manifest.files) &&
+    representation(value.manifest) &&
     Array.isArray(value.manifest.untracked) &&
     value.manifest.untracked.every((path) => text(path) && safePath(path)) &&
     uuid(value.stashId) &&
@@ -82,7 +109,7 @@ function entries(repository: RepositoryOperation, revision?: string): WorkFile[]
 function same(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
-export function workManifest(repository: RepositoryOperation): WorkManifest {
+function rawManifest(repository: RepositoryOperation): WorkManifest {
   const before = repository.checkoutState(undefined, 'inventory');
   const facts = repository.facts();
   const index = entries(repository),
@@ -114,24 +141,6 @@ export function workManifest(repository: RepositoryOperation): WorkManifest {
     new Set(paths.map((path) => path.toLowerCase())).size !== paths.length
   )
     unsupported('Unusual paths or case collisions require validated preservation support.');
-  if (
-    paths.some((path) => path.split('/').includes('.gitattributes')) ||
-    existsSync(join(facts.commonGitDir, 'info', 'attributes')) ||
-    repository.git(['config', '--get', 'core.attributesfile'], true) ||
-    /^(true|input)$/i.test(
-      repository.git(['config', '--get', 'core.autocrlf'], true)?.toString().trim() ?? '',
-    )
-  )
-    unsupported(
-      'Attributes and line-ending transformations require validated preservation support.',
-    );
-  for (let start = 0; start < paths.length; start += 100) {
-    if (
-      repository.git(['check-attr', '-z', '--all', '--', ...paths.slice(start, start + 100)])!
-        .length
-    )
-      unsupported('Effective Git attributes require validated preservation support.');
-  }
   let bytes = 0;
   const inventory = paths.map((path) => {
     let parent = dirname(path);
@@ -202,8 +211,24 @@ export function workManifest(repository: RepositoryOperation): WorkManifest {
     );
   return { index, files, untracked };
 }
+export function workManifest(repository: RepositoryOperation): WorkManifest {
+  const manifest = rawManifest(repository);
+  const facts = repository.facts();
+  const representation = previewPreservedWork(repository, manifest, entries(repository, 'HEAD'));
+  assertPreservationPolicy(repository, { ...manifest, representation });
+  if (!repository.sameFacts(facts))
+    throw new StoreError(
+      'REPOSITORY_CHANGED',
+      'Files or Git attributes changed during conversion preview. Retry saving.',
+    );
+  return { ...manifest, representation };
+}
 export function matchesManifest(repository: RepositoryOperation, expected: WorkManifest) {
-  return same(workManifest(repository), expected);
+  return same(rawManifest(repository), {
+    index: expected.index,
+    files: expected.files,
+    untracked: expected.untracked,
+  });
 }
 export function verifyStash(
   repository: RepositoryOperation,
@@ -231,11 +256,11 @@ export function verifyStash(
       'The operation-tagged stash has unexpected ancestry or identity. Retain it and Retry recovery.',
     );
   const tracked = new Set(prior.manifest.index.map((file) => file.path));
-  const disk = prior.manifest.files.filter(
-    (file) => tracked.has(file.path) && file.mode !== 'missing',
-  );
+  const stored = new Map(prior.manifest.representation?.stored.map((file) => [file.path, file]));
+  const files = prior.manifest.files.map((file) => stored.get(file.path) ?? file);
+  const disk = files.filter((file) => tracked.has(file.path) && file.mode !== 'missing');
   const newPaths = new Set(prior.manifest.untracked);
-  const untracked = prior.manifest.files.filter((file) => newPaths.has(file.path));
+  const untracked = files.filter((file) => newPaths.has(file.path));
   if (
     !same(entries(repository, `${stash}^2`), prior.manifest.index) ||
     !same(entries(repository, stash), disk) ||
