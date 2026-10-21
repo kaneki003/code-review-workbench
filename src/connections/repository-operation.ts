@@ -78,6 +78,15 @@ export interface CheckoutState {
   commit: string;
   fingerprint: string;
 }
+export function operationBoundary(record: OperationRecord) {
+  if (record.kind === 'stash-push' || record.kind === 'stash-apply') return record.kind;
+  if (record.kind === 'checkout' && !record.checkout?.create) return 'restore-checkout';
+  if (record.ref.endsWith('/prior-work'))
+    return record.kind === 'delete-ref' ? 'prior-work-cleanup' : 'prior-work-pin';
+  if (record.ref.endsWith('/original'))
+    return record.kind === 'delete-ref' ? 'original-cleanup' : 'original-pin';
+  return record.kind;
+}
 function checkoutState(value: unknown): value is CheckoutState {
   return (
     object(value) &&

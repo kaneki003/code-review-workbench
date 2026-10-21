@@ -123,7 +123,11 @@ export interface StoreHandoff {
   fence: number;
 }
 export interface StoreReply {
-  cleanup?: { removed: string[]; retained: string[] };
+  cleanup?: {
+    removed: string[];
+    retained: string[];
+    priorStash?: { object: string; inStashList: boolean };
+  };
   checkout?: CheckoutReview;
   draft?: LocalDraft;
   drafts?: LocalDraft[];

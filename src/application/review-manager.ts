@@ -395,7 +395,7 @@ export class ReviewManager {
       };
     return {
       status: 'complete',
-      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${complete.priorWork?.object ? ` Your prior-work stash ${complete.priorWork.object} remains in the ordinary Git stash list (${complete.priorWork.marker}).` : ''}${cleanup.cleanup?.retained.length ? ` Retained references: ${cleanup.cleanup.retained.join(', ')}. They may contain unmerged, moved or unproven work; inspect them with Git or retry cleanup through Recover PR Checkout.` : ''}`,
+      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${cleanup.cleanup?.priorStash ? (cleanup.cleanup.priorStash.inStashList ? ` Your prior-work stash ${cleanup.cleanup.priorStash.object} remains in the ordinary Git stash list (${complete.priorWork!.marker}).` : ` Work was restored from stash ${cleanup.cleanup.priorStash.object}; its ordinary stash entry is no longer present.`) : ''}${cleanup.cleanup?.retained.length ? ` Retained references: ${cleanup.cleanup.retained.join(', ')}. They may contain unmerged, moved or unproven work; inspect them with Git or retry cleanup through Recover PR Checkout.` : ''}`,
       review: complete,
     };
   }
@@ -429,6 +429,13 @@ export class ReviewManager {
           review,
         };
       } catch (error) {
+        if (!review) {
+          try {
+            review = await this.readCheckoutReview();
+          } catch {
+            /* An uncertain journal remains blocked. */
+          }
+        }
         return this.checkoutFailure(error, review);
       }
     });

@@ -43,6 +43,7 @@ import {
   readOperation,
   operationFile,
   originalCheckoutRef,
+  operationBoundary,
   type OperationRecord,
 } from './repository-operation';
 
@@ -1490,7 +1491,11 @@ class SharedStore {
         'Settle and reconcile the pending Git child before changing review lifecycle.',
       );
     const journal = this.checkoutJournal();
+    if (record.phase === 'entering' && record.priorWork?.clean)
+      this.faults.at('prior-work-preserved.before');
     journal.publish(record, previous);
+    if (record.phase === 'entering' && record.priorWork?.clean)
+      this.faults.at('prior-work-preserved.record.after');
     const reply = { ...this.owned(), checkout: record };
     this.faults.at(`checkout-${record.phase}.commit.before`, this.database);
     transaction(this.database!, () => {
@@ -1502,6 +1507,8 @@ class SharedStore {
       saveReply(this.database!, request, this.lease!, reply);
     });
     this.faults.at(`checkout-${record.phase}.commit.after`);
+    if (record.phase === 'entering' && record.priorWork?.clean)
+      this.faults.at('prior-work-preserved.commit.after');
     return reply;
   }
   private async runCheckoutOperation(record: OperationRecord) {
@@ -1525,20 +1532,26 @@ class SharedStore {
     const id = restore ? prior.applyId : prior.stashId;
     if (!existsSync(operationFile(this.rendezvous, id))) return prior;
     const saved = readOperation(this.rendezvous, id);
-    if (saved.outcome !== 'not-applied') return prior;
+    const projected = this.database!.prepare(
+      'SELECT record FROM operation_records WHERE operation_id=?',
+    ).get(id)?.record;
+    const unarmed =
+      saved.phase === 'prepared' &&
+      saved.child === null &&
+      (projected === undefined || projected === JSON.stringify(saved));
+    if (!unarmed && saved.outcome !== 'not-applied') return prior;
     const repository = this.repository();
     if (
       saved.kind !== (restore ? 'stash-apply' : 'stash-push') ||
-      saved.phase !== 'observed' ||
+      (!unarmed && saved.phase !== 'observed') ||
       saved.scopeId !== record.scopeId ||
-      this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(id)
-        ?.record !== JSON.stringify(saved) ||
+      (!unarmed && projected !== JSON.stringify(saved)) ||
       !repository.sameRepositoryIdentity(saved.facts) ||
       repository.stashOutcome(saved) !== 'not-applied'
     )
       throw new StoreError(
         'PRESERVATION_RECOVERY',
-        'A fresh preservation attempt requires the settled unperformed receipt and unchanged original work. Keep all artifacts and Retry recovery.',
+        'A fresh preservation attempt requires a never-armed intent or settled unperformed receipt and unchanged original work. Keep all artifacts and Retry recovery.',
       );
     if (restore) return { ...prior, applyId: randomUUID() };
     if (repository.refOid(priorWorkRef(prior.stashId)) !== null)
@@ -1667,11 +1680,13 @@ class SharedStore {
       await this.runCheckoutOperation(operation);
     }
     if (restore) {
+      this.faults.at('prior-work-verified.before');
       if (!matchesManifest(repository, prior.manifest))
         throw new StoreError(
           'PRESERVATION_RECOVERY',
           'Applied prior work differs from the saved disk/index manifest. Keep the stash and Retry recovery.',
         );
+      this.faults.at('prior-work-verified.after');
       return record;
     }
     const stash = findPriorStash(repository, prior, record.original.commit);
@@ -1883,7 +1898,23 @@ class SharedStore {
         });
         (result.operation?.outcome === 'applied' ? cleanup.removed : cleanup.retained).push(ref!);
       }
-      return { ...this.owned(), checkout: record, cleanup };
+      const priorStash = record.priorWork?.object
+        ? {
+            object: record.priorWork.object,
+            inStashList:
+              repository.refOid('refs/stash') !== null &&
+              repository
+                .git(['reflog', 'show', '--format=%H', 'refs/stash'])!
+                .toString()
+                .split(/\r?\n/)
+                .includes(record.priorWork.object),
+          }
+        : undefined;
+      return {
+        ...this.owned(),
+        checkout: record,
+        cleanup: { ...cleanup, ...(priorStash ? { priorStash } : {}) },
+      };
     }
     const entry = () => {
       const operation = readOperation(this.rendezvous, record.entryId);
@@ -1999,7 +2030,10 @@ class SharedStore {
     assertOperationOwner(record, this.lease!);
     // Receipt/intent first; SQLite is its projection, never evidence that an
     // external effect completed. The independent receipt is retained.
+    const boundary = `${operationBoundary(record)}.${record.phase}`;
+    this.faults.at(`${boundary}.before`);
     this.faults.publish(record.phase, native, operationFile(this.rendezvous, record.id), record);
+    this.faults.at(`${boundary}.record.after`);
     const pending = {
       id: record.id,
       scopeId: record.scopeId,
@@ -2031,6 +2065,7 @@ class SharedStore {
     };
     if (observed) delete reply.view.code;
     this.faults.at(`${record.phase}.commit.before`, this.database);
+    this.faults.at(`${boundary}.commit.before`, this.database);
     transaction(this.database!, () => {
       this.validate(this.lease, true);
       this.database!.exec(
@@ -2060,6 +2095,7 @@ class SharedStore {
       if (request) saveReply(this.database!, request, lease, reply);
     });
     this.faults.at(`${record.phase}.commit.after`);
+    this.faults.at(`${boundary}.commit.after`);
     this.lease = lease;
     const { pending: _pending, ...control } = this.control!;
     this.faults.at(`${record.phase}.ack.before`);
@@ -2162,10 +2198,12 @@ class SharedStore {
       }
       this.validate(this.lease, true);
       this.faults.at('dispatch.before');
+      this.faults.at(`${operationBoundary(record)}.dispatch.before`);
       if (record.kind === 'checkout') this.faults.at('checkout.dispatch.before');
       if (record.stash) this.faults.at(`${record.kind}.dispatch.before`);
       native.startChild(child);
       this.faults.at('dispatch.after');
+      this.faults.at(`${operationBoundary(record)}.dispatch.after`);
       if (record.kind === 'checkout') this.faults.at('checkout.dispatch.after');
       if (record.stash) this.faults.at(`${record.kind}.dispatch.after`);
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
@@ -2203,6 +2241,7 @@ class SharedStore {
             'Git exit and observed checkout disagree. Reconcile the actual checkout before continuing.',
           );
         this.faults.at('checkout.effect.after');
+        this.faults.at(`${operationBoundary(record)}.effect.after`);
         return this.projectOperation(
           { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
           request,
@@ -2218,6 +2257,7 @@ class SharedStore {
         );
       if (status.exitCode !== 0 && actual === expectedAfter)
         recovery('Git exit and observed reference disagree; explicit reconciliation is required.');
+      this.faults.at(`${operationBoundary(record)}.effect.after`);
       return this.projectOperation(
         {
           ...record,

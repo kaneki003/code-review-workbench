@@ -123,6 +123,16 @@ export function activate(context: vscode.ExtensionContext) {
       if (presentation !== checkoutPresentation) return result;
       committedReview.clear();
       draftReview.clear();
+    } else if (result.status === 'blocked') {
+      // Only verified preflight refusal or completed rollback can claim the
+      // earlier checkout remains in place. Partial transitions keep recovery.
+      const ownership = await manager.inspectPrivateStore();
+      if (presentation !== checkoutPresentation) return result;
+      if (ownership.status === 'owned' && !ownership.checkoutPending) {
+        const retained = await manager.readCommittedSource();
+        if (presentation !== checkoutPresentation) return result;
+        if (retained.status === 'ready') await showCommitted(retained.source);
+      }
     }
     if (presentation !== checkoutPresentation) return result;
     if (result.status === 'active' || result.status === 'complete')

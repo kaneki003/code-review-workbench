@@ -210,10 +210,18 @@ export class CheckoutJournal {
     return { record: raw.record, databaseRecord, independentRecord, agrees };
   }
   publish(record: CheckoutReview, previous: CheckoutJournalState | undefined) {
-    if (!validReview(record) || Buffer.byteLength(JSON.stringify(record), 'utf8') > 60000)
+    const bytes = Buffer.byteLength(JSON.stringify(record), 'utf8');
+    if (!validReview(record) || bytes > 60000)
       throw new StoreError(
         'INVALID_CHECKOUT',
         'The editor/recovery snapshot is unsupported or exceeds the bounded save size.',
+      );
+    // Later proof adds an object/clean snapshot; up to 32 fresh checkout IDs
+    // and larger revision counters must still fit the durable record limit.
+    if (record.revision === 1 && record.priorWork && bytes > 56000)
+      throw new StoreError(
+        'INVALID_CHECKOUT',
+        'The saved manifest and editors exceed the entry budget for required recovery headroom. Keep no-switch reading; reduce the workspace representation before Retry.',
       );
     if (this.databaseRecord() !== (previous?.databaseRecord ?? null))
       recovery('The checkout row changed before publication.');
