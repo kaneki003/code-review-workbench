@@ -17,7 +17,8 @@ import { createOverviewDocuments } from './vscode/overview-documents';
 import type { ReviewCandidate } from './application/pull-request';
 import { createCommittedReview } from './vscode/committed-review';
 import type { CommittedSource } from './application/committed-source';
-import { createCheckoutEditors } from './vscode/checkout-editors';
+import { createCheckoutGit } from './connections/checkout-git';
+import { createCheckoutDocuments } from './vscode/checkout-documents';
 import type { CheckoutResult } from './application/checkout-review';
 import { createDraftReview } from './vscode/draft-review';
 import type { StorageDiagnostics } from './connections/storage-diagnostics';
@@ -70,7 +71,11 @@ export function activate(context: vscode.ExtensionContext) {
       ),
       github,
       repository: createLocalRepositoryConnection(),
-      editors: createCheckoutEditors(documents),
+      checkout: createCheckoutGit({
+        repository: configuration.location,
+        windowId: configuration.windowId,
+      }),
+      documents: createCheckoutDocuments(),
       confirmLocalRepository: async (candidate) =>
         (await vscode.window.showWarningMessage(
           'Register this selected local copy for the verified GitHub repository?',
@@ -140,26 +145,28 @@ export function activate(context: vscode.ExtensionContext) {
     else void vscode.window.showWarningMessage(result.detail);
     return result;
   }
-  async function recoverCheckout(choice?: 'continue' | 'restore') {
+  async function recoverCheckout(choice?: 'inspect' | 'clear') {
     if (!(await draftReview.prepareChange())) return undefined;
-    if (!lastUrl) {
-      const overview = await vscode.commands.executeCommand(
-        'codeReviewWorkbench.openPullRequestOverview',
-      );
-      if (!overview) return;
-    }
     const presentation = ++checkoutPresentation;
     const selectedReview = selection;
     const selected =
       choice ??
       (await vscode.window.showQuickPick(
         [
-          { label: 'Continue the saved transition', choice: 'continue' as const },
-          { label: 'Restore my previous work', choice: 'restore' as const },
+          {
+            label: 'Show manual recovery details',
+            description: 'Run no Git command',
+            choice: 'inspect' as const,
+          },
+          {
+            label: 'I completed Git recovery',
+            description: 'Clear only the saved receipt',
+            choice: 'clear' as const,
+          },
         ],
         {
           title: 'Recover this repository’s PR checkout',
-          placeHolder: 'Actual Git state will be checked before any switch.',
+          placeHolder: 'The workbench will not run automatic Git recovery.',
         },
       ));
     if (!selected || presentation !== checkoutPresentation || selectedReview !== selection) return;
@@ -178,7 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!overview || !selectedCandidate) return;
       const presentation = ++checkoutPresentation;
       const saved = await manager.readCheckoutReview();
-      if (saved && saved.phase !== 'complete') return recoverCheckout('continue');
+      if (saved) return recoverCheckout('inspect');
       const candidate = selectedCandidate;
       const source = await manager.inspectPullRequestSource(
         candidate.pullRequest.base.repository.id,
@@ -209,7 +216,7 @@ export function activate(context: vscode.ExtensionContext) {
       return vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Restoring the original checkout and editors',
+          title: 'Restoring the original Git checkout',
         },
         async () => presentCheckout(await manager.exitPullRequestCheckout(), presentation),
       );
@@ -291,10 +298,10 @@ export function activate(context: vscode.ExtensionContext) {
       if (!candidate) return undefined;
       const selected = selection;
       const active = await manager.readCheckoutReview();
-      if (active && active.phase !== 'complete') {
+      if (active) {
         const retained = await manager.readCommittedSource(active.sourceId);
         if (retained.status === 'ready') {
-          await committedReview.show(retained.source, manager, active.phase === 'active');
+          await committedReview.show(retained.source, manager, active.step === 'active');
           await draftReview.showSource(retained.source, manager);
         } else void vscode.window.showWarningMessage(retained.detail);
         return retained;

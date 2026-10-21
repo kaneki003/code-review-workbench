@@ -26,9 +26,11 @@ import type {
 import { isSourceAction } from './committed-source';
 import {
   isCheckoutAction,
+  type CheckoutDocuments,
   type CheckoutEditors,
   type CheckoutResult,
-  type CheckoutReview,
+  type CheckoutSession,
+  type CheckoutWorkspace,
 } from './checkout-review';
 import { DraftWriter } from './draft-writer';
 import { DraftWriterProtocol } from './draft-writer-protocol';
@@ -62,6 +64,9 @@ export interface ReviewConnections {
   account?: Pick<GitHubAccount, 'host' | 'userId'>;
   github?: GitHubConnection;
   repository?: LocalRepositoryConnection;
+  checkout?: CheckoutWorkspace;
+  documents?: CheckoutDocuments;
+  /** @deprecated Retained until the legacy checkout implementation is deleted. */
   editors?: CheckoutEditors;
   confirmLocalRepository?(candidate: ReviewCandidate): Promise<boolean>;
 }
@@ -145,298 +150,86 @@ export class ReviewManager {
   prepareCleanRestore(operationId: string): Promise<StoreReply> {
     return this.storeRequest('prepareCleanRestore', { operationId });
   }
-  async readCheckoutReview(): Promise<CheckoutReview | undefined> {
-    const reply = await this.storeRequest('readCheckout');
-    if (reply.view.status !== 'owned')
-      throw new StoreError(reply.view.code ?? 'CHECKOUT_UNAVAILABLE', reply.view.detail);
-    if (reply.checkout) this.connections.editors?.retain?.(reply.checkout.editors);
-    return reply.checkout;
+  async readCheckoutReview(): Promise<CheckoutSession | undefined> {
+    return await this.connections.checkout?.read();
   }
   private checkoutWork(action: () => Promise<CheckoutResult>): Promise<CheckoutResult> {
     const result = this.checkoutQueue.then(action);
     this.checkoutQueue = result.catch(() => {});
     return result;
   }
-  private checkoutReply(reply: StoreReply): CheckoutReview {
-    if (!reply.checkout || reply.view.status !== 'owned')
-      throw new StoreError(reply.view.code ?? 'CHECKOUT_RECOVERY', reply.view.detail);
-    this.connections.editors?.retain?.(reply.checkout.editors);
-    return reply.checkout;
-  }
-  private checkoutFailure(error: unknown, review?: CheckoutReview): CheckoutResult {
-    return {
-      status: review ? 'recovery' : 'blocked',
-      detail: error instanceof Error ? error.message : 'The checkout transition needs recovery.',
-      ...(review ? { review } : {}),
-    };
-  }
   enterPullRequestCheckout(sourceId: string): Promise<CheckoutResult> {
     return this.checkoutWork(async () => {
-      let review: CheckoutReview | undefined;
       try {
-        const existing = await this.readCheckoutReview();
-        if (existing && existing.phase !== 'complete')
-          return {
-            status: 'recovery',
-            detail:
-              'A checkout is already saved. Resume or restore it through Recover PR Checkout.',
-            review: existing,
-          };
-        const editors = this.connections.editors;
-        if (!editors)
-          throw new StoreError(
-            'EDITOR_UNAVAILABLE',
-            'Native editor save/capture is unavailable. Keep committed-source reading.',
-          );
-        const snapshot = await editors.capture();
-        review = this.checkoutReply(
-          await this.storeRequest('beginCheckout', { sourceId, editors: snapshot }),
-        );
-        return await this.continueCheckoutEntry(review);
-      } catch (error) {
-        return this.checkoutFailure(error, review);
-      }
-    });
-  }
-  private async continueCheckoutEntry(review: CheckoutReview): Promise<CheckoutResult> {
-    this.connections.editors!.assertSaved();
-    if (review.priorWork)
-      review = this.checkoutReply(
-        await this.storeRequest('preservePriorWork', {
-          checkoutId: review.id,
-          checkoutRevision: review.revision,
-        }),
-      );
-    this.connections.editors!.assertSaved();
-    let prepared: StoreReply;
-    try {
-      prepared = await this.storeRequest(
-        'prepareCleanCheckout',
-        { sourceId: review.sourceId },
-        undefined,
-        review.entryId,
-      );
-      if (!prepared.operation)
-        throw new StoreError(prepared.view.code ?? 'CHECKOUT_RECOVERY', prepared.view.detail);
-    } catch (error) {
-      if (review.priorWork) {
-        try {
-          if ((await this.inspectPrivateStore()).status !== 'owned') throw error;
-          const rollback = this.checkoutReply(
-            await this.storeRequest('reconcileCheckout', { checkoutChoice: 'restore' }),
-          );
-          const restored =
-            rollback.phase === 'restoring-editors'
-              ? await this.restoreCheckoutEditors(rollback)
-              : rollback.phase === 'exiting' && !rollback.exitId
-                ? await this.continueCheckoutExit(rollback)
-                : undefined;
-          if (restored?.status === 'complete')
-            return {
-              status: 'blocked',
-              detail: `${error instanceof Error ? error.message : 'PR checkout preparation failed.'} Your original files, staging and editors were restored; keep no-switch reading.`,
-            };
-        } catch {
-          /* Uncertain effects or changed buffers retain the original failure and recovery. */
-        }
-      }
-      throw error;
-    }
-    this.connections.editors!.assertSaved();
-    const result = await this.executeRepositoryOperation(prepared.operation!.id);
-    if (result.operation?.outcome !== 'applied') {
-      if (result.operation?.phase === 'observed') {
-        const reconciled = this.checkoutReply(
-          await this.storeRequest('reconcileCheckout', { checkoutChoice: 'restore' }),
-        );
-        if (reconciled.phase === 'restoring-editors') {
-          await this.restoreCheckoutEditors(reconciled);
+        if (!this.connections.checkout || !this.connections.documents)
           return {
             status: 'blocked',
-            detail:
-              'PR checkout was refused. Your original checkout and editors were restored; continue no-switch reading.',
+            detail: 'This installation has no local checkout connection.',
           };
-        }
-        if (reconciled.phase === 'exiting' && reconciled.priorWork) {
-          const restored = await this.continueCheckoutExit(reconciled);
-          if (restored.status === 'complete')
-            return {
-              status: 'blocked',
-              detail:
-                'PR checkout was refused. Your original files, staging and editors were restored. Keep no-switch reading; resolve the checkout collision before Retry.',
-            };
-          return restored;
-        }
+        if (!(await this.connections.documents.save()))
+          return {
+            status: 'blocked',
+            detail: 'Save was cancelled or failed. No Git command was run.',
+          };
+        const source = await this.readCommittedSource(sourceId);
+        if (source.status !== 'ready') return { status: 'blocked', detail: source.detail };
+        return await this.connections.checkout.enter(sourceId, source.source.head);
+      } catch (error) {
+        return {
+          status: 'blocked',
+          detail: error instanceof Error ? error.message : 'The Git checkout could not start.',
+        };
       }
-      throw new StoreError(result.view.code ?? 'CHECKOUT_RECOVERY', result.view.detail);
-    }
-    this.connections.editors!.assertSaved();
-    const active = this.checkoutReply(
-      await this.storeRequest('activateCheckout', {
-        checkoutId: review.id,
-        checkoutRevision: review.revision,
-      }),
-    );
-    return {
-      status: 'active',
-      detail: 'Active review: the owned checkout matches the exact inspected PR commit.',
-      review: active,
-    };
+    });
   }
   exitPullRequestCheckout(): Promise<CheckoutResult> {
     return this.checkoutWork(async () => {
-      let review: CheckoutReview | undefined;
       try {
-        review = await this.readCheckoutReview();
-        if (!review)
+        if (!this.connections.checkout || !this.connections.documents)
           return {
             status: 'blocked',
-            detail: 'No PR checkout is recorded in this account/local repository.',
+            detail: 'This installation has no local checkout connection.',
           };
-        return await this.exitCheckout(review);
+        if (!(await this.connections.documents.save()))
+          return {
+            status: 'blocked',
+            detail: 'Save was cancelled or failed. No Git command was run.',
+          };
+        return await this.connections.checkout.exit();
       } catch (error) {
-        return this.checkoutFailure(error, review);
+        return {
+          status: 'blocked',
+          detail:
+            error instanceof Error ? error.message : 'The Git checkout could not be restored.',
+        };
       }
     });
   }
-  private async exitCheckout(review: CheckoutReview): Promise<CheckoutResult> {
-    if (review.phase === 'complete') return this.cleanupCheckout(review);
-    if (!this.connections.editors)
-      throw new StoreError(
-        'EDITOR_UNAVAILABLE',
-        'Native editor restoration is unavailable. The recovery snapshot is retained.',
-      );
-    await this.connections.editors.capture();
-    if (review.phase === 'restoring-editors') return this.restoreCheckoutEditors(review);
-    if (review.phase !== 'active')
-      throw new StoreError(
-        'CHECKOUT_RECOVERY',
-        'This transition was interrupted. Use Recover PR Checkout before continuing Exit.',
-      );
-    review = this.checkoutReply(
-      await this.storeRequest('beginCheckoutExit', {
-        checkoutId: review.id,
-        checkoutRevision: review.revision,
-      }),
-    );
-    return this.continueCheckoutExit(review);
-  }
-  private async continueCheckoutExit(review: CheckoutReview): Promise<CheckoutResult> {
-    this.connections.editors!.assertSaved();
-    if (review.priorWork && !review.exitId) {
-      review = this.checkoutReply(
-        await this.storeRequest('restorePriorWork', {
-          checkoutId: review.id,
-          checkoutRevision: review.revision,
-        }),
-      );
-      review = this.checkoutReply(
-        await this.storeRequest('finishCheckoutGit', {
-          checkoutId: review.id,
-          checkoutRevision: review.revision,
-        }),
-      );
-      return this.restoreCheckoutEditors(review);
-    }
-    const prepared = await this.storeRequest(
-      'prepareCleanRestore',
-      { operationId: review.entryId },
-      undefined,
-      review.exitId!,
-    );
-    if (!prepared.operation)
-      throw new StoreError(prepared.view.code ?? 'CHECKOUT_RECOVERY', prepared.view.detail);
-    this.connections.editors!.assertSaved();
-    const result = await this.executeRepositoryOperation(prepared.operation.id);
-    if (result.operation?.outcome !== 'applied')
-      throw new StoreError(
-        result.view.code ?? 'CHECKOUT_RECOVERY',
-        'Exit did not verify Git restoration. Preserve the transition and use Recover PR Checkout.',
-      );
-    if (review.priorWork) {
-      this.connections.editors!.assertSaved();
-      review = this.checkoutReply(
-        await this.storeRequest('restorePriorWork', {
-          checkoutId: review.id,
-          checkoutRevision: review.revision,
-        }),
-      );
-    }
-    review = this.checkoutReply(
-      await this.storeRequest('finishCheckoutGit', {
-        checkoutId: review.id,
-        checkoutRevision: review.revision,
-      }),
-    );
-    return this.restoreCheckoutEditors(review);
-  }
-  private async restoreCheckoutEditors(review: CheckoutReview): Promise<CheckoutResult> {
-    this.connections.editors!.assertSaved();
-    await this.connections.editors!.restore(review.editors);
-    this.connections.editors!.assertSaved();
-    const complete = this.checkoutReply(
-      await this.storeRequest('completeCheckout', {
-        checkoutId: review.id,
-        checkoutRevision: review.revision,
-      }),
-    );
-    return this.cleanupCheckout(complete);
-  }
-  private async cleanupCheckout(complete: CheckoutReview): Promise<CheckoutResult> {
-    const cleanup = await this.storeRequest('cleanupCheckout', {
-      checkoutId: complete.id,
-      checkoutRevision: complete.revision,
-    });
-    if (cleanup.view.status !== 'owned')
-      return {
-        status: 'recovery',
-        detail: `Git and editors were restored. Artifact cleanup needs recovery: ${cleanup.view.detail}`,
-        review: complete,
-      };
-    return {
-      status: 'complete',
-      detail: `Exit complete: the original branch/commit, saved files, staging and native editor state were verified.${cleanup.cleanup?.priorStash ? (cleanup.cleanup.priorStash.inStashList ? ` Your prior-work stash ${cleanup.cleanup.priorStash.object} remains in the ordinary Git stash list (${complete.priorWork!.marker}).` : ` Work was restored from stash ${cleanup.cleanup.priorStash.object}; its ordinary stash entry is no longer present.`) : ''}${cleanup.cleanup?.retained.length ? ` Retained references: ${cleanup.cleanup.retained.join(', ')}. They may contain unmerged, moved or unproven work; inspect them with Git or retry cleanup through Recover PR Checkout.` : ''}`,
-      review: complete,
-    };
-  }
-  recoverPullRequestCheckout(choice: 'continue' | 'restore'): Promise<CheckoutResult> {
+  recoverPullRequestCheckout(
+    choice: 'inspect' | 'clear' | 'continue' | 'restore' = 'inspect',
+  ): Promise<CheckoutResult> {
     return this.checkoutWork(async () => {
-      let review: CheckoutReview | undefined;
       try {
-        if (!this.connections.editors)
-          throw new StoreError('EDITOR_UNAVAILABLE', 'Native editor recovery is unavailable.');
-        const ownership = await this.inspectPrivateStore();
-        if (ownership.status === 'recovery' && ownership.code === 'OPERATION_PENDING') {
-          const recovered = await this.recoverPrivateStore();
-          if (recovered.view.status !== 'closed')
-            throw new StoreError(recovered.view.code ?? 'CHECKOUT_RECOVERY', recovered.view.detail);
-        }
-        const opened = await this.openPrivateStore();
-        if (opened.status !== 'owned')
-          throw new StoreError(opened.code ?? 'CHECKOUT_RECOVERY', opened.detail);
-        review = this.checkoutReply(
-          await this.storeRequest('reconcileCheckout', { checkoutChoice: choice }),
-        );
-        await this.connections.editors.capture();
-        if (review.phase === 'complete') return await this.cleanupCheckout(review);
-        if (review.phase === 'restoring-editors') return await this.restoreCheckoutEditors(review);
-        if (review.phase === 'entering') return await this.continueCheckoutEntry(review);
-        if (review.phase === 'exiting') return await this.continueCheckoutExit(review);
-        if (choice === 'restore') return await this.exitCheckout(review);
+        const checkout = this.connections.checkout;
+        if (!checkout)
+          return { status: 'blocked', detail: 'This installation has no checkout connection.' };
+        if (choice === 'clear') return await checkout.clearRecovery();
+        const review = await checkout.read();
+        if (!review)
+          return { status: 'complete', detail: 'There is no checkout recovery receipt.' };
         return {
-          status: 'active',
-          detail: 'Resumed the verified retained PR checkout. Its inspected commit is unchanged.',
+          status: review.step === 'active' ? 'active' : 'recovery',
+          detail:
+            review.step === 'active'
+              ? `This repository has an active review at ${review.target}. Use Exit Review to restore ${review.original.branch ?? review.original.commit}.`
+              : `Manual Git recovery is required in ${review.repository}. The checkout stopped during ${review.step}.${review.failure ? `\n\n${review.failure.command}\nExit code: ${review.failure.exitCode ?? 'unknown'}\nstderr:\n${review.failure.stderr || '(empty)'}\nstdout:\n${review.failure.stdout || '(empty)'}` : ''}\n\nAfter the repository is correct, choose “I completed Git recovery” to clear this receipt.`,
           review,
         };
       } catch (error) {
-        if (!review) {
-          try {
-            review = await this.readCheckoutReview();
-          } catch {
-            /* An uncertain journal remains blocked. */
-          }
-        }
-        return this.checkoutFailure(error, review);
+        return {
+          status: 'blocked',
+          detail: error instanceof Error ? error.message : 'The recovery receipt is unavailable.',
+        };
       }
     });
   }

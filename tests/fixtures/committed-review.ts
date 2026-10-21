@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { ReviewManager } from '../../src/application/review-manager';
 import { createStoreConnection } from '../../src/connections/shared-store';
 import { createLocalRepositoryConnection } from '../../src/connections/local-repository';
+import { createCheckoutGit } from '../../src/connections/checkout-git';
 import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../../src/application/private-store';
 import type { CheckoutEditors } from '../../src/application/checkout-review';
@@ -179,6 +180,15 @@ export async function fixture() {
       sqlite: async () => ({ id: 'sqlite', label: 'SQLite', status: 'passed', detail: '' }),
       native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
       store,
+      checkout: createCheckoutGit({ repository: repositoryLocation, windowId: 'source-window' }),
+      documents: {
+        save: async () => {
+          if (!editors) return true;
+          await editors.capture();
+          editors.assertSaved();
+          return true;
+        },
+      },
       ...(editors ? { editors } : {}),
       account,
       repository: createLocalRepositoryConnection(),
