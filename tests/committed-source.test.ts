@@ -288,8 +288,9 @@ test(
     context.git('checkout', 'prior-work');
     const before = context.git('reflog', 'show', '--format=%gs', 'HEAD');
     expect(await manager.recoverPullRequestCheckout('continue')).toMatchObject({
-      status: 'blocked',
+      status: 'recovery',
       detail: expect.stringMatching(/original.*Restore/i),
+      review: { phase: 'active' },
     });
     expect((await manager.readCheckoutReview())?.phase).toBe('active');
     expect(restores).toBe(0);
