@@ -13,7 +13,8 @@ afterEach(async () => {
 async function repository() {
   const directory = await mkdtemp(join(tmpdir(), 'crw-checkout-'));
   cleanups.push(directory);
-  const location = join(directory, 'repository');
+  // Exercise quoted diagnostic paths on every platform, not only Windows.
+  const location = join(directory, 'repository with spaces');
   await mkdir(location);
   const git = (...arguments_: string[]) =>
     execFileSync('git', ['-C', location, ...arguments_], {
@@ -24,6 +25,8 @@ async function repository() {
   git('config', 'user.name', 'Checkout Fixture');
   git('config', 'user.email', 'checkout@example.test');
   git('config', 'commit.gpgsign', 'false');
+  // This fixture asserts LF bytes; do not inherit the runner's conversion policy.
+  git('config', 'core.autocrlf', 'false');
   await writeFile(join(location, 'tracked.txt'), 'base\n');
   await writeFile(join(location, 'target.txt'), 'base target\n');
   git('add', '.');
@@ -95,7 +98,12 @@ test('failed Git commands retain exact diagnostics and require manual acknowledg
 
   const result = await checkout.enter('missing-source', missing);
   expect(result).toMatchObject({ status: 'recovery', review: { step: 'manual-recovery' } });
-  expect(result.detail).toContain(`git -C ${context.location} switch --detach ${missing}`);
+  const failure = result.review!.failure!;
+  expect(failure.command).toMatch(/^git -C /);
+  expect(failure.command).toContain(context.location);
+  expect(failure.command.endsWith(` switch --detach ${missing}`)).toBe(true);
+  expect(result.detail).toContain(`Command: ${failure.command}`);
+  expect(failure.exitCode).toBe(128);
   expect(result.detail).toMatch(/stderr:/);
   expect(await checkout.read()).toMatchObject({
     step: 'manual-recovery',
