@@ -19,7 +19,7 @@ pnpm validate
 pnpm test:host
 ```
 
-[checkout-git.test.ts](../../tests/git/checkout.test.ts) uses disposable real repositories to exercise staged/unstaged/new-file restoration, detached HEAD, same-checkout exclusion, independent repositories, command diagnostics and stash conflicts. Manager tests in [committed-source.test.ts](../../tests/application/checkout.test.ts) check save cancellation and source-to-checkout routing. The installed-host fixture in [readiness.ts](../../tests/host/main.ts) exercises normal VS Code saving and verifies the restored branch, index and file contents after manager recreation.
+[checkout-git.test.ts](../../tests/git/checkout.test.ts) uses disposable real repositories to exercise staged/unstaged/new-file restoration, detached HEAD, same-checkout exclusion, independent repositories, command diagnostics and stash conflicts. Manager tests in [committed-source.test.ts](../../tests/application/checkout.test.ts) check save cancellation and source-to-checkout routing. The installed-host fixture in [review-flow.test.ts](../../tests/host/review-flow.test.ts) exercises normal VS Code saving and verifies the restored branch, index and file contents after manager recreation.
 
 For a manual check, use a disposable clone. Stage an edit, add another edit to that file, and create an untracked file. Open a verified PR overview and run **Enter PR Checkout**. Expect the exact PR commit in detached HEAD and a named stash. Run **Exit Review**. Expect the original branch, staged version, later disk edit and new file, with the matching stash removed.
 

@@ -147,7 +147,7 @@ There are 39 changed files after adding the formatter, editor settings and check
 | [tests/storage/readiness-worker.test.ts](../../tests/storage/readiness-worker.test.ts)         | Runs the real compiled worker through the manager and checks that no disk database appears. |
 | [tests/webviews/readiness/view.test.tsx](../../tests/webviews/readiness/view.test.tsx)         | Exercises the React error/retry control and its accessible name/focus.                      |
 | [tests/webviews/readiness/messages.test.tsx](../../tests/webviews/readiness/messages.test.tsx) | Exercises the actual browser entry against controlled host messages.                        |
-| [tests/host/main.ts](../../tests/host/main.ts)                                                 | The two tests that run inside real VS Code against the installed extension.                 |
+| [tests/host/readiness.test.ts](../../tests/host/readiness.test.ts)                             | The two tests that run inside real VS Code against the installed extension.                 |
 | [vitest.config.ts](../../vitest.config.ts)                                                     | Selects fast tests. React files select jsdom, a simulated DOM; host tests run separately.   |
 
 ### 5. Build, installed tests, editor and CI — 8 files
