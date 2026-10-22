@@ -16,9 +16,9 @@ The automated spec review found no introduced deviations from the deletion check
 
 - `pnpm validate`: formatting, TypeScript and all 185 tests passed after the review followup.
 - The manager suite includes save cancellation, Git restoration, active-PR selection and overlapping entry/selection.
-- `pnpm test:host`: six installed-host tests passed with VS Code 1.143.0 on macOS arm64, including normal document saving and Git restoration after manager recreation.
+- `pnpm test:host`: six installed-host tests passed with each of VS Code 1.143.0 and minimum-supported 1.141.2 on macOS arm64, including normal document saving and Git restoration after manager recreation.
 - Packaged VSIX built successfully as part of the host test.
 
 The initial sandbox run could not inspect native macOS process identities. A later overlap between test and packaging builds removed the shared native output while tests were copying it. The sequential validation above passed outside the sandbox. These failed runs are not counted as product regressions or successful validation.
 
-Minimum-version host revalidation and cross-platform CI acceptance remain open. Earlier checkout/attribute review records describe retired code and remain historical evidence.
+Cross-platform CI acceptance remains open. Earlier checkout/attribute review records describe retired code and remain historical evidence.
