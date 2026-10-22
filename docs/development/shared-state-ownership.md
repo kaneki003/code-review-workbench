@@ -19,7 +19,7 @@ An explicit first Open creates app-owned files outside the repository. Closing t
 
 ## Walk me through the diff
 
-1. `src/application/private-store.ts`, `review-manager.ts`, `src/extension.ts`: host-owned IDs and leases, ordered actions and the Open/Release/Recover commands. A lease proves one ownership turn. Its random token and increasing fence reject old callbacks. The incarnation identifies the store lineage independently of database snapshots.
+1. `src/storage/contracts.ts`, `review-manager.ts`, `src/extension.ts`: host-owned IDs and leases, ordered actions and the Open/Release/Recover commands. A lease proves one ownership turn. Its random token and increasing fence reject old callbacks. The incarnation identifies the store lineage independently of database snapshots.
 2. `store-location.ts`, `shared-store.ts`, `store-worker.ts`: OS-user discovery, worker transport, permanent guard, canonical registration, claim/release/handoff and reconciliation.
 3. `store-records.ts`, `store-database.ts`: independent record validation and worker-only SQLite. Every metadata mutation checks the owner, scope, incarnation, fence and expected revision. Duplicate IDs have one durable result.
 4. `repository-operation.ts`, `reference-storage.ts`, `native/child.cc`: exact Git targets, repository facts, paused process creation, explicit start and settlement. A differing workspace path must name the same actual directory (device/file identity); this accepts VS Code drive-letter case and macOS path aliases while rejecting another folder. The only mutation is a compare-and-swap update under `refs/code-review-workbench/`. Callers cannot supply Git arguments, executables, environment or another repository path.

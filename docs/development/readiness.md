@@ -21,19 +21,19 @@ For development, open this worktree in VS Code and press F5 using **Workbench re
 
 ## The commands we use from now on
 
-| Command                                        | When to use it                                  | What it does                                                                                                               |
-| ---------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install --frozen-lockfile`               | After cloning or pulling dependency changes     | Installs exactly what the committed lockfile records.                                                                      |
-| `pnpm format`                                  | After editing                                   | Uses the pinned Prettier version to format source, tests, scripts, configuration and these development docs.               |
-| `pnpm format:check`                            | To check formatting without changing files      | Reports files that need formatting; also runs in CI.                                                                       |
-| `pnpm validate`                                | Before committing                               | Runs formatting checks, TypeScript checks and all fast tests. This is the usual local check.                               |
-| `pnpm check`                                   | While fixing a type error                       | Runs TypeScript without creating JavaScript output.                                                                        |
-| `pnpm test`                                    | While changing behavior                         | Runs all 14 fast tests without launching VS Code.                                                                          |
-| `pnpm exec vitest run tests/readiness.test.ts` | While working on the manager or its probes      | Runs one test file. Replace the path to run another file.                                                                  |
-| `pnpm dev`                                     | While using the development window              | Watches JavaScript and CSS builds. It does not run typechecking or tests.                                                  |
-| `pnpm build`                                   | To rebuild the files the extension loads        | Produces the host bundle, browser bundle, SQLite worker and CSS under `dist/`.                                             |
-| `pnpm package`                                 | Before installing or sharing the extension      | Builds, then creates `dist/code-review-workbench.vsix`. A VSIX is VS Code's extension installer.                           |
-| `pnpm test:host`                               | Before handing a runtime change back for review | Builds the installer, installs it in a disposable profile, launches real VS Code and runs the two installed-package tests. |
+| Command                                                    | When to use it                                  | What it does                                                                                                               |
+| ---------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`                           | After cloning or pulling dependency changes     | Installs exactly what the committed lockfile records.                                                                      |
+| `pnpm format`                                              | After editing                                   | Uses the pinned Prettier version to format source, tests, scripts, configuration and these development docs.               |
+| `pnpm format:check`                                        | To check formatting without changing files      | Reports files that need formatting; also runs in CI.                                                                       |
+| `pnpm validate`                                            | Before committing                               | Runs formatting checks, TypeScript checks and all fast tests. This is the usual local check.                               |
+| `pnpm check`                                               | While fixing a type error                       | Runs TypeScript without creating JavaScript output.                                                                        |
+| `pnpm test`                                                | While changing behavior                         | Runs all 14 fast tests without launching VS Code.                                                                          |
+| `pnpm exec vitest run tests/application/readiness.test.ts` | While working on the manager or its probes      | Runs one test file. Replace the path to run another file.                                                                  |
+| `pnpm dev`                                                 | While using the development window              | Watches JavaScript and CSS builds. It does not run typechecking or tests.                                                  |
+| `pnpm build`                                               | To rebuild the files the extension loads        | Produces the host bundle, browser bundle, SQLite worker and CSS under `dist/`.                                             |
+| `pnpm package`                                             | Before installing or sharing the extension      | Builds, then creates `dist/code-review-workbench.vsix`. A VSIX is VS Code's extension installer.                           |
+| `pnpm test:host`                                           | Before handing a runtime change back for review | Builds the installer, installs it in a disposable profile, launches real VS Code and runs the two installed-package tests. |
 
 VS Code recommends the Prettier extension and formats on save when it is installed. The workspace settings use this repo's Prettier configuration; they do not change global editor settings. The command-line checks work without the editor extension. `.gitattributes` keeps text files on LF during checkout, including on Windows, so Git and Prettier use the same line-ending rule.
 
@@ -91,11 +91,11 @@ No shared review database or ownership record is created by these checks.
 
 ### 5. The browser receives and displays the report
 
-`src/webviews/main.tsx` mounts `ReadinessView`. The component's effect calls its `check` prop. For the first call, `main.tsx` sends a `ready` message to the host.
+`src/webviews/readiness/main.tsx` mounts `ReadinessView`. The component's effect calls its `check` prop. For the first call, `main.tsx` sends a `ready` message to the host.
 
 The host command and this first browser message may overlap. `pendingCheck` lets them share the same work. The `ready` message also proves that the packaged browser script loaded; the command will fail if the screen never becomes ready.
 
-The host validates messages through `src/shared/readiness.ts`, adds the browser's renderer version to the report and replies with `readinessResult`. The browser validates the response before passing it to React.
+The host validates messages through `src/protocol/readiness.ts`, adds the browser's renderer version to the report and replies with `readinessResult`. The browser validates the response before passing it to React.
 
 Two IDs prevent results from reaching the wrong place:
 
@@ -121,34 +121,34 @@ There are 39 changed files after adding the formatter, editor settings and check
 
 ### 2. Host behavior and outside operations — 5 files
 
-| File                                                                             | Why it is here                                                                                                       |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| [src/extension.ts](../../src/extension.ts)                                       | Connects VS Code, the manager, the two probes and the panel; registers the command.                                  |
-| [src/application/review-manager.ts](../../src/application/review-manager.ts)     | Decides whether probes may run and assembles their results. Its public action is the main behavior-test entry point. |
-| [src/connections/git-readiness.ts](../../src/connections/git-readiness.ts)       | Executes the bounded, read-only Git commands.                                                                        |
-| [src/connections/sqlite-readiness.ts](../../src/connections/sqlite-readiness.ts) | Starts the packaged worker, validates its result and handles failure/timeout.                                        |
-| [src/connections/readiness-worker.ts](../../src/connections/readiness-worker.ts) | Runs the real in-memory SQLite transaction and rollback.                                                             |
+| File                                                                         | Why it is here                                                                                                       |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [src/extension.ts](../../src/extension.ts)                                   | Connects VS Code, the manager, the two probes and the panel; registers the command.                                  |
+| [src/application/review-manager.ts](../../src/application/review-manager.ts) | Decides whether probes may run and assembles their results. Its public action is the main behavior-test entry point. |
+| [src/git/readiness.ts](../../src/git/readiness.ts)                           | Executes the bounded, read-only Git commands.                                                                        |
+| [src/storage/readiness.ts](../../src/storage/readiness.ts)                   | Starts the packaged worker, validates its result and handles failure/timeout.                                        |
+| [src/storage/readiness-worker.ts](../../src/storage/readiness-worker.ts)     | Runs the real in-memory SQLite transaction and rollback.                                                             |
 
 ### 3. Screen and messages — 5 files
 
-| File                                                                     | Why it is here                                                                                                  |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| [src/shared/readiness.ts](../../src/shared/readiness.ts)                 | Defines reports/messages and checks received data at runtime. TypeScript types alone cannot validate a message. |
-| [src/vscode/readiness-panel.ts](../../src/vscode/readiness-panel.ts)     | Opens/closes the native panel, loads packaged resources and handles browser requests.                           |
-| [src/webviews/main.tsx](../../src/webviews/main.tsx)                     | Browser entry point: matches requests/responses and mounts React.                                               |
-| [src/webviews/readiness-view.tsx](../../src/webviews/readiness-view.tsx) | Renders the button, progress, errors and capability rows.                                                       |
-| [src/webviews/styles.css](../../src/webviews/styles.css)                 | Tailwind imports, VS Code theme aliases and visible keyboard-focus styles.                                      |
+| File                                                                                         | Why it is here                                                                                                  |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [src/protocol/readiness.ts](../../src/protocol/readiness.ts)                                 | Defines reports/messages and checks received data at runtime. TypeScript types alone cannot validate a message. |
+| [src/vscode/views/readiness-panel.ts](../../src/vscode/views/readiness-panel.ts)             | Opens/closes the native panel, loads packaged resources and handles browser requests.                           |
+| [src/webviews/readiness/main.tsx](../../src/webviews/readiness/main.tsx)                     | Browser entry point: matches requests/responses and mounts React.                                               |
+| [src/webviews/readiness/readiness-view.tsx](../../src/webviews/readiness/readiness-view.tsx) | Renders the button, progress, errors and capability rows.                                                       |
+| [src/webviews/styles.css](../../src/webviews/styles.css)                                     | Tailwind imports, VS Code theme aliases and visible keyboard-focus styles.                                      |
 
 ### 4. Tests and their fast-test configuration — 6 files
 
-| File                                                                       | Why it is here                                                                              |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [tests/readiness.test.ts](../../tests/readiness.test.ts)                   | Eleven manager scenarios, including real disposable Git folders.                            |
-| [tests/readiness-worker.test.ts](../../tests/readiness-worker.test.ts)     | Runs the real compiled worker through the manager and checks that no disk database appears. |
-| [tests/readiness-view.test.tsx](../../tests/readiness-view.test.tsx)       | Exercises the React error/retry control and its accessible name/focus.                      |
-| [tests/readiness-webview.test.tsx](../../tests/readiness-webview.test.tsx) | Exercises the actual browser entry against controlled host messages.                        |
-| [tests/host/readiness.ts](../../tests/host/readiness.ts)                   | The two tests that run inside real VS Code against the installed extension.                 |
-| [vitest.config.ts](../../vitest.config.ts)                                 | Selects fast tests. React files select jsdom, a simulated DOM; host tests run separately.   |
+| File                                                                                           | Why it is here                                                                              |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [tests/application/readiness.test.ts](../../tests/application/readiness.test.ts)               | Eleven manager scenarios, including real disposable Git folders.                            |
+| [tests/storage/readiness-worker.test.ts](../../tests/storage/readiness-worker.test.ts)         | Runs the real compiled worker through the manager and checks that no disk database appears. |
+| [tests/webviews/readiness/view.test.tsx](../../tests/webviews/readiness/view.test.tsx)         | Exercises the React error/retry control and its accessible name/focus.                      |
+| [tests/webviews/readiness/messages.test.tsx](../../tests/webviews/readiness/messages.test.tsx) | Exercises the actual browser entry against controlled host messages.                        |
+| [tests/host/main.ts](../../tests/host/main.ts)                                                 | The two tests that run inside real VS Code against the installed extension.                 |
+| [vitest.config.ts](../../vitest.config.ts)                                                     | Selects fast tests. React files select jsdom, a simulated DOM; host tests run separately.   |
 
 ### 5. Build, installed tests, editor and CI — 8 files
 
@@ -190,12 +190,12 @@ There are 39 changed files after adding the formatter, editor settings and check
 
 `pnpm test` runs 14 fast tests across four files:
 
-| Test file                                   | Scenarios and observations                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/readiness.test.ts` — 11 tests        | Remote SSH; untrusted folder; browser VS Code; no folder; virtual folder; multiple folders; old VS Code; wrong Node major; unsupported CPU; a folder without a Git repository; a dirty Git repository with a missing worker. Unsupported setup skips both probes. Missing repositories stay missing. The dirty-repository case checks the original file contents, index bytes and refs afterward, and checks that missing-worker failure leaves review ownership pending. |
-| `tests/readiness-worker.test.ts` — 1 test   | Compiles and starts the production worker, calls the manager, observes successful SQLite transaction/rollback and checks that the directory contains only the worker bundle afterward.                                                                                                                                                                                                                                                                                    |
-| `tests/readiness-view.test.tsx` — 1 test    | Provides a failing host callback, observes the error, focuses the named retry button and retries. This checks React behavior in jsdom, not native screen-reader behavior.                                                                                                                                                                                                                                                                                                 |
-| `tests/readiness-webview.test.tsx` — 1 test | Imports the real browser entry. Sends malformed data, another view's response and an older request's response; they are ignored. Sends script-looking text; it appears as text. Clicks **Check again** and confirms it requests `recheck` with a new request identity.                                                                                                                                                                                                    |
+| Test file                                             | Scenarios and observations                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/application/readiness.test.ts` — 11 tests      | Remote SSH; untrusted folder; browser VS Code; no folder; virtual folder; multiple folders; old VS Code; wrong Node major; unsupported CPU; a folder without a Git repository; a dirty Git repository with a missing worker. Unsupported setup skips both probes. Missing repositories stay missing. The dirty-repository case checks the original file contents, index bytes and refs afterward, and checks that missing-worker failure leaves review ownership pending. |
+| `tests/storage/readiness-worker.test.ts` — 1 test     | Compiles and starts the production worker, calls the manager, observes successful SQLite transaction/rollback and checks that the directory contains only the worker bundle afterward.                                                                                                                                                                                                                                                                                    |
+| `tests/webviews/readiness/view.test.tsx` — 1 test     | Provides a failing host callback, observes the error, focuses the named retry button and retries. This checks React behavior in jsdom, not native screen-reader behavior.                                                                                                                                                                                                                                                                                                 |
+| `tests/webviews/readiness/messages.test.tsx` — 1 test | Imports the real browser entry. Sends malformed data, another view's response and an older request's response; they are ignored. Sends script-looking text; it appears as text. Clicks **Check again** and confirms it requests `recheck` with a new request identity.                                                                                                                                                                                                    |
 
 The fast tests supply controlled VS Code environment facts. The Git scenarios use real temporary folders and installed Git; the worker scenario runs the real driver in a real worker. Simulated host facts are useful for failure cases but do not prove the production VS Code adapter reports the right facts on an OS.
 
@@ -222,6 +222,6 @@ The runner needs a tiny development harness to execute Mocha tests, but the work
 
 ## A small change to make yourself
 
-When you are ready, change the idle button label in `src/webviews/readiness-view.tsx` from **Check again** to **Run checks again**. Update the accessible-name expectations in the two React test files, then run `pnpm format` and `pnpm validate`. Use F5 to see it.
+When you are ready, change the idle button label in `src/webviews/readiness/readiness-view.tsx` from **Check again** to **Run checks again**. Update the accessible-name expectations in the two React test files, then run `pnpm format` and `pnpm validate`. Use F5 to see it.
 
 The message action remains `recheck`: it names the host operation, while the button label is presentation text. Follow that action from `main.tsx` into the panel's message handler to check your understanding of the connection.

@@ -1,4 +1,4 @@
-import type { Capability, ReadinessReport } from '../shared/readiness';
+import type { Capability, ReadinessReport } from '../protocol/readiness';
 import { randomUUID } from 'node:crypto';
 import {
   StoreError,
@@ -8,7 +8,7 @@ import {
   type StoreView,
   type StoreReply,
   type StoreHandoff,
-} from './private-store';
+} from '../storage/contracts';
 import {
   sameLocalRepository,
   GitHubAccount,
@@ -16,20 +16,20 @@ import {
   type LocalRepositoryConnection,
   type PullRequestOverview,
   type ReviewCandidate,
-} from './pull-request';
+} from '../domain/pull-request';
 import type {
   CommittedContent,
   SourceResult,
   SourceSide,
   SourceNavigation,
-} from './committed-source';
-import { isSourceAction } from './committed-source';
+} from '../domain/committed-source';
+import { isSourceAction } from '../domain/committed-source';
 import {
   type CheckoutDocuments,
   type CheckoutResult,
   type CheckoutSession,
   type CheckoutWorkspace,
-} from './checkout-review';
+} from '../domain/checkout';
 import { DraftWriter } from './draft-writer';
 import { DraftWriterProtocol } from './draft-writer-protocol';
 import {
@@ -38,7 +38,7 @@ import {
   type DraftEdit,
   type DraftDiscard,
   type DraftCommit,
-} from './local-draft';
+} from '../domain/local-draft';
 
 export interface HostEnvironment {
   vscode: string;

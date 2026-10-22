@@ -17,6 +17,8 @@ Store the implementation project's documentation here. The imported baseline is 
 
 ## Engineering configuration
 
+- [Code layout and dependency rules](development/code-layout.md): responsibility-based source/test map, packaged entry points and remaining storage migration.
+
 - [Issue tracker](agents/issue-tracker.md): GitHub specs, implementation tickets, and wayfinding operations.
 - [Triage labels](agents/triage-labels.md): the five default triage statuses.
 - [Domain documentation](agents/domain.md): glossary and architectural decision conventions.

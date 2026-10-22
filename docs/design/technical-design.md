@@ -29,28 +29,26 @@ The local Node extension host owns the review manager and all privileged actions
 
 ```text
 src/
-  extension.ts
-  domain/                 # identities, applicability and pure state rules
-  application/
-    review-manager.ts     # coordinates actions; sole authoritative projection
-    contracts/            # small interfaces required by application actions
-    actions/              # entry, saves, Sync, exit, delivery, investigations
-  connections/
-    storage/              # worker, migrations, ownership, content and backups
-    git/                  # bounded argv operations, source and transition journal
-    github/               # normalized REST/GraphQL reads, actions and receipts
-    ai/                   # account/API transports and provider projections
-    execution/            # MXC launcher, policies, outcomes and containment probes
-    attachments/          # bounded text/PDF extraction
-  vscode/                 # commands, views, revision documents, comments, terminals
-  webviews/               # React screens and compiled Tailwind stylesheet
-  shared/                 # serializable protocol and runtime shape validators
-test/
-  fixtures/               # disposable repositories, sources and provider recordings
-  integration/            # actual desktop extension-host behavior
+  extension.ts              # starts the extension and wires implementations
+  application/              # operation coordination and host-owned state
+  domain/                   # identities, contracts and pure rules
+  git/                      # repository discovery, committed reads and checkout
+  github/                   # normalized provider requests and responses
+  storage/                  # SQLite, worker transport and persistence
+  native/                   # existing native-helper probes, pending migration
+  protocol/                 # browser-safe messages and validators
+  vscode/documents/         # native documents, source links and saving
+  vscode/views/             # native view integration
+  webviews/drafts/           # draft browser entry, client and React view
+  webviews/readiness/        # readiness browser entry and React view
+tests/
+  application/ git/ github/ storage/ native/ vscode/ webviews/
+  host/                     # installed-VSIX runner and composed journeys
+  provider/                 # separately authorized real-provider reads
+  support/                  # reusable fixtures and child-process entry points
 ```
 
-Create folders as behavior needs them. Domain rules import no VS Code, React, database or provider SDK. Application actions call their contracts; connections implement those contracts. Startup supplies the implementations explicitly. Native integration and React never reproduce eligibility or reconciliation rules. Provider SDK objects stay inside connections.
+The owner accepted responsibility-based source and test grouping on 22 October 2026; the [code layout guide](../development/code-layout.md) describes the implemented organization. Create folders as behavior needs them. Domain rules import no VS Code, React, database or provider SDK. Application actions call their contracts; connections implement those contracts. Startup supplies the implementations explicitly. Native integration and React never reproduce eligibility or reconciliation rules. Provider SDK objects stay inside connections.
 
 The names below describe public application contracts, not a framework to generate in advance. All external work returns explicit structured outcomes and accepts cancellation where meaningful. Cancellation must still report the actual known outcome.
 

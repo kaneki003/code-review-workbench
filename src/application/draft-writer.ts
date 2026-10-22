@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { StoreError } from './private-store';
+import { StoreError } from '../storage/contracts';
 import {
   validDraftBody,
   type LocalDraft,
@@ -7,7 +7,7 @@ import {
   type DraftDiscard,
   type DraftCommit,
   type DraftWriterProjection,
-} from './local-draft';
+} from '../domain/local-draft';
 
 interface DraftWriterStorage {
   read(id: string): Promise<LocalDraft | undefined>;

@@ -4,24 +4,24 @@ import {
   type HostEnvironment,
   type ReviewConnections,
 } from './application/review-manager';
-import { probeGit } from './connections/git-readiness';
-import { probeSqlite } from './connections/sqlite-readiness';
-import { probeNativeGuard } from './connections/native-readiness';
-import { createReadinessPanel } from './vscode/readiness-panel';
-import { createStoreConnection } from './connections/shared-store';
-import { resolveStoreConfiguration } from './connections/store-location';
-import type { StoreConfiguration } from './application/private-store';
-import { createGitHubConnection } from './connections/github';
-import { createLocalRepositoryConnection } from './connections/local-repository';
-import { createOverviewDocuments } from './vscode/overview-documents';
-import type { ReviewCandidate } from './application/pull-request';
-import { createCommittedReview } from './vscode/committed-review';
-import type { CommittedSource } from './application/committed-source';
-import { createCheckoutGit } from './connections/checkout-git';
-import { createCheckoutDocuments } from './vscode/checkout-documents';
-import type { CheckoutResult } from './application/checkout-review';
-import { createDraftReview } from './vscode/draft-review';
-import type { StorageDiagnostics } from './connections/storage-diagnostics';
+import { probeGit } from './git/readiness';
+import { probeSqlite } from './storage/readiness';
+import { probeNativeGuard } from './native/readiness';
+import { createReadinessPanel } from './vscode/views/readiness-panel';
+import { createStoreConnection } from './storage/connection';
+import { resolveStoreConfiguration } from './storage/location';
+import type { StoreConfiguration } from './storage/contracts';
+import { createGitHubConnection } from './github/pull-requests';
+import { createLocalRepositoryConnection } from './git/repository';
+import { createOverviewDocuments } from './vscode/documents/overview';
+import type { ReviewCandidate } from './domain/pull-request';
+import { createCommittedReview } from './vscode/views/committed-review';
+import type { CommittedSource } from './domain/committed-source';
+import { createCheckoutGit } from './git/checkout';
+import { createCheckoutDocuments } from './vscode/documents/checkout';
+import type { CheckoutResult } from './domain/checkout';
+import { createDraftReview } from './vscode/views/draft-review';
+import type { StorageDiagnostics } from './storage/diagnostics';
 
 let activeManager: ReviewManager | undefined;
 

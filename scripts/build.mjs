@@ -27,23 +27,23 @@ const bundles = [
     format: 'iife',
     minify: !watchMode,
     define: { 'process.env.NODE_ENV': JSON.stringify(watchMode ? 'development' : 'production') },
-    entryPoints: ['src/webviews/draft-main.tsx'],
+    entryPoints: ['src/webviews/drafts/main.tsx'],
     outfile: 'dist/draft-writer.js',
   },
   { ...nodeBundleOptions, entryPoints: ['src/extension.ts'], outfile: 'dist/extension.cjs' },
   {
     ...nodeBundleOptions,
-    entryPoints: ['src/connections/readiness-worker.ts'],
+    entryPoints: ['src/storage/readiness-worker.ts'],
     outfile: 'dist/readiness-worker.cjs',
   },
   {
     ...nodeBundleOptions,
-    entryPoints: ['src/connections/native-probe-worker.ts'],
+    entryPoints: ['src/native/probe-worker.ts'],
     outfile: 'dist/native-probe-worker.cjs',
   },
   {
     ...nodeBundleOptions,
-    entryPoints: ['src/connections/store-worker.ts'],
+    entryPoints: ['src/storage/worker.ts'],
     outfile: 'dist/store-worker.cjs',
   },
   {
@@ -53,7 +53,7 @@ const bundles = [
     format: 'iife',
     minify: !watchMode,
     define: { 'process.env.NODE_ENV': JSON.stringify(watchMode ? 'development' : 'production') },
-    entryPoints: ['src/webviews/main.tsx'],
+    entryPoints: ['src/webviews/readiness/main.tsx'],
     outfile: 'dist/readiness.js',
   },
 ];

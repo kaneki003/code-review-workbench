@@ -51,20 +51,30 @@ Source navigation carries repository/review identity, inspected source identity,
 
 ## Ownership, modules and dependency direction
 
-Suggested initial layout; add files as features need them rather than generate empty layers:
+Owner-approved responsibility-based layout, amended 22 October 2026. See the [code layout guide](../development/code-layout.md) for current files and dependency rules:
 
 ```text
 src/
-  extension.ts              # starts the extension and connects its parts
-  domain/                   # review identities and pure review rules
-  application/              # review manager, actions and connection interfaces
-  connections/              # storage, Git, GitHub, AI and execution implementations
-  vscode/                   # commands, documents, native comments and view providers
-  webviews/                 # React screens, components and Tailwind entry stylesheet
-  shared/                   # transport data types and runtime message validators
+  extension.ts              # starts the extension and wires implementations
+  application/              # operation coordination and host-owned state
+  domain/                   # identities, contracts and pure rules
+  git/                      # repository discovery, committed reads and checkout
+  github/                   # normalized provider requests and responses
+  storage/                  # SQLite, worker transport and persistence
+  native/                   # existing native-helper probes, pending migration
+  protocol/                 # browser-safe messages and validators
+  vscode/documents/         # native documents, source links and saving
+  vscode/views/             # native view integration
+  webviews/drafts/           # draft browser entry, client and React view
+  webviews/readiness/        # readiness browser entry and React view
+tests/
+  application/ git/ github/ storage/ native/ vscode/ webviews/
+  host/                     # installed-VSIX runner and composed journeys
+  provider/                 # separately authorized real-provider reads
+  support/                  # reusable fixtures and child-process entry points
 ```
 
-The application calls small interfaces describing the outside work it needs. Connections implement those interfaces. The startup file supplies those implementations explicitly; a dependency-injection framework is unnecessary. The domain imports neither VS Code nor React nor a provider SDK. Application code imports domain rules and its interfaces, not concrete connections. Native integration and webviews call application actions; they do not own duplicate business rules. Shared transport modules contain serializable data and validators, without Node, VS Code or React imports.
+The application calls small interfaces describing the outside work it needs. Connections implement those interfaces. The startup file supplies those implementations explicitly; a dependency-injection framework is unnecessary. The domain imports neither VS Code nor React nor a provider SDK. Application code imports domain rules and its interfaces, not concrete connections. Native integration and webviews call application actions; they do not own duplicate business rules. `protocol/` modules contain serializable data and validators, without Node, VS Code or React imports.
 
 For example, a pure function can determine which Reviewed marks no longer apply after a source comparison. An application action obtains the comparison, invokes the rule, coordinates saving and updates the views. Git code obtains the source facts; it does not decide human progress or publication policy.
 

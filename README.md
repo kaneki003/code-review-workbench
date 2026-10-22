@@ -32,16 +32,30 @@ From a local repository, **Code Review Workbench: Enter PR Checkout** asks VS Co
 
 ## Project layout
 
-- `src/`: extension entry, readiness manager, Git/worker connections and React view.
-- `tests/`: behavior, React interaction and installed-host checks.
-- `scripts/`: explicit build and packaged-host test pipelines.
-- `docs/product/`: approved PRD in Markdown/PDF and the product decision history.
-- `docs/design/`: current UI contract, refinement notes, Figma links, state/check ledgers, and SVG reference assets.
-- `docs/research/`: dated VS Code host-feasibility research relevant to architecture.
-- `docs/agents/`: engineering workflow configuration.
-- `AGENTS.md`: instructions for agents working in this project.
-- `.agents/skills/`: the installed Matt Pocock skills and their supporting files.
-- `skills-lock.json`: installed skill source and integrity metadata.
+Code is grouped by engineering responsibility. See the [code layout and dependency rules](docs/development/code-layout.md) for the file map, test organization and migration limits.
+
+```text
+src/
+  extension.ts       # extension startup and implementation wiring
+  application/       # operation coordination and host-owned state
+  domain/            # identities, contracts and pure rules
+  git/               # checkout, committed reads and repository discovery
+  github/            # GitHub communication and response normalization
+  storage/           # SQLite, worker communication and persistence
+  native/            # TypeScript native-helper probes (pending migration)
+  protocol/          # browser-safe messages and validators
+  vscode/            # documents/ and views/ using the VS Code API
+  webviews/          # drafts/ and readiness/ browser entries and React views
+```
+
+- `tests/`: matching responsibility folders, installed-VSIX `host/` suites, separately authorized `provider/` reads and reusable `support/` fixtures.
+- `native/`: existing C++ helper and build definition; retained until the storage migration removes its callers.
+- `scripts/`: explicit build, packaging and test pipelines.
+- `docs/product/`: approved PRD and product decision history.
+- `docs/design/`: current architecture/UI contracts and design reference evidence.
+- `docs/development/`: code navigation, implementation walkthroughs and validation records.
+- `docs/research/`: dated feasibility research.
+- `docs/agents/`, `AGENTS.md`, `.agents/skills/`: agent workflow instructions and project skills.
 
 ## Product and design inputs
 

@@ -10,7 +10,7 @@ const directory = await mkdtemp(join(tmpdir(), 'crw-provider-read-'));
 try {
   const outfile = join(directory, 'fixture.mjs');
   await build({
-    entryPoints: ['tests/fixtures/provider-read.ts'],
+    entryPoints: ['tests/provider/github-read.ts'],
     outfile,
     bundle: true,
     platform: 'node',

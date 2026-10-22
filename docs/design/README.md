@@ -67,6 +67,10 @@ The fixture is fictional: `acme/export-service`, PR #248, six changed files, ini
 
 The JSON files are exported design evidence. Earlier ledgers may contain retired frames; the latest lifecycle ledgers govern surviving destinations. They are not extension configuration or a runtime architecture.
 
+## Code organization
+
+The owner accepted responsibility-based source and test grouping on 22 October 2026. The [code layout guide](../development/code-layout.md) maps Git, GitHub, storage, domain contracts, application coordination, native adapters and webviews. This replaces the earlier global `connections/` and `shared/` folders while preserving the dependency rules and existing runtime behavior.
+
 ## Implementation boundaries
 
 Figma validation covers visual inspection and saved interactions. A [bounded native VS Code experiment](https://github.com/kaneki003/code-review-workbench/blob/458c92b4bdbda91fd85906333cfe778316c22784/docs/research/wayfinder-native-host-prototype.md) additionally exercised real draft typing, acknowledged saves, Close/reload/recreation, simulated failed saves and Retry, source anchors/navigation, movable views, narrow reflow and host theme changes on macOS. It does not establish Figma visual parity, full keyboard/screen-reader behavior, production durability, other desktop platforms, real AI, GitHub delivery or Git checkout/restoration.
