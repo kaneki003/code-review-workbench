@@ -9,13 +9,15 @@ Store the implementation project's documentation here. The imported baseline is 
 - [Accepted personal-local technical design](design/technical-design.md): committed-source review, integrated contracts, FR01–FR20 trace and first milestone/implementation sequence; public-release acceptance remains separate.
 - [Accepted extension architecture](design/extension-architecture.md): TypeScript/React/Tailwind, pnpm, local review ownership, native surfaces and required validation.
 - [Accepted Git/source lifecycle](design/git-source-lifecycle.md): existing-folder stash/checkout/restoration, repository-scoped recovery, exact source identities and Sync reconciliation.
-- [Accepted private-state storage](design/private-state-storage.md): shared local SQLite/worker storage, save acknowledgments, ownership, backups, clearing and recovery; detailed local-to-later-PR linking is deferred to implementation by the owner.
+- [Amended private-state storage](design/private-state-storage.md): concurrent local SQLite/worker storage, repository-scoped checkout receipts, save acknowledgments, backups, clearing and manual recovery; detailed local-to-later-PR linking is deferred to implementation by the owner.
 - [Accepted GitHub collaboration](design/github-collaboration.md): built-in sign-in, discussion/pending-review reads, exact composition, uncertain-delivery recovery, source guards and separate merge/queue outcomes, with provider tests still required.
 - [Accepted interim AI investigation](design/ai-investigation.md): personal-local ChatGPT-plan connection, retained history/models, bounded host-owned tools and offline checks; actual integration and public eligibility remain gated.
 - [Host-feasibility research](research/README.md): dated research to carry into technical planning.
 - [Baseline import notes](baseline-import.md): source provenance, reconciled inconsistencies, and validation boundaries.
 
 ## Engineering configuration
+
+- [Code layout and dependency rules](development/code-layout.md): responsibility-based source/test map, packaged entry points and remaining storage migration.
 
 - [Issue tracker](agents/issue-tracker.md): GitHub specs, implementation tickets, and wayfinding operations.
 - [Triage labels](agents/triage-labels.md): the five default triage statuses.

@@ -30,7 +30,7 @@ Each webview has its own browser context and communicates with the host through 
 
 Keep host work asynchronous. Filesystem/network calls and child-process output must not block the extension host. Bound captured output and expensive parsing; if profiling shows sustained CPU work, isolate that work behind the existing connection boundary in a worker or child process. No extra service or worker framework is required initially.
 
-One review manager exists in the owning window; it is not a magical singleton shared across VS Code processes. The one-active-review product rule also applies across windows. The storage decision must define ownership/locking and recovery; another window must not start conflicting operations while ownership is held or uncertain. Do not claim that an in-memory flag solves this.
+Each window has its own review manager. One active review is allowed per repository/window, so different repositories may proceed concurrently. A repository-local receipt prevents another process from starting a conflicting transition in the same checkout; ordinary SQLite transactions coordinate shared saved state. An in-memory flag alone is insufficient.
 
 ## Native surfaces and owned screens
 
@@ -47,24 +47,34 @@ One review manager exists in the owning window; it is not a magical singleton sh
 
 View locations are defaults: VS Code users can move and hide views. Do not promise fixed widths or automatic sidebar-width reclamation. Hiding or disposing a webview is not Exit Review. Commands remain reachable when the companion is hidden.
 
-Source navigation carries repository/review identity, inspected source identity, comparison side, path and range. Return also carries the initiating concern and expansion/focus target. Renamed, deleted, outdated and unavailable sources retain their original identities. An unavailable target explains the limitation instead of opening an unrelated current line. Reuse existing ordinary tabs where appropriate and preserve the pre-review editor state for restoration; the Git/restoration decision owns its recovery protocol.
+Source navigation carries repository/review identity, inspected source identity, comparison side, path and range. Return also carries the initiating concern. Renamed, deleted, outdated and unavailable sources retain their original identities. An unavailable target explains the limitation instead of opening an unrelated current line. Reuse existing ordinary tabs where appropriate; VS Code owns incidental tab/layout/focus state and the workbench does not serialize it for Exit.
 
 ## Ownership, modules and dependency direction
 
-Suggested initial layout; add files as features need them rather than generate empty layers:
+Owner-approved responsibility-based layout, amended 22 October 2026. See the [code layout guide](../development/code-layout.md) for current files and dependency rules:
 
 ```text
 src/
-  extension.ts              # starts the extension and connects its parts
-  domain/                   # review identities and pure review rules
-  application/              # review manager, actions and connection interfaces
-  connections/              # storage, Git, GitHub, AI and execution implementations
-  vscode/                   # commands, documents, native comments and view providers
-  webviews/                 # React screens, components and Tailwind entry stylesheet
-  shared/                   # transport data types and runtime message validators
+  extension.ts              # starts the extension and wires implementations
+  application/              # operation coordination and host-owned state
+  domain/                   # identities, contracts and pure rules
+  git/                      # repository discovery, committed reads and checkout
+  github/                   # normalized provider requests and responses
+  storage/                  # SQLite, worker transport and persistence
+  native/                   # existing native-helper probes, pending migration
+  protocol/                 # browser-safe messages and validators
+  vscode/documents/         # native documents, source links and saving
+  vscode/views/             # native view integration
+  webviews/drafts/           # draft browser entry, client and React view
+  webviews/readiness/        # readiness browser entry and React view
+tests/
+  application/ git/ github/ storage/ native/ vscode/ webviews/
+  host/                     # installed-VSIX runner and composed journeys
+  provider/                 # separately authorized real-provider reads
+  support/                  # reusable fixtures and child-process entry points
 ```
 
-The application calls small interfaces describing the outside work it needs. Connections implement those interfaces. The startup file supplies those implementations explicitly; a dependency-injection framework is unnecessary. The domain imports neither VS Code nor React nor a provider SDK. Application code imports domain rules and its interfaces, not concrete connections. Native integration and webviews call application actions; they do not own duplicate business rules. Shared transport modules contain serializable data and validators, without Node, VS Code or React imports.
+The application calls small interfaces describing the outside work it needs. Connections implement those interfaces. The startup file supplies those implementations explicitly; a dependency-injection framework is unnecessary. The domain imports neither VS Code nor React nor a provider SDK. Application code imports domain rules and its interfaces, not concrete connections. Native integration and webviews call application actions; they do not own duplicate business rules. `protocol/` modules contain serializable data and validators, without Node, VS Code or React imports.
 
 For example, a pure function can determine which Reviewed marks no longer apply after a source comparison. An application action obtains the comparison, invokes the rule, coordinates saving and updates the views. Git code obtains the source facts; it does not decide human progress or publication policy.
 

@@ -4,23 +4,24 @@ import {
   type HostEnvironment,
   type ReviewConnections,
 } from './application/review-manager';
-import { probeGit } from './connections/git-readiness';
-import { probeSqlite } from './connections/sqlite-readiness';
-import { probeNativeGuard } from './connections/native-readiness';
-import { createReadinessPanel } from './vscode/readiness-panel';
-import { createStoreConnection } from './connections/shared-store';
-import { resolveStoreConfiguration } from './connections/store-location';
-import type { StoreConfiguration } from './application/private-store';
-import { createGitHubConnection } from './connections/github';
-import { createLocalRepositoryConnection } from './connections/local-repository';
-import { createOverviewDocuments } from './vscode/overview-documents';
-import type { ReviewCandidate } from './application/pull-request';
-import { createCommittedReview } from './vscode/committed-review';
-import type { CommittedSource } from './application/committed-source';
-import { createCheckoutEditors } from './vscode/checkout-editors';
-import type { CheckoutResult } from './application/checkout-review';
-import { createDraftReview } from './vscode/draft-review';
-import type { StorageDiagnostics } from './connections/storage-diagnostics';
+import { probeGit } from './git/readiness';
+import { probeSqlite } from './storage/readiness';
+import { probeNativeGuard } from './native/readiness';
+import { createReadinessPanel } from './vscode/views/readiness-panel';
+import { createStoreConnection } from './storage/connection';
+import { resolveStoreConfiguration } from './storage/location';
+import type { StoreConfiguration } from './storage/contracts';
+import { createGitHubConnection } from './github/pull-requests';
+import { createLocalRepositoryConnection } from './git/repository';
+import { createOverviewDocuments } from './vscode/documents/overview';
+import type { ReviewCandidate } from './domain/pull-request';
+import { createCommittedReview } from './vscode/views/committed-review';
+import type { CommittedSource } from './domain/committed-source';
+import { createCheckoutGit } from './git/checkout';
+import { createCheckoutDocuments } from './vscode/documents/checkout';
+import type { CheckoutResult } from './domain/checkout';
+import { createDraftReview } from './vscode/views/draft-review';
+import type { StorageDiagnostics } from './storage/diagnostics';
 
 let activeManager: ReviewManager | undefined;
 
@@ -70,7 +71,11 @@ export function activate(context: vscode.ExtensionContext) {
       ),
       github,
       repository: createLocalRepositoryConnection(),
-      editors: createCheckoutEditors(documents),
+      checkout: createCheckoutGit({
+        repository: configuration.location,
+        windowId: configuration.windowId,
+      }),
+      documents: createCheckoutDocuments(),
       confirmLocalRepository: async (candidate) =>
         (await vscode.window.showWarningMessage(
           'Register this selected local copy for the verified GitHub repository?',
@@ -123,6 +128,15 @@ export function activate(context: vscode.ExtensionContext) {
       if (presentation !== checkoutPresentation) return result;
       committedReview.clear();
       draftReview.clear();
+    } else if (result.status === 'blocked') {
+      // Keep committed reading available when entry is refused.
+      const receipt = await manager.readCheckoutReview();
+      if (presentation !== checkoutPresentation) return result;
+      if (!receipt) {
+        const retained = await manager.readCommittedSource();
+        if (presentation !== checkoutPresentation) return result;
+        if (retained.status === 'ready') await showCommitted(retained.source);
+      }
     }
     if (presentation !== checkoutPresentation) return result;
     if (result.status === 'active' || result.status === 'complete')
@@ -130,26 +144,28 @@ export function activate(context: vscode.ExtensionContext) {
     else void vscode.window.showWarningMessage(result.detail);
     return result;
   }
-  async function recoverCheckout(choice?: 'continue' | 'restore') {
+  async function recoverCheckout(choice?: 'inspect' | 'clear') {
     if (!(await draftReview.prepareChange())) return undefined;
-    if (!lastUrl) {
-      const overview = await vscode.commands.executeCommand(
-        'codeReviewWorkbench.openPullRequestOverview',
-      );
-      if (!overview) return;
-    }
     const presentation = ++checkoutPresentation;
     const selectedReview = selection;
     const selected =
       choice ??
       (await vscode.window.showQuickPick(
         [
-          { label: 'Continue the saved transition', choice: 'continue' as const },
-          { label: 'Restore my previous work', choice: 'restore' as const },
+          {
+            label: 'Show manual recovery details',
+            description: 'Run no Git command',
+            choice: 'inspect' as const,
+          },
+          {
+            label: 'I completed Git recovery',
+            description: 'Clear only the saved receipt',
+            choice: 'clear' as const,
+          },
         ],
         {
           title: 'Recover this repository’s PR checkout',
-          placeHolder: 'Actual Git state will be checked before any switch.',
+          placeHolder: 'The workbench will not run automatic Git recovery.',
         },
       ));
     if (!selected || presentation !== checkoutPresentation || selectedReview !== selection) return;
@@ -168,7 +184,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!overview || !selectedCandidate) return;
       const presentation = ++checkoutPresentation;
       const saved = await manager.readCheckoutReview();
-      if (saved && saved.phase !== 'complete') return recoverCheckout('continue');
+      if (saved) return recoverCheckout('inspect');
       const candidate = selectedCandidate;
       const source = await manager.inspectPullRequestSource(
         candidate.pullRequest.base.repository.id,
@@ -199,7 +215,7 @@ export function activate(context: vscode.ExtensionContext) {
       return vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Restoring the original checkout and editors',
+          title: 'Restoring the original Git checkout',
         },
         async () => presentCheckout(await manager.exitPullRequestCheckout(), presentation),
       );
@@ -281,10 +297,10 @@ export function activate(context: vscode.ExtensionContext) {
       if (!candidate) return undefined;
       const selected = selection;
       const active = await manager.readCheckoutReview();
-      if (active && active.phase !== 'complete') {
+      if (active) {
         const retained = await manager.readCommittedSource(active.sourceId);
         if (retained.status === 'ready') {
-          await committedReview.show(retained.source, manager, active.phase === 'active');
+          await committedReview.show(retained.source, manager, active.step === 'active');
           await draftReview.showSource(retained.source, manager);
         } else void vscode.window.showWarningMessage(retained.detail);
         return retained;
@@ -360,16 +376,27 @@ export function activate(context: vscode.ExtensionContext) {
       manager.fencePullRequestOverview();
     }),
   );
-  void manager.inspectPrivateStore().then(async (view) => {
-    if (!view.checkoutPending) return;
-    await vscode.commands.executeCommand('setContext', 'codeReviewWorkbench.checkoutPending', true);
-    const action = await vscode.window.showInformationMessage(
-      'This repository has a saved PR checkout. Verify the original PR/account, then continue its transition or restore previous work.',
-      'Recover PR Checkout',
-    );
-    if (action)
-      void vscode.commands.executeCommand('codeReviewWorkbench.recoverPullRequestCheckout');
-  });
+  void manager
+    .readCheckoutReview()
+    .then(async (receipt) => {
+      if (!receipt) return;
+      await vscode.commands.executeCommand(
+        'setContext',
+        'codeReviewWorkbench.checkoutPending',
+        true,
+      );
+      const action = await vscode.window.showInformationMessage(
+        'This repository has a saved PR checkout receipt. Use Exit Review for an active review, or inspect the receipt and recover Git manually.',
+        'Recover PR Checkout',
+      );
+      if (action)
+        void vscode.commands.executeCommand('codeReviewWorkbench.recoverPullRequestCheckout');
+    })
+    .catch((error: unknown) => {
+      void vscode.window.showWarningMessage(
+        `Could not read the checkout receipt: ${String(error)}`,
+      );
+    });
   return {
     createManager,
     showOverview: (candidate: ReviewCandidate, source?: CommittedSource) =>

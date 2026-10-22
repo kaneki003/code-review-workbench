@@ -2,8 +2,8 @@ import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import { dirname, join } from 'node:path';
 import type { ReviewManager } from '../../src/application/review-manager';
-import type { LocalDraft } from '../../src/application/local-draft';
-import type { CommittedSource } from '../../src/application/committed-source';
+import type { LocalDraft } from '../../src/domain/local-draft';
+import type { CommittedSource } from '../../src/domain/committed-source';
 import { DraftBrowser } from './draft-browser';
 
 async function until(check: () => boolean | Promise<boolean>, message: string) {

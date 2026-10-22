@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { maxDraftBytes } from './local-draft';
+import { maxDraftBytes } from '../domain/local-draft';
 import type { DraftWriter } from './draft-writer';
 import {
   DraftChunkAssembly,
@@ -9,7 +9,7 @@ import {
   type DraftSnapshot,
   type DraftActionResult,
   type DraftRequest,
-} from '../shared/draft-writer';
+} from '../protocol/drafts';
 
 export class DraftWriterProtocol {
   private instanceId: string | undefined;

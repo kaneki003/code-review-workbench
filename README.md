@@ -2,7 +2,7 @@
 
 Implementation workspace for the planned AI-assisted VS Code code review extension. Keep application source and technical design documents here; track engineering work in [GitHub Issues](https://github.com/kaneki003/code-review-workbench/issues).
 
-This repository contains the accepted planning baseline, installable readiness, shared private-store ownership, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and clean PR checkout/Exit recovery. Dirty-work preservation remains a later ticket.
+This repository contains the accepted planning baseline, installable readiness, a verified PR overview, committed PR diffs with explicit Reviewed marks, anchored private local drafts and a PR checkout/Exit flow based on ordinary Git. Enter preserves staged, unstaged and nonignored new-file work in a named stash; Exit applies it with index restoration. Failed commands expose their real diagnostics and leave recovery to the user. Platform and installed-host validation remain open in [draft PR #36](https://github.com/kaneki003/code-review-workbench/pull/36). Review-time edit preservation remains a later ticket.
 
 ## Run the readiness slice
 
@@ -18,7 +18,7 @@ Install `dist/code-review-workbench.vsix` with VS Code's **Extensions: Install f
 
 The check reports the real host, Git and packaged in-memory SQLite worker. It does not create private review data or start a review. See the [implementation walkthrough and development commands](docs/development/readiness.md) and [validation evidence and limits](docs/development/readiness-validation.md).
 
-The [native ownership helper for #18](docs/development/shared-state-ownership.md) is approved and packaged. Explicit Open/Release Private Store commands coordinate one owner across windows. Recover Private Store reconciles interrupted typed operations without replaying Git. The guarded Git interface updates workbench-owned references and fetches verified PR source; it is not an arbitrary command runner. Install the VSIX built for your OS and CPU.
+The private-state architecture is being simplified under [ADR 0007](docs/adr/0007-coordinate-review-state-per-repository.md): different repositories/windows may work concurrently, while a repository-local receipt excludes overlapping transitions in the same checkout. The older native global-ownership implementation remains in the tree only while source/draft storage is migrated away from it.
 
 Run **Code Review Workbench: Open Pull Request Overview** in the root of an existing local repository, paste a GitHub.com PR URL and sign in through VS Code. The overview retains the selected local copy and verified account/repository identities in the owning private store. It shows real metadata and the author description in a read-only Markdown tab/preview. API sign-in does not configure Git transport. See the [implementation walkthrough, try-out steps and validation limits](docs/development/pr-overview.md).
 
@@ -28,20 +28,34 @@ Select a committed source range and choose **Write Private Local Draft**. The mo
 
 For day-to-day work, run `pnpm format` after editing and `pnpm validate` before committing. Validation checks formatting, TypeScript types and the fast tests. `pnpm test:host` separately builds and installs the VSIX in a disposable VS Code profile. VS Code recommends the Prettier extension for formatting on save; the command-line checks use the pinned local formatter even without that editor extension.
 
-From a clean supported repository, **Code Review Workbench: Enter PR Checkout** saves and captures the original editor state, then enters the exact PR on a fresh owned branch. **Exit Review** verifies the original branch/commit, clean files and editor state before completion. **Recover PR Checkout** reconciles interrupted transitions in the affected repository. Unfinished work stops switching and retains no-switch reading. See the [checkout walkthrough, recovery actions and representation limits](docs/development/clean-checkout.md).
+From a local repository, **Code Review Workbench: Enter PR Checkout** asks VS Code to save dirty documents, uses `git stash push --include-untracked` when needed, records the stash object and switches to the exact PR commit in detached mode. **Exit Review** switches back and runs `git stash apply --index`; VS Code retains responsibility for its own editor state. A failed command shows its command, exit code and Git output and retains the bounded checkout receipt for manual recovery. One review may be active per repository/window, and different repositories may be reviewed concurrently. See [ADR 0006](docs/adr/0006-use-ordinary-git-for-review-checkouts.md).
 
 ## Project layout
 
-- `src/`: extension entry, readiness manager, Git/worker connections and React view.
-- `tests/`: behavior, React interaction and installed-host checks.
-- `scripts/`: explicit build and packaged-host test pipelines.
-- `docs/product/`: approved PRD in Markdown/PDF and the product decision history.
-- `docs/design/`: current UI contract, refinement notes, Figma links, state/check ledgers, and SVG reference assets.
-- `docs/research/`: dated VS Code host-feasibility research relevant to architecture.
-- `docs/agents/`: engineering workflow configuration.
-- `AGENTS.md`: instructions for agents working in this project.
-- `.agents/skills/`: the installed Matt Pocock skills and their supporting files.
-- `skills-lock.json`: installed skill source and integrity metadata.
+Code is grouped by engineering responsibility. See the [code layout and dependency rules](docs/development/code-layout.md) for the file map, test organization and migration limits.
+
+```text
+src/
+  extension.ts       # extension startup and implementation wiring
+  application/       # operation coordination and host-owned state
+  domain/            # identities, contracts and pure rules
+  git/               # checkout, committed reads and repository discovery
+  github/            # GitHub communication and response normalization
+  storage/           # SQLite, worker communication and persistence
+  native/            # TypeScript native-helper probes (pending migration)
+  protocol/          # browser-safe messages and validators
+  vscode/            # documents/ and views/ using the VS Code API
+  webviews/          # drafts/ and readiness/ browser entries and React views
+```
+
+- `tests/`: matching responsibility folders, installed-VSIX `host/` suites, separately authorized `provider/` reads and reusable `support/` fixtures.
+- `native/`: existing C++ helper and build definition; retained until the storage migration removes its callers.
+- `scripts/`: explicit build, packaging and test pipelines.
+- `docs/product/`: approved PRD and product decision history.
+- `docs/design/`: current architecture/UI contracts and design reference evidence.
+- `docs/development/`: code navigation, implementation walkthroughs and validation records.
+- `docs/research/`: dated feasibility research.
+- `docs/agents/`, `AGENTS.md`, `.agents/skills/`: agent workflow instructions and project skills.
 
 ## Product and design inputs
 

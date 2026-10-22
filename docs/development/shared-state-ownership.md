@@ -19,7 +19,7 @@ An explicit first Open creates app-owned files outside the repository. Closing t
 
 ## Walk me through the diff
 
-1. `src/application/private-store.ts`, `review-manager.ts`, `src/extension.ts`: host-owned IDs and leases, ordered actions and the Open/Release/Recover commands. A lease proves one ownership turn. Its random token and increasing fence reject old callbacks. The incarnation identifies the store lineage independently of database snapshots.
+1. `src/storage/contracts.ts`, `review-manager.ts`, `src/extension.ts`: host-owned IDs and leases, ordered actions and the Open/Release/Recover commands. A lease proves one ownership turn. Its random token and increasing fence reject old callbacks. The incarnation identifies the store lineage independently of database snapshots.
 2. `store-location.ts`, `shared-store.ts`, `store-worker.ts`: OS-user discovery, worker transport, permanent guard, canonical registration, claim/release/handoff and reconciliation.
 3. `store-records.ts`, `store-database.ts`: independent record validation and worker-only SQLite. Every metadata mutation checks the owner, scope, incarnation, fence and expected revision. Duplicate IDs have one durable result.
 4. `repository-operation.ts`, `reference-storage.ts`, `native/child.cc`: exact Git targets, repository facts, paused process creation, explicit start and settlement. A differing workspace path must name the same actual directory (device/file identity); this accepts VS Code drive-letter case and macOS path aliases while rejecting another folder. The only mutation is a compare-and-swap update under `refs/code-review-workbench/`. Callers cannot supply Git arguments, executables, environment or another repository path.
@@ -66,3 +66,7 @@ Records contain minimal metadata, apart from restorable database snapshots. Publ
 This is the combined protocol, not a rename-flag-only claim. Tests inject write, file-flush, rename and final-durability failures and real worker/process crashes. They do not simulate hardware power loss or certify every volume. [MoveFileEx](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw), [FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers), [SQLite atomic commit](https://sqlite.org/atomiccommit.html), [Windows jobs](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
 The owner approved the native bridge on 17 October 2026, amending the earlier JavaScript-only packaging boundary. `node-gyp` 13.1.0 builds Electron 43.7.7 / Node-API 8 assets for macOS arm64, Windows x64 and Linux x64. Users need no compiler or install hook. Developers need Python plus Xcode Command Line Tools, Linux C++/make or Visual Studio C++ Build Tools. Headers use a private temporary cache because gyp's Unix include paths cannot contain spaces; source paths may contain spaces.
+
+# Superseded implementation note
+
+> This walkthrough records the earlier native global-ownership checkpoint. [ADR 0007](../adr/0007-coordinate-review-state-per-repository.md) supersedes it with concurrent SQLite access and repository-scoped checkout coordination.

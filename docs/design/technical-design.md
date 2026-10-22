@@ -1,6 +1,6 @@
 # Code Review Workbench technical design
 
-Status: accepted for personal-local development handoff, 16 October 2026. The owner answered “yes” to the revised technical design and first working milestone through [Accept the technical design and first working milestone](https://github.com/kaneki003/code-review-workbench/issues/11). The accepted scope reviews committed code only; uncommitted review and its source-snapshot clearing question are out of scope. This is planning acceptance, not production implementation, successful package/preservation/provider/platform validation or public-release approval.
+Status: amended 21 October 2026 by [ADR 0006](../adr/0006-use-ordinary-git-for-review-checkouts.md) and [ADR 0007](../adr/0007-coordinate-review-state-per-repository.md). The committed-source-only scope remains. Verified byte manifests, automatic Git recovery, native editor-state restoration and global single-window store ownership are superseded by ordinary Git, manual recovery and repository-scoped coordination.
 
 ## Scope and reading guide
 
@@ -29,34 +29,33 @@ The local Node extension host owns the review manager and all privileged actions
 
 ```text
 src/
-  extension.ts
-  domain/                 # identities, applicability and pure state rules
-  application/
-    review-manager.ts     # coordinates actions; sole authoritative projection
-    contracts/            # small interfaces required by application actions
-    actions/              # entry, saves, Sync, exit, delivery, investigations
-  connections/
-    storage/              # worker, migrations, ownership, content and backups
-    git/                  # bounded argv operations, source and transition journal
-    github/               # normalized REST/GraphQL reads, actions and receipts
-    ai/                   # account/API transports and provider projections
-    execution/            # MXC launcher, policies, outcomes and containment probes
-    attachments/          # bounded text/PDF extraction
-  vscode/                 # commands, views, revision documents, comments, terminals
-  webviews/               # React screens and compiled Tailwind stylesheet
-  shared/                 # serializable protocol and runtime shape validators
-test/
-  fixtures/               # disposable repositories, sources and provider recordings
-  integration/            # actual desktop extension-host behavior
+  extension.ts              # starts the extension and wires implementations
+  application/              # operation coordination and host-owned state
+  domain/                   # identities, contracts and pure rules
+  git/                      # repository discovery, committed reads and checkout
+  github/                   # normalized provider requests and responses
+  storage/                  # SQLite, worker transport and persistence
+  native/                   # existing native-helper probes, pending migration
+  protocol/                 # browser-safe messages and validators
+  vscode/documents/         # native documents, source links and saving
+  vscode/views/             # native view integration
+  webviews/drafts/           # draft browser entry, client and React view
+  webviews/readiness/        # readiness browser entry and React view
+tests/
+  application/ git/ github/ storage/ native/ vscode/ webviews/
+  host/                     # installed-VSIX runner and composed journeys
+  provider/                 # separately authorized real-provider reads
+  support/                  # reusable fixtures and child-process entry points
 ```
 
-Create folders as behavior needs them. Domain rules import no VS Code, React, database or provider SDK. Application actions call their contracts; connections implement those contracts. Startup supplies the implementations explicitly. Native integration and React never reproduce eligibility or reconciliation rules. Provider SDK objects stay inside connections.
+The owner accepted responsibility-based source and test grouping on 22 October 2026; the [code layout guide](../development/code-layout.md) describes the implemented organization. Create folders as behavior needs them. Domain rules import no VS Code, React, database or provider SDK. Application actions call their contracts; connections implement those contracts. Startup supplies the implementations explicitly. Native integration and React never reproduce eligibility or reconciliation rules. Provider SDK objects stay inside connections.
 
 The names below describe public application contracts, not a framework to generate in advance. All external work returns explicit structured outcomes and accepts cancellation where meaningful. Cancellation must still report the actual known outcome.
 
 | Boundary | Application-facing operations | Required result and limit |
 | --- | --- | --- |
-| Store ownership | `acquire`, `handoff`, `reconcileOwner`, `release` | Owner token, store incarnation and fencing generation, or existing/uncertain owner; never timeout-based stealing |
+| Review storage | `readReview`, `saveReview`, `saveDraft`, `clearReview` | Account/repository/PR-scoped data or a normal SQLite busy/error result |
+| Repository checkout | `read`, `enter`, `exit`, `clearRecovery` | Active/completed result or a bounded receipt with exact failed Git diagnostics |
 | Review store | `loadReview`, `commitChanges`, `flushInput`, `prepareOperation`, `recordOutcome` | Expected-revision transaction and committed sequence; idempotent local request result; no transaction held across external work |
 | Store maintenance | `backup`, `migrate`, `inspectRecovery`, `restoreBackup`, `clearReview` | Verified manifest/cutoff or explicit pending/failure; restore reconciles external intents and changes incarnation |
 | Source access | `resolveRepository`, `captureComparison`, `readSource`, `searchSource`, `compareGenerations` | Exact immutable inputs, bounded pages and completeness; no arbitrary webview filesystem path |
@@ -68,7 +67,7 @@ The names below describe public application contracts, not a framework to genera
 | Tools/checks | `read`, `search`, `startCheck`, `readOutput`, `stopCheck`, `revokeGrant` | Scoped validated operation, actual source, grant generation, bounded output and known/unknown process outcome |
 | Attachments | `import`, `extractPage`, `cancelExtraction` | Immutable original reference, digest, page/range provenance and explicit partial/unavailable status |
 
-Storage ownership is an **early engineering gate**, not a solved algorithm. The accepted contract selects the required behavior but not the concrete cross-platform guard primitive or reclamation implementation. The first storage slice must select, document and prove that mechanism, including concurrent reclaimers, orphan guards, process identity, handoff and live children, before enabling review/store/Git/GitHub mutations. A directory plus stale timestamp, SQLite row or interface definition alone does not satisfy this gate. If the selected mechanism requires changing the accepted packaging/ownership boundary, return that precise change for decision.
+Shared storage uses SQLite WAL and short transactions from each window. It has no exclusive application-wide owner. Repository-changing commands are serialized only within the affected checkout by atomically creating its bounded receipt. A stale receipt is cleared only after explicit user-controlled Git recovery; the extension does not reclaim it from heartbeat, process identity or timeout evidence.
 
 ## Identities, revisions and schema
 
@@ -107,11 +106,11 @@ Initial relational schema groups, using numbered migrations and parameterized SQ
 | `drafts` | Original target, body, edit/committed/row revisions, content generation and deletion barrier |
 | `discussion_records`, `read_scopes`, `pending_reviews` | Server identity and observed state; timestamps/cursors/completeness; cache never overrides server authority |
 | `operations`, `operation_attempts`, `receipts`, `grants` | Frozen chosen action, dispatch permission/phase and receipt; original actor; scoped permission/version/revocation |
-| `transitions`, `transition_steps`, `clear_operations` | Expected/observed phases, preservation manifest/reference IDs, completion and content-free deletion barrier |
+| `clear_operations` | Content-free deletion barrier and retained nonsecret facts required to explain incomplete deletion |
 
 Use composite foreign keys/uniqueness that prevent crossing owner/review boundaries. Immutable source/content rows are referenced rather than replaced in place. A source change adds a generation; it does not rewrite an older anchor. A payload edit creates a new operation/version. SQL column definitions may be elaborated in implementation; these ownership, uniqueness and revision rules are binding.
 
-Atomic database changes include draft text/target/revisions with its request result; source-generation installation with progress/evidence reconciliation; receipt with exact draft-revision retirement and pending membership; and Clear with its new content generation. SQLite cannot atomically commit a Git operation, network request or separate recovery file. Before those external effects, both database intent and the required independent recovery facts must be durably acknowledged. Missing/disagreeing outcomes require inspection, never automatic replay.
+Atomic database changes include draft text/target/revisions, source-generation installation with progress/evidence reconciliation, publication receipts and Clear with its new content generation. SQLite cannot atomically commit a Git or network operation. Git checkout transitions therefore use a bounded repository-local receipt; missing outcomes are reported for manual recovery and never automatically replayed.
 
 The [storage contract](private-state-storage.md) owns the canonical OS-user-home registry, per-user platform data roots, filesystem requirements, content layout, recovery sidecars, backup/migration protocol and deletion inventory. Use WAL, FULL synchronization, foreign keys, secure deletion and a bounded busy timeout inside the worker. Credentials stay in VS Code authentication/SecretStorage; profiles, backups and logs contain only nonsecret references. Unsupported driver/filesystem/ownership capability prevents unsafe work; it does not start another empty store.
 
@@ -143,9 +142,9 @@ Keep native anchored reading and the approved bottom composer. Preserve Figma st
 ### Real PR entry
 
 1. Check local desktop environment and Workspace Trust. Resolve the GitHub actor, base repository/PR and explicit local registration. GitHub authentication initially requests the accepted `repo` scope; milestone-one application actions are read-only, but that OAuth grant itself is broad.
-2. Acquire verified shared ownership and the affected repository scopes. Inspect journal/repository facts before any transition. Save relevant dirty documents through normal VS Code saving; cancelled or unstable saves stop switching.
-3. Record prior workspace/editor state, original branch/exact commit, index/worktree manifest and preservation intent. Stash tracked/index/nonignored new work when needed; verify the exact stash object and pin its recovery reference before checkout. Keep ignored files in place; collisions or unsupported states offer truthful no-switch reading when local source is accessible.
-4. Read/fetch into owned refs, verify the actual PR head and comparison inputs, then check out a fresh owned review branch with no user-branch reset, force checkout or cleanup. Verify actual source before committing activation. Folder handoff requires acknowledgment from the receiving host, not just a successful open-folder request.
+2. Save relevant dirty documents through normal VS Code saving; cancellation or failure stops entry before Git mutation. Refuse another active/interrupted receipt in the same checkout without blocking other repositories.
+3. Record the original branch/exact commit and target in a bounded repository-local receipt. Run ordinary `git stash push --include-untracked` when status is dirty and record the resulting stash object without constructing a parallel file/index manifest.
+4. Read/fetch the exact PR objects, then run `git switch --detach <head-oid>`. If Git fails, stop and show the repository, redacted command, exit code, stdout and stderr. Do not run an automatic rollback or recovery command.
 5. Render the exact inspected generation, overview and changed-file navigation. AI and publication are not entry prerequisites. Normal resume checks source automatically; inaccessible updates retain labelled downloaded code and notes with Retry, without a false current-source claim.
 
 Git transport is distinct from API login. The narrow initial route uses installed Git with the user's existing HTTPS credential helper or SSH configuration. On transport failure, explain ordinary Git setup/authentication and Retry. Do not promise that VS Code API sign-in configures Git transport or put tokens in argv, URLs or logs. Resolve fork PR heads through the verified base repository's PR ref into owned refs and compare the fetched object ID with API metadata. An automatic API-token-to-Git credential bridge is not implied.
@@ -166,11 +165,11 @@ interrupted phase -> reconcile actual facts -> safe continue/restore or blocked 
 
 Ordinary source edits during PR review save normally. Leaving/updating a dirty PR checkout offers the accepted stash-and-exit/stash-and-Sync versus stay/keep choice. These edits get a **separate named ordinary Git stash**, not the stash protecting prior work, and are never automatically replayed onto prior work or newer PR code. This is not a per-edit backup feature.
 
-Exit first settles owned checks, preserves review-time edits, restores the original branch at its expected commit or exact detached HEAD, applies the exact prior-work stash with index restoration, verifies the original manifest, restores workspace/editor state and records completion. Keep the backup until that verification/receipt. An interrupted apply is inspected before another apply; branch movement, conflicts or lost artifacts retain recovery and never trigger a hard reset or false success. Delete only exact proven-owned unused artifacts; retain ambiguous cleanup.
+Exit asks VS Code to save dirty documents, switches to the recorded original branch or exact detached commit, and applies the recorded stash with `--index`. Drop the matching stash entry only after a successful apply. Git command success defines repository restoration; the extension does not verify a parallel manifest or restore tabs/layout/selections. Any failure retains the stash and receipt, reports the exact Git diagnostics and leaves recovery to the user.
 
 During active review, new commits produce a notice, not a checkout. Explicit Source Sync waits for owned checks to finish or be confirmed stopped, preserves dirty edits by the selected path, revalidates real repository facts, installs exact new inputs and transactionally reconciles saved state. Keep unaffected human marks/routes/dismissals; clear changed-file marks; preserve original draft anchors/conversation; flag affected/uncertain evidence. A head change alone does not reset everything. Old callbacks cannot certify new source.
 
-Discussion refresh independently updates paginated server records/completeness. Repository/list Sync reports per-PR updated/unchanged/deferred/failed/unknown results, updates inactive source without sequential checkout or focus changes, and keeps one active review.
+Discussion refresh independently updates paginated server records/completeness. Repository/list Sync reports per-PR updated/unchanged/deferred/failed/unknown results and updates inactive source without sequential checkout or focus changes. Each repository/window keeps at most one active review; other repositories may proceed concurrently.
 
 ### Local committed comparisons and clearing
 
@@ -264,10 +263,10 @@ Target Windows x64, Linux x64 and macOS arm64, each at minimum and current stabl
 The accepted first end-to-end path uses a trusted local **single-folder repository already cloned**, one explicit GitHub.com PR URL, a verified account with PR read access, configured installed-Git transport access, an existing writable canonical private store and a supported packaged host. This narrows the milestone's entry route, not later MVP support. It avoids making AI, full PR discovery, clone/folder handoff or publication prerequisites for proving the core loop.
 
 1. Launch the installed VSIX, paste the PR URL and select the existing local registration. Resolve the real PR/account and exact local source. Start from staged, unstaged and nonignored new prior work as well as a clean repository.
-2. Save/preserve/verify prior work and enter the exact PR source on an owned branch in the same folder. Show metadata/author description and every changed file; absent AI summaries are labelled unavailable rather than fabricated. Ordinary source/diff navigation works.
+2. Save documents, stash prior work with ordinary Git when needed and enter the exact PR commit detached in the same folder. Show metadata/author description and every changed file; absent AI summaries are labelled unavailable rather than fabricated. Ordinary source/diff navigation works.
 3. Select an exact old/new source range, open the usable bottom writer and type real local feedback. Saving/Saved/Failed refer to real durable commits. Close and reopen through the tagged original anchor; no GitHub pending record is created.
 4. Hide/recreate the views and reload/restart the host. Resume saved target/text/navigation, inspect the repository/journal and attempt the required latest-source check. Unchanged source resumes directly; new source follows normal preservation/reconciliation; unavailable updates retain labelled old source with Retry.
-5. Explicitly Exit Review. Save and separately stash any review-time edits when chosen, restore/verify original branch/index/files and prior editor state, then show completion. An interrupted/conflicted restoration retains actionable recovery instead.
+5. Explicitly Exit Review. Save documents, switch to the original branch/detached commit and apply the recorded stash with index restoration. A failed command exposes its real diagnostics and receipt for manual recovery; editor view state is not reconstructed.
 
 Use no model connection or GitHub mutation in this milestone. GitHub sign-in may still have the accepted broad scope; read-only describes the actions exercised. Setup of missing repositories, complete relevance discovery, local-comparison entry, full discussion, profile/attachment UI, AI, checks, publication and merge follow below. Incomplete milestone actions must explain their status rather than present success or an invented destination.
 
@@ -277,13 +276,13 @@ Use no model connection or GitHub mutation in this milestone. GitHub sign-in may
 | --- | --- |
 | Installed bootstrap | Worker/SQLite/guard and canonical-root probes pass; actual runtime versions recorded; unsupported environment fails before mutation |
 | Real source | Authorized disposable public/private/fork PR reads map to the correct base PR and exact fetched comparison; no API-sign-in/Git-auth conflation |
-| Preservation | Before/after manifests prove exact tracked, index/staging, nonignored new-file and branch restoration; unrelated stashes/ignored files remain correct |
+| Preservation | Ordinary stash/switch/apply restores staged, unstaged and nonignored new-file work; unrelated stashes and ignored files remain untouched |
 | Real writer | Type, edit during in-flight save, Close/reopen, hide/recreate/reload and failed-save Retry preserve original target and latest acknowledged text; no mock Saved state |
 | Native navigation | Correct sides/ranges/revision in ordinary split/unified diffs; renamed/deleted/unavailable targets stay truthful; source-link return restores source/concern/focus |
 | Resume/Sync | Head/base/force-push change and failed-update check retain accurate inspected source, original drafts and changed/unchanged progress rules; no silent active checkout |
-| Interruption | Inject failure before/after preservation intent, stash, pin, checkout, source commit, apply and completion; verify reconciliation without duplicate stash/apply or premature cleanup |
-| Ownership | Two windows, concurrent reclaimers, handoff failure, delayed heartbeat and dead host/live child cannot create conflicting writers; unresolved owner stops unsafe actions |
-| Exit failures | Moved branch, conflict, missing artifact, disk error or failed editor restoration never appears as completed Exit; protected work survives |
+| Interruption | Failed checkout/apply retains the bounded receipt, stash identity and exact Git diagnostics; no command is automatically replayed |
+| Coordination | Different repositories/windows proceed concurrently; a second window is refused only for the same working checkout |
+| Exit failures | Moved branch, conflicts, missing objects or Git errors never appear as completed Exit; the user receives ordinary recovery facts |
 | Host experience | Keyboard/accessibility/focus, light/dark/high-contrast, narrow/zoom, moved/hidden views and bottom-writer Figma layout checked on each advertised target |
 
 The minimum proof path does not excuse omitting a destructive-transition guard. Unsupported unusual Git states must take the documented safe fallback before mutation. Use synthetic/disposable repositories for failure injection and separately authorized fixture PR access; this planning document does not authorize testing checkout against a user's unfinished work or posting fixture feedback.
@@ -337,7 +336,7 @@ The seven prepared Figma families do not prove local-comparison entry, general P
 
 Fast behavior tests cover pure reconciliation, scope/revision/dispatch rules and meaningful races. React interaction tests type actual input and exercise failure/Close/Retry and focus within owned components. Desktop integration tests exercise real APIs, documents, comments, moved views, workers and packaged assets. Fault-injected Git/filesystem/provider adapters test every durable boundary; real disposable repositories prove preservation. Authorized provider fixtures separately establish endpoint/auth/receipt/model behavior; a fake adapter cannot prove it.
 
-Required cross-platform coverage includes save/disk-full/corruption/clear, two owners/reclaimers, dead host/live child, stash-success-before-record and apply-success-before-receipt, branch/base/head movement, folder handoff, backup-restore reconciliation, uncertain delivery and model/check cancellation. Use the detailed fixture inventories in each owning contract. Run minimum/current Git/VS Code where specified and record exact supported cells, including manual accessibility/assistive-technology and Figma comparison. The earlier macOS prototype proves only its documented bounded experiment.
+Required cross-platform coverage includes save/disk-full/corruption/clear, concurrent different repositories, same-checkout refusal, failed Git commands with exact diagnostics, branch/base/head movement, database migration, uncertain remote delivery and model/check cancellation. Use the detailed fixture inventories in each owning contract. Run minimum/current Git/VS Code where specified and record exact supported cells, including manual accessibility/assistive-technology and Figma comparison.
 
 | Gate | What is still required | Effect |
 | --- | --- | --- |

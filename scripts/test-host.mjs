@@ -148,7 +148,7 @@ async function prepareHostTestRunner(vscodeExecutable, fixture) {
   await new Promise((resolve) => debugServer.close(resolve));
   const compiledTests = join(testOutputDirectory, 'readiness.cjs');
   await build({
-    entryPoints: [join(projectRoot, 'tests/host/readiness.ts')],
+    entryPoints: [join(projectRoot, 'tests/host/main.ts')],
     outfile: compiledTests,
     bundle: true,
     platform: 'node',
