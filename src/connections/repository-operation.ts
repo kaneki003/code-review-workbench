@@ -12,14 +12,6 @@ import {
 } from 'node:fs';
 import { delimiter, isAbsolute, join, normalize, relative } from 'node:path';
 import type { StoreLease, StoreProcess } from '../application/private-store';
-import type { PriorWork } from '../application/prior-work';
-import {
-  findPriorStash,
-  matchesManifest,
-  priorWorkRef,
-  validPriorWork,
-  verifyStash,
-} from './prior-work';
 import { StoreError } from '../application/private-store';
 import {
   inspectReferenceStorage,
@@ -36,14 +28,6 @@ import {
   uuid,
   type NativeStore,
 } from './store-records';
-import {
-  assertCheckoutAttributes,
-  assertPreservationPolicy,
-  assertSupportedAttributes,
-  blobOid,
-  checkoutFiles,
-} from './git-attributes';
-
 export interface RepositoryFacts {
   worktree: string;
   commonGitDir: string;
@@ -60,15 +44,8 @@ export interface OperationRecord {
   fence: number;
   ownerToken: string;
   scopeId: string;
-  kind: 'update-ref' | 'fetch' | 'checkout' | 'delete-ref' | 'stash-push' | 'stash-apply';
-  stash?: { prior: PriorWork; original: CheckoutState };
+  kind: 'update-ref' | 'fetch';
   fetch?: { url: string; remoteRef: string };
-  checkout?: {
-    before: CheckoutState;
-    target: { branch: string | null; commit: string; fingerprint?: string };
-    create: boolean;
-    entryId?: string;
-  };
   observedOid?: string | null;
   phase: 'prepared' | 'armed' | 'observed';
   ref: string;
@@ -80,39 +57,12 @@ export interface OperationRecord {
   outcome?: 'applied' | 'not-applied' | 'refused';
   exitCode?: number;
 }
-export interface CheckoutState {
-  branch: string | null;
-  commit: string;
-  fingerprint: string;
-}
-export function operationBoundary(record: OperationRecord) {
-  if (record.kind === 'stash-push' || record.kind === 'stash-apply') return record.kind;
-  if (record.kind === 'checkout' && !record.checkout?.create) return 'restore-checkout';
-  if (record.ref.endsWith('/prior-work'))
-    return record.kind === 'delete-ref' ? 'prior-work-cleanup' : 'prior-work-pin';
-  if (record.ref.endsWith('/original'))
-    return record.kind === 'delete-ref' ? 'original-cleanup' : 'original-pin';
-  return record.kind;
-}
-function checkoutState(value: unknown): value is CheckoutState {
-  return (
-    object(value) &&
-    (value.branch === null ||
-      (text(value.branch, 512) && value.branch.startsWith('refs/heads/'))) &&
-    oid(value.commit) &&
-    text(value.fingerprint, 64)
-  );
-}
 export function oid(value: unknown): value is string {
   return typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value);
 }
 export function operationFile(directory: string, id: string) {
   if (!uuid(id)) recovery('Operation identity is invalid.');
   return join(directory, `operation-${id}.json`);
-}
-export function originalCheckoutRef(entryId: string) {
-  if (!uuid(entryId)) recovery('The original checkout reference needs an entry identity.');
-  return `refs/code-review-workbench/recovery/${entryId}/original`;
 }
 export function readOperation(directory: string, id: string): OperationRecord {
   const value = readRecord(operationFile(directory, id));
@@ -125,29 +75,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !uuid(value.ownerToken) ||
     !uuid(value.scopeId) ||
     !sequence(value.fence) ||
-    !['update-ref', 'fetch', 'checkout', 'delete-ref', 'stash-push', 'stash-apply'].includes(
-      String(value.kind),
-    ) ||
-    (String(value.kind).startsWith('stash-') &&
-      (!object(value.stash) ||
-        !validPriorWork(value.stash.prior) ||
-        !checkoutState(value.stash.original))) ||
-    (value.kind === 'delete-ref' &&
-      (value.beforeOid === null || value.beforeOid !== value.newOid)) ||
-    (value.kind === 'checkout' &&
-      (!object(value.checkout) ||
-        !checkoutState(value.checkout.before) ||
-        !object(value.checkout.target) ||
-        !oid(value.checkout.target.commit) ||
-        !(
-          value.checkout.target.branch === null ||
-          (text(value.checkout.target.branch, 512) &&
-            value.checkout.target.branch.startsWith('refs/heads/'))
-        ) ||
-        (value.checkout.target.fingerprint !== undefined &&
-          !text(value.checkout.target.fingerprint, 64)) ||
-        typeof value.checkout.create !== 'boolean' ||
-        (value.checkout.entryId !== undefined && !uuid(value.checkout.entryId)))) ||
+    !['update-ref', 'fetch'].includes(String(value.kind)) ||
     (value.kind === 'fetch' &&
       (!object(value.fetch) ||
         !/^https:\/\/github.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$|^git@github.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/.test(
@@ -160,8 +88,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
     !text(value.ref, 512) ||
     !oid(value.newOid) ||
     (value.beforeOid !== null && !oid(value.beforeOid)) ||
-    (!['checkout', 'delete-ref', 'stash-push', 'stash-apply'].includes(String(value.kind)) &&
-      value.beforeOid === value.newOid) ||
+    value.beforeOid === value.newOid ||
     !object(value.facts) ||
     !text(value.facts.worktree) ||
     !text(value.facts.commonGitDir) ||
@@ -186,7 +113,7 @@ export function readOperation(directory: string, id: string): OperationRecord {
   return value as unknown as OperationRecord;
 }
 
-// Only typed reference, fetch and protected checkout operations reach the launcher.
+// Only typed reference and fetch operations reach the launcher.
 // Hooks, lazy fetch, filesystem monitors, inherited Git targets/config and
 // executable-injection variables are disabled; arbitrary commands are absent.
 export class RepositoryOperation {
@@ -326,18 +253,15 @@ export class RepositoryOperation {
         'This operation currently requires Git file-based reference storage.',
       );
   }
-  referenceStorage(ref: string, facts: RepositoryFacts, checkout = false) {
-    return [
-      ...inspectReferenceStorage(facts.commonGitDir, ref, this.native),
-      ...(checkout ? inspectReferenceStorage(facts.gitDir, 'HEAD', this.native) : []),
-    ];
+  referenceStorage(ref: string, facts: RepositoryFacts) {
+    return [...inspectReferenceStorage(facts.commonGitDir, ref, this.native)];
   }
   sameReferenceStorage(record: OperationRecord, settled = false) {
     return sameReferenceStorage(
       record.storage,
-      this.referenceStorage(record.ref, record.facts, record.kind === 'checkout'),
+      this.referenceStorage(record.ref, record.facts),
       settled,
-      record.kind === 'delete-ref',
+      false,
     );
   }
   facts(includeIndexCache = true): RepositoryFacts {
@@ -432,281 +356,6 @@ export class RepositoryOperation {
   sameFacts(expected: RepositoryFacts) {
     return JSON.stringify(this.facts()) === JSON.stringify(expected);
   }
-  sameRepositoryIdentity(expected: RepositoryFacts) {
-    const actual = this.facts();
-    return (
-      JSON.stringify(actual.scopes) === JSON.stringify(expected.scopes) &&
-      actual.gitDir === expected.gitDir &&
-      actual.index === expected.index
-    );
-  }
-  validateDelete(ref: string, commit: string) {
-    if (
-      !/^refs\/(?:heads\/code-review-workbench\/[a-f0-9-]{36}|code-review-workbench\/recovery\/[a-f0-9-]{36}\/(?:original|prior-work))$/.test(
-        ref,
-      ) ||
-      !oid(commit)
-    )
-      throw new StoreError(
-        'INVALID_OPERATION',
-        'Cleanup requires an exact proven-owned checkout artifact.',
-      );
-    this.git(['check-ref-format', ref]);
-    this.git(['cat-file', '-e', `${commit}^{commit}`]);
-    if (
-      this.git(['worktree', 'list', '--porcelain', '-z'])!
-        .toString()
-        .split('\0')
-        .includes(`branch ${ref}`)
-    )
-      throw new StoreError(
-        'CHECKOUT_INTERFERENCE',
-        'The branch is now in use by a worktree. Keep it reachable.',
-      );
-  }
-  mergedIntoHead(commit: string) {
-    return this.git(['merge-base', '--is-ancestor', commit, 'HEAD'], true) !== null;
-  }
-  checkoutState(target?: string, requirement: 'clean' | 'inventory' = 'clean'): CheckoutState {
-    // Refuse configurations whose checkout/status can execute repository-owned
-    // programs, and representations this clean-only slice cannot verify.
-    const backend = this.git(['config', '--get', 'extensions.refStorage'], true)?.toString().trim();
-    if (
-      (backend && backend !== 'files') ||
-      this.git(['rev-parse', '--shared-index-path'])!.toString().trim() ||
-      this.git(
-        [
-          'config',
-          '--get-regexp',
-          '^(filter\\.|core\\.sparsecheckout|core\\.splitindex|extensions\\.worktreeconfig)',
-        ],
-        true,
-      )
-    )
-      throw new StoreError(
-        'UNSUPPORTED_CHECKOUT',
-        'Configured filters, sparse/split index, worktree config and non-file references require validated preservation support. Keep reading committed source without switching.',
-      );
-    assertSupportedAttributes(this, []);
-    const facts = this.facts();
-    for (const marker of [
-      'MERGE_HEAD',
-      'CHERRY_PICK_HEAD',
-      'REVERT_HEAD',
-      'REBASE_HEAD',
-      'rebase-merge',
-      'rebase-apply',
-      'sequencer',
-      'BISECT_START',
-      'index.lock',
-      'HEAD.lock',
-    ]) {
-      if (existsSync(join(facts.gitDir, marker)))
-        throw new StoreError(
-          'UNSUPPORTED_CHECKOUT',
-          'An in-progress Git operation or lock prevents checkout. Finish it before Retry.',
-        );
-    }
-    const staged = this.git(['ls-files', '--stage', '-z'])!.toString();
-    const flags = this.git(['ls-files', '-v', '-z'])!.toString().split('\0').filter(Boolean);
-    if (
-      /(?:^|\0)160000 | [1-3]\t/.test(staged) ||
-      flags.some((file) => !file.startsWith('H ')) ||
-      (target && /(?:^|\0)160000 /.test(this.git(['ls-tree', '-r', '-z', target])!.toString()))
-    )
-      throw new StoreError(
-        'UNSUPPORTED_CHECKOUT',
-        'Submodules, unresolved entries and special index flags are not supported by clean checkout. Keep no-switch reading.',
-      );
-    const indexedFiles = staged
-      .split('\0')
-      .filter(Boolean)
-      .map((entry) => {
-        const match = /^(100644|100755|120000) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t(.+)$/s.exec(entry);
-        if (!match)
-          throw new StoreError(
-            'UNSUPPORTED_CHECKOUT',
-            'An index entry has an unsupported representation.',
-          );
-        return {
-          path: match[3]!,
-          mode: match[1] as '100644' | '100755' | '120000',
-          oid: match[2]!,
-        };
-      });
-    const converts = assertSupportedAttributes(
-      this,
-      indexedFiles.map((file) => file.path),
-    );
-    if (target) assertCheckoutAttributes(this, target);
-    if (
-      requirement === 'clean' &&
-      this.git([
-        'status',
-        '--porcelain=v1',
-        '-z',
-        '--untracked-files=all',
-        '--ignore-submodules=none',
-      ])!.length
-    )
-      throw new StoreError(
-        'DIRTY_CHECKOUT',
-        'Unfinished index/worktree changes prevent this clean-only checkout. Commit or preserve them using ordinary Git, then Retry; committed-source reading remains available.',
-      );
-    // Compare real bytes with the indexed blob's approved checkout representation,
-    // including normal CRLF output. Status/stat caches alone cannot prove this.
-    const checkout = new Map(
-      (requirement === 'inventory' || !converts
-        ? []
-        : checkoutFiles(
-            this,
-            indexedFiles.filter((file) => file.mode !== '120000'),
-          )
-      ).map((file) => [file.path, file.oid]),
-    );
-    for (const { mode, oid: expected, path: file } of requirement === 'inventory'
-      ? []
-      : indexedFiles) {
-      const path = join(facts.worktree, file);
-      const metadata = lstatSync(path);
-      const symlink = metadata.isSymbolicLink();
-      if ((mode === '120000') !== symlink || (!symlink && !metadata.isFile()))
-        throw new StoreError(
-          'DIRTY_CHECKOUT',
-          'A working-file type differs from its indexed type. Keep no-switch reading.',
-        );
-      const content = symlink ? Buffer.from(readlinkSync(path)) : readFileSync(path);
-      const actual = blobOid(content, expected);
-      if (
-        actual !== (checkout.get(file) ?? expected) ||
-        (process.platform !== 'win32' &&
-          !symlink &&
-          Boolean(metadata.mode & 0o111) !== (mode === '100755'))
-      )
-        throw new StoreError(
-          'DIRTY_CHECKOUT',
-          'Working-file bytes or modes differ from the index. Preserve any edits; transformed files require supported handling before switching. Keep no-switch reading.',
-        );
-    }
-    const commit = this.refOid('HEAD');
-    if (!commit)
-      throw new StoreError(
-        'UNSUPPORTED_CHECKOUT',
-        'An unborn repository cannot enter a PR checkout.',
-      );
-    const state = {
-      branch: this.git(['symbolic-ref', '-q', 'HEAD'], true)?.toString().trim() ?? null,
-      commit,
-      fingerprint: this.facts(false).digest,
-    };
-    if (!this.sameFacts(facts))
-      throw new StoreError(
-        'REPOSITORY_CHANGED',
-        'Repository facts changed during clean-content verification. No checkout was authorized.',
-      );
-    return state;
-  }
-  validateCheckout(record: OperationRecord) {
-    const checkout = record.checkout!;
-    const original = checkout.create ? checkout.before.commit : checkout.target.commit;
-    if (this.refOid(originalCheckoutRef(checkout.entryId ?? record.id)) !== original)
-      throw new StoreError(
-        'CHECKOUT_INTERFERENCE',
-        'The exact original commit is no longer protected by its owned recovery reference. Preserve the checkout and recovery records.',
-      );
-    this.git(['cat-file', '-e', `${checkout.target.commit}^{commit}`]);
-    if (checkout.target.branch) {
-      this.git(['check-ref-format', checkout.target.branch]);
-      if (
-        checkout.create
-          ? this.refOid(checkout.target.branch) !== null
-          : this.refOid(checkout.target.branch) !== checkout.target.commit
-      )
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'The checkout branch is missing, moved or already exists. No branch will be reset.',
-        );
-      const worktrees = this.git(['worktree', 'list', '--porcelain', '-z'])!.toString().split('\0');
-      if (worktrees.includes(`branch ${checkout.target.branch}`))
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'The target branch is already checked out in a worktree. No branch will be taken over.',
-        );
-    }
-    if (
-      JSON.stringify(this.checkoutState(checkout.target.commit)) !== JSON.stringify(checkout.before)
-    )
-      throw new StoreError(
-        'CHECKOUT_INTERFERENCE',
-        'HEAD, index or working files changed since checkout preparation. No checkout was authorized.',
-      );
-  }
-  checkoutOutcome(record: OperationRecord): 'applied' | 'not-applied' | 'refused' {
-    const checkout = record.checkout!;
-    const actual = this.checkoutState(checkout.target.commit);
-    if (
-      actual.branch === checkout.target.branch &&
-      actual.commit === checkout.target.commit &&
-      (!checkout.target.fingerprint || actual.fingerprint === checkout.target.fingerprint)
-    )
-      return 'applied';
-    if (JSON.stringify(actual) === JSON.stringify(checkout.before)) return 'not-applied';
-    return 'refused';
-  }
-  validateStash(record: OperationRecord) {
-    const { prior, original } = record.stash!;
-    const actual = this.checkoutState(undefined, 'inventory');
-    assertPreservationPolicy(this, prior.manifest);
-    if (actual.branch !== original.branch || actual.commit !== original.commit)
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'The original branch or HEAD changed. No stash/apply was authorized.',
-      );
-    if (record.kind === 'stash-push') {
-      if (
-        !matchesManifest(this, prior.manifest) ||
-        this.refOid('refs/stash') !== prior.previousStash ||
-        findPriorStash(this, prior, original.commit)
-      )
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'Prior work or stash history changed. No new stash was authorized.',
-        );
-    } else {
-      if (!prior.object || this.refOid(priorWorkRef(prior.stashId)) !== prior.object)
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'The exact prior-work protection is missing or moved. Retain all recovery records.',
-        );
-      verifyStash(this, prior, original.commit, prior.object);
-      if (JSON.stringify(this.checkoutState()) !== JSON.stringify(prior.clean))
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'Prior-work apply requires the verified original clean checkout. Resolve the changed files and Retry recovery.',
-        );
-    }
-  }
-  stashOutcome(record: OperationRecord): 'applied' | 'not-applied' | 'refused' {
-    const { prior, original } = record.stash!;
-    const actual = this.checkoutState(undefined, 'inventory');
-    if (actual.branch !== original.branch || actual.commit !== original.commit) return 'refused';
-    assertPreservationPolicy(this, prior.manifest);
-    if (record.kind === 'stash-apply') {
-      if (!prior.object || this.refOid(priorWorkRef(prior.stashId)) !== prior.object)
-        return 'refused';
-      verifyStash(this, prior, original.commit, prior.object);
-      if (matchesManifest(this, prior.manifest)) return 'applied';
-      return JSON.stringify(this.checkoutState()) === JSON.stringify(prior.clean)
-        ? 'not-applied'
-        : 'refused';
-    }
-    const stash = findPriorStash(this, prior, original.commit);
-    if (stash) {
-      this.checkoutState();
-      return 'applied';
-    }
-    return matchesManifest(this, prior.manifest) ? 'not-applied' : 'refused';
-  }
   prepare(record: OperationRecord) {
     const expected = record.beforeOid ?? '0'.repeat(record.newOid.length);
     // --no-deref and compare-and-swap bind the effect to this exact app ref.
@@ -719,62 +368,31 @@ export class RepositoryOperation {
       environment.GIT_TERMINAL_PROMPT = '0';
     }
     const command =
-      record.kind === 'stash-push'
-        ? ['stash', 'push', '--include-untracked', '-m', record.stash!.prior.marker]
-        : record.kind === 'stash-apply'
-          ? ['stash', 'apply', '--index', record.stash!.prior.object!]
-          : record.kind === 'checkout'
-            ? [
-                '-c',
-                'submodule.recurse=false',
-                'checkout',
-                '--no-overwrite-ignore',
-                '--no-recurse-submodules',
-                ...(record.checkout!.create
-                  ? [
-                      '-b',
-                      record.checkout!.target.branch!.slice('refs/heads/'.length),
-                      record.checkout!.target.commit,
-                    ]
-                  : record.checkout!.target.branch
-                    ? [record.checkout!.target.branch.slice('refs/heads/'.length)]
-                    : ['--detach', record.checkout!.target.commit]),
-                '--',
-              ]
-            : record.kind === 'fetch'
-              ? [
-                  '-c',
-                  'gc.auto=0',
-                  '-c',
-                  'maintenance.auto=false',
-                  '-c',
-                  'fetch.writeCommitGraph=false',
-                  '-c',
-                  'fetch.prune=false',
-                  '-c',
-                  'fetch.pruneTags=false',
-                  '-c',
-                  'submodule.recurse=false',
-                  'fetch',
-                  '--no-tags',
-                  '--no-write-fetch-head',
-                  '--no-recurse-submodules',
-                  '--no-auto-gc',
-                  '--refmap=',
-                  '--',
-                  record.fetch!.url,
-                  `${record.fetch!.remoteRef}:${record.ref}`,
-                ]
-              : record.kind === 'delete-ref'
-                ? ['update-ref', '--no-deref', '-d', record.ref, record.beforeOid!]
-                : [
-                    'update-ref',
-                    '--no-deref',
-                    '--create-reflog',
-                    record.ref,
-                    record.newOid,
-                    expected,
-                  ];
+      record.kind === 'fetch'
+        ? [
+            '-c',
+            'gc.auto=0',
+            '-c',
+            'maintenance.auto=false',
+            '-c',
+            'fetch.writeCommitGraph=false',
+            '-c',
+            'fetch.prune=false',
+            '-c',
+            'fetch.pruneTags=false',
+            '-c',
+            'submodule.recurse=false',
+            'fetch',
+            '--no-tags',
+            '--no-write-fetch-head',
+            '--no-recurse-submodules',
+            '--no-auto-gc',
+            '--refmap=',
+            '--',
+            record.fetch!.url,
+            `${record.fetch!.remoteRef}:${record.ref}`,
+          ]
+        : ['update-ref', '--no-deref', '--create-reflog', record.ref, record.newOid, expected];
     return this.native.prepareChild(
       this.executable,
       [

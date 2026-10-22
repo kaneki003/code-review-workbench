@@ -52,13 +52,6 @@ export function createOverviewDocuments() {
   });
   return {
     read: (uri: string) => content.get(uri),
-    remember: (uri: string) => {
-      if (vscode.Uri.parse(uri).scheme === 'crw-overview' && !content.has(uri))
-        content.set(uri, undefined);
-    },
-    retain: (uri: string, text: string) => {
-      if (vscode.Uri.parse(uri).scheme === 'crw-overview') content.set(uri, text);
-    },
     preview,
     showPreview,
     async show(

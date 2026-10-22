@@ -13,7 +13,6 @@ import type { ReviewConnections } from '../../src/application/review-manager';
 import type { ReviewCandidate } from '../../src/application/pull-request';
 import type { CommittedSource } from '../../src/application/committed-source';
 import { createServer } from 'node:http';
-import { restoreEditorScroll } from '../../src/vscode/editor-scroll';
 import { exerciseDraftWriter, exerciseFailedDraftDiscard } from './draft-writer';
 import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 
@@ -686,49 +685,11 @@ suite('Installed readiness VSIX', () => {
       ]);
       const priorBranch = git(['symbolic-ref', 'HEAD']);
       const priorCommit = git(['rev-parse', 'HEAD']);
-      const untitled = await vscode.workspace.openTextDocument({
-        content: 'unsaved fixture buffer 🐈\n',
-      });
-      await vscode.window.showTextDocument(untitled, { preview: false });
-      const refusedUntitled = await manager.enterPullRequestCheckout(source.id);
-      assert.equal(refusedUntitled.status, 'blocked', JSON.stringify(refusedUntitled));
-      assert.match(refusedUntitled.detail, /untitled/i);
-      assert.equal(untitled.getText(), 'unsaved fixture buffer 🐈\n');
-      assert.equal(git(['rev-parse', 'HEAD']), priorCommit);
-      assert.equal(await manager.readCheckoutReview(), undefined);
-      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
       const priorUri = vscode.Uri.file(join(location, 'view.txt'));
       const priorEditor = await vscode.window.showTextDocument(priorUri, {
         preview: false,
         viewColumn: vscode.ViewColumn.One,
       });
-      let hookEdit: PromiseLike<boolean> | undefined;
-      const saveHook = vscode.workspace.onDidSaveTextDocument((document) => {
-        if (document.uri.toString() === priorUri.toString() && !hookEdit)
-          hookEdit = priorEditor.edit((edit) =>
-            edit.insert(new vscode.Position(0, 0), 'continuing save hook\n'),
-          );
-      });
-      await priorEditor.edit((edit) =>
-        edit.insert(new vscode.Position(0, 0), 'normal save before hook\n'),
-      );
-      const refusedHook = await manager.enterPullRequestCheckout(source.id);
-      saveHook.dispose();
-      assert.equal(await hookEdit, true, 'The native save hook changed the buffer');
-      assert.ok(['blocked', 'recovery'].includes(refusedHook.status), JSON.stringify(refusedHook));
-      assert.equal(priorEditor.document.isDirty, true);
-      assert.equal(
-        git(['rev-parse', 'HEAD']),
-        priorCommit,
-        'A continuing save hook prevents switching',
-      );
-      assert.equal(git(['stash', 'list']), '', 'No stash precedes verified normal saving');
-      await vscode.commands.executeCommand('workbench.action.files.revert');
-      const hookTransition = await manager.readCheckoutReview();
-      if (hookTransition && hookTransition.phase !== 'complete') {
-        const restoredHook = await manager.recoverPullRequestCheckout('restore');
-        assert.equal(restoredHook.status, 'complete', JSON.stringify(restoredHook));
-      }
       await priorEditor.edit((edit) =>
         edit.insert(new vscode.Position(0, 0), 'staged prior work\n'),
       );
@@ -741,43 +702,6 @@ suite('Installed readiness VSIX', () => {
       assert.equal(priorEditor.document.isDirty, true);
       const priorBytes = priorEditor.document.getText();
       await writeFile(join(location, 'prior-notes.txt'), 'new prior work 🐈\n');
-      const priorSelections = [
-        new vscode.Selection(150, 5, 149, 2),
-        new vscode.Selection(155, 0, 155, 2),
-      ];
-      priorEditor.selections = priorSelections;
-      priorEditor.revealRange(new vscode.Range(120, 0, 120, 0), vscode.TextEditorRevealType.AtTop);
-      const positionDeadline = Date.now() + 5000;
-      while ((priorEditor.visibleRanges[0]?.start.line ?? 0) < 50) {
-        if (Date.now() > positionDeadline)
-          throw new Error('Native source did not scroll to the original position');
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      await vscode.commands.executeCommand('workbench.action.pinEditor');
-      const priorTop = priorEditor.visibleRanges[0]!.start.line;
-      const otherUri = vscode.Uri.file(join(location, 'untracked.txt'));
-      await vscode.window.showTextDocument(otherUri, {
-        preview: false,
-        viewColumn: vscode.ViewColumn.Two,
-      });
-      await vscode.commands.executeCommand('codeReviewWorkbench.openChangedDiff', target);
-      const ordinaryTabs = () =>
-        vscode.window.tabGroups.all.map((group) =>
-          group.tabs
-            .filter(
-              (tab) =>
-                !(
-                  tab.input instanceof vscode.TabInputText &&
-                  tab.input.uri.scheme === 'crw-overview'
-                ) &&
-                !(
-                  tab.input instanceof vscode.TabInputWebview &&
-                  tab.label.startsWith('Preview pull-')
-                ),
-            )
-            .map((tab) => tab.label),
-        );
-      const beforeTabs = ordinaryTabs();
       const longOverview = {
         ...source.candidate,
         pullRequest: {
@@ -829,12 +753,6 @@ suite('Installed readiness VSIX', () => {
           layout: await vscode.commands.executeCommand('vscode.getEditorLayout'),
         }),
       );
-      assert.ok(
-        entered.review!.editors.groups.every((group) =>
-          group.tabs.every((tab) => !tab.uri.startsWith('crw-overview:')),
-        ),
-        'Generated overviews are excluded from prior-work restoration and its size budget',
-      );
       assert.equal(git(['rev-parse', 'HEAD']), head);
       assert.equal(priorEditor.document.isDirty, false, 'Normal host saving precedes preservation');
       assert.equal(
@@ -846,7 +764,7 @@ suite('Installed readiness VSIX', () => {
         vscode.window.tabGroups.all.flatMap((group) => [...group.tabs]),
       );
       assert.equal(
-        (await manager.readCheckoutReview())?.phase,
+        (await manager.readCheckoutReview())?.step,
         'active',
         'Closing tabs does not Exit',
       );
@@ -861,7 +779,7 @@ suite('Installed readiness VSIX', () => {
       });
       assert.equal((await manager.openPrivateStore()).status, 'owned');
       await api.showCommittedSource(source, manager);
-      const exited = await manager.recoverPullRequestCheckout('restore');
+      const exited = await manager.exitPullRequestCheckout();
       assert.equal(exited.status, 'complete', JSON.stringify(exited));
       assert.equal(git(['symbolic-ref', 'HEAD']), priorBranch);
       assert.equal(git(['rev-parse', 'HEAD']), priorCommit);
@@ -871,15 +789,6 @@ suite('Installed readiness VSIX', () => {
         await readFile(join(location, 'prior-notes.txt'), 'utf8'),
         'new prior work 🐈\n',
       );
-      assert.deepEqual(
-        vscode.window.tabGroups.all.map((group) => group.tabs.map((tab) => tab.label)),
-        beforeTabs,
-      );
-      const restoredPrior = vscode.window.visibleTextEditors.find(
-        (editor) => editor.document.uri.toString() === priorUri.toString(),
-      )!;
-      assert.deepEqual(restoredPrior.selections, priorSelections);
-      assert.equal(restoredPrior.visibleRanges[0]?.start.line, priorTop);
       assert.equal((await manager.releasePrivateStore()).status, 'closed');
       const retryingDiscard = createSourceManager({
         boundary: 'discardDraft.commit.before',
@@ -1024,70 +933,6 @@ suite('Installed readiness VSIX', () => {
     } finally {
       tabSubscription!.dispose();
       clearTimeout(tabOpenTimeout!);
-    }
-  });
-  test('native scroll restoration waits for delayed viewport updates and corrects the reveal offset', async () => {
-    const location = await realpath(vscode.workspace.workspaceFolders![0]!.uri.fsPath);
-    const uri = vscode.Uri.file(join(location, 'scroll-position.txt'));
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    try {
-      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      await writeFile(
-        uri.fsPath,
-        Array.from({ length: 400 }, (_, line) => `line ${line}`).join('\n'),
-      );
-      const editor = await vscode.window.showTextDocument(uri, {
-        preview: false,
-        viewColumn: vscode.ViewColumn.One,
-      });
-      // Delay delivery at the native API boundary. The real editor still applies
-      // each reveal and publishes its actual visible ranges, including AtTop's offset.
-      for (const delay of [150, 450, 1200]) {
-        await restoreEditorScroll(editor, 0);
-        const delayed = {
-          document: editor.document,
-          get visibleRanges() {
-            return editor.visibleRanges;
-          },
-          revealRange(...args: Parameters<vscode.TextEditor['revealRange']>) {
-            timers.push(setTimeout(() => editor.revealRange(...args), delay));
-          },
-        };
-        await restoreEditorScroll(delayed, 115);
-        assert.equal(editor.visibleRanges[0]?.start.line, 115);
-        await new Promise((resolve) => setTimeout(resolve, delay + 100));
-        assert.equal(
-          editor.visibleRanges[0]?.start.line,
-          115,
-          'No pending reveal may move the restored viewport',
-        );
-      }
-      // Start at the native offset result itself. A request for line115 can
-      // leave this viewport unchanged, but restoration must still reach115.
-      editor.revealRange(new vscode.Range(115, 0, 115, 0), vscode.TextEditorRevealType.AtTop);
-      const until = Date.now() + 5000;
-      while (editor.visibleRanges[0]?.start.line === 115) {
-        if (Date.now() > until) throw new Error('Native AtTop did not expose its reveal offset');
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      await restoreEditorScroll(editor, 115);
-      assert.equal(editor.visibleRanges[0]?.start.line, 115);
-      await assert.rejects(
-        restoreEditorScroll(
-          {
-            document: editor.document,
-            visibleRanges: [new vscode.Range(0, 0, 0, 0)],
-            revealRange() {},
-          },
-          115,
-        ),
-        { code: 'EDITOR_RESTORATION' },
-        'A viewport that never restores must keep Exit in recovery',
-      );
-    } finally {
-      timers.forEach(clearTimeout);
-      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      await rm(uri.fsPath, { force: true });
     }
   });
 });

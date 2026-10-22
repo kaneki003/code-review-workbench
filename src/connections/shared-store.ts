@@ -7,7 +7,6 @@ import type {
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
 import type { StorageDiagnostics } from './storage-diagnostics';
-import { isCheckoutAction } from '../application/checkout-review';
 
 // Configuration is host-owned. Never accept OS-home/root overrides from a
 // webview, repository, VS Code setting or process HOME/USERPROFILE variable.
@@ -113,10 +112,7 @@ export function createStoreConnection(
           },
           message.action === 'executeOperation'
             ? 60_000
-            : message.action === 'publishSource' ||
-                message.action === 'prepareCleanCheckout' ||
-                message.action === 'prepareCleanRestore' ||
-                isCheckoutAction(message.action)
+            : message.action === 'publishSource'
               ? 45_000
               : 10_000,
         );

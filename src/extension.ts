@@ -129,11 +129,10 @@ export function activate(context: vscode.ExtensionContext) {
       committedReview.clear();
       draftReview.clear();
     } else if (result.status === 'blocked') {
-      // Only verified preflight refusal or completed rollback can claim the
-      // earlier checkout remains in place. Partial transitions keep recovery.
-      const ownership = await manager.inspectPrivateStore();
+      // Keep committed reading available when entry is refused.
+      const receipt = await manager.readCheckoutReview();
       if (presentation !== checkoutPresentation) return result;
-      if (ownership.status === 'owned' && !ownership.checkoutPending) {
+      if (!receipt) {
         const retained = await manager.readCommittedSource();
         if (presentation !== checkoutPresentation) return result;
         if (retained.status === 'ready') await showCommitted(retained.source);
@@ -377,16 +376,27 @@ export function activate(context: vscode.ExtensionContext) {
       manager.fencePullRequestOverview();
     }),
   );
-  void manager.inspectPrivateStore().then(async (view) => {
-    if (!view.checkoutPending) return;
-    await vscode.commands.executeCommand('setContext', 'codeReviewWorkbench.checkoutPending', true);
-    const action = await vscode.window.showInformationMessage(
-      'This repository has a saved PR checkout. Verify the original PR/account, then continue its transition or restore previous work.',
-      'Recover PR Checkout',
-    );
-    if (action)
-      void vscode.commands.executeCommand('codeReviewWorkbench.recoverPullRequestCheckout');
-  });
+  void manager
+    .readCheckoutReview()
+    .then(async (receipt) => {
+      if (!receipt) return;
+      await vscode.commands.executeCommand(
+        'setContext',
+        'codeReviewWorkbench.checkoutPending',
+        true,
+      );
+      const action = await vscode.window.showInformationMessage(
+        'This repository has a saved PR checkout receipt. Use Exit Review for an active review, or inspect the receipt and recover Git manually.',
+        'Recover PR Checkout',
+      );
+      if (action)
+        void vscode.commands.executeCommand('codeReviewWorkbench.recoverPullRequestCheckout');
+    })
+    .catch((error: unknown) => {
+      void vscode.window.showWarningMessage(
+        `Could not read the checkout receipt: ${String(error)}`,
+      );
+    });
   return {
     createManager,
     showOverview: (candidate: ReviewCandidate, source?: CommittedSource) =>

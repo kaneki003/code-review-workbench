@@ -25,9 +25,7 @@ import type {
 } from './committed-source';
 import { isSourceAction } from './committed-source';
 import {
-  isCheckoutAction,
   type CheckoutDocuments,
-  type CheckoutEditors,
   type CheckoutResult,
   type CheckoutSession,
   type CheckoutWorkspace,
@@ -66,8 +64,6 @@ export interface ReviewConnections {
   repository?: LocalRepositoryConnection;
   checkout?: CheckoutWorkspace;
   documents?: CheckoutDocuments;
-  /** @deprecated Retained until the legacy checkout implementation is deleted. */
-  editors?: CheckoutEditors;
   confirmLocalRepository?(candidate: ReviewCandidate): Promise<boolean>;
 }
 
@@ -142,14 +138,6 @@ export class ReviewManager {
   executeRepositoryOperation(operationId: string): Promise<StoreReply> {
     return this.storeRequest('executeOperation', { operationId });
   }
-  // Low-level guarded transitions. The host lifecycle must retain editor state
-  // before exposing these as Enter / Exit Review commands.
-  prepareCleanCheckout(sourceId: string): Promise<StoreReply> {
-    return this.storeRequest('prepareCleanCheckout', { sourceId });
-  }
-  prepareCleanRestore(operationId: string): Promise<StoreReply> {
-    return this.storeRequest('prepareCleanRestore', { operationId });
-  }
   async readCheckoutReview(): Promise<CheckoutSession | undefined> {
     return await this.connections.checkout?.read();
   }
@@ -205,9 +193,7 @@ export class ReviewManager {
       }
     });
   }
-  recoverPullRequestCheckout(
-    choice: 'inspect' | 'clear' | 'continue' | 'restore' = 'inspect',
-  ): Promise<CheckoutResult> {
+  recoverPullRequestCheckout(choice: 'inspect' | 'clear' = 'inspect'): Promise<CheckoutResult> {
     return this.checkoutWork(async () => {
       try {
         const checkout = this.connections.checkout;
@@ -603,10 +589,6 @@ export class ReviewManager {
       | 'side'
       | 'reviewed'
       | 'navigation'
-      | 'editors'
-      | 'checkoutId'
-      | 'checkoutRevision'
-      | 'checkoutChoice'
       | 'draftId'
       | 'draftEdit'
       | 'draftDiscard'
@@ -614,8 +596,7 @@ export class ReviewManager {
     overviewGeneration?: number,
     requestId: string = randomUUID(),
   ): Promise<StoreReply> {
-    const privateAction =
-      isSourceAction(action) || isCheckoutAction(action) || isDraftAction(action);
+    const privateAction = isSourceAction(action) || isDraftAction(action);
     const requestedGeneration = overviewGeneration ?? this.overviewGeneration;
     const work = this.storeQueue.then(async (): Promise<StoreReply> => {
       if (privateAction && !this.sourceAuthorized)

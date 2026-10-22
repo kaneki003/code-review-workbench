@@ -12,22 +12,10 @@ import { createLocalRepositoryConnection } from '../../src/connections/local-rep
 import { createCheckoutGit } from '../../src/connections/checkout-git';
 import type { StorageDiagnostics } from '../../src/connections/storage-diagnostics';
 import type { StoreConnection } from '../../src/application/private-store';
-import type { CheckoutEditors } from '../../src/application/checkout-review';
+import type { CheckoutDocuments } from '../../src/application/checkout-review';
 import type { SourceNavigation } from '../../src/application/committed-source';
 
 export const integrationTimeout = process.platform === 'win32' ? 120_000 : 20_000;
-export function checkoutEditors(workspace: string): CheckoutEditors {
-  return {
-    capture: async () => ({
-      protocol: 1,
-      workspace,
-      layout: { groups: [{ size: 1 }] },
-      groups: [{ column: 1, active: true, tabs: [] }],
-    }),
-    assertSaved() {},
-    restore: async () => {},
-  };
-}
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
   vi.useRealTimers();
@@ -146,7 +134,7 @@ export async function fixture() {
     diagnostics?: StorageDiagnostics,
     wrap: (store: StoreConnection) => StoreConnection = (store) => store,
     account = actor,
-    editors?: CheckoutEditors,
+    documents?: CheckoutDocuments,
     repositoryLocation = location,
   ) {
     const store = wrap(
@@ -181,15 +169,7 @@ export async function fixture() {
       native: async () => ({ id: 'guard', label: 'Guard', status: 'passed', detail: '' }),
       store,
       checkout: createCheckoutGit({ repository: repositoryLocation, windowId: 'source-window' }),
-      documents: {
-        save: async () => {
-          if (!editors) return true;
-          await editors.capture();
-          editors.assertSaved();
-          return true;
-        },
-      },
-      ...(editors ? { editors } : {}),
+      documents: documents ?? { save: async () => true },
       account,
       repository: createLocalRepositoryConnection(),
       confirmLocalRepository: async () => true,

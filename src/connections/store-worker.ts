@@ -13,7 +13,6 @@ import type {
   StoreView,
 } from '../application/private-store';
 import { StoreError } from '../application/private-store';
-import { assertPreservationPolicy } from './git-attributes';
 import {
   accountScope,
   claimDatabase,
@@ -43,30 +42,10 @@ import {
   assertOperationOwner,
   readOperation,
   operationFile,
-  originalCheckoutRef,
-  operationBoundary,
   type OperationRecord,
 } from './repository-operation';
 
 import { StorageFaults } from './storage-diagnostics';
-import {
-  findPriorStash,
-  matchesManifest,
-  priorWorkRef,
-  verifyStash,
-  workManifest,
-} from './prior-work';
-import {
-  CheckoutJournal,
-  checkoutRecoveryApplies,
-  validEditorSnapshot,
-  type CheckoutJournalState,
-} from './checkout-journal';
-import {
-  checkoutActions,
-  isCheckoutAction,
-  type CheckoutReview,
-} from '../application/checkout-review';
 import { normalizeCandidate, type ReviewCandidate } from '../application/pull-request';
 import { CommittedGit } from './committed-git';
 import {
@@ -204,38 +183,12 @@ class SharedStore {
     const registry = readRegistry(this.registryPath());
     if (!registry) recovery('Canonical registration is incomplete.');
     const control = readControl(this.controlPath(), registry);
-    const affectedCheckout = checkoutRecoveryApplies(
-      this.rendezvous,
-      this.config.location,
-      Boolean(control.pending),
-    );
-    if (
-      affectedCheckout &&
-      control.owner &&
-      native.processIdentity(control.owner.process.pid)?.start !== control.owner.process.start
-    )
-      return {
-        view: {
-          status: 'recovery',
-          checkoutPending: true,
-          code: control.pending ? 'OPERATION_PENDING' : 'CHECKOUT_RECOVERY',
-          detail:
-            'This repository retains an interrupted PR checkout. Verify its original GitHub account, then use Recover PR Checkout to continue or restore previous work.',
-        },
-      };
     if (control.phase === 'released')
       return {
         view: {
           status: 'closed',
           root: registry.root,
           detail: 'The shared private store is released. Use Open Private Store to claim it.',
-          ...(checkoutRecoveryApplies(
-            this.rendezvous,
-            this.config.location,
-            Boolean(control.pending),
-          )
-            ? { checkoutPending: true }
-            : {}),
         },
       };
     return this.busy();
@@ -430,13 +383,6 @@ class SharedStore {
       revision: this.lease.revision,
       scopeId: this.lease.scopeId,
       process: this.control.owner.process,
-      ...(checkoutRecoveryApplies(
-        this.rendezvous,
-        this.config.location,
-        Boolean(this.control.pending),
-      )
-        ? { checkoutPending: true }
-        : {}),
       ownerLocation: this.control.owner.location,
     };
     return { view, lease: this.lease };
@@ -673,26 +619,6 @@ class SharedStore {
     }
     if (candidate.account.userId !== this.actor?.userId)
       throw new StoreError('WRONG_ACCOUNT', 'This account does not own the private store.');
-    const checkout = this.checkoutJournal().read(true)?.record;
-    if (checkout && checkout.phase !== 'complete') {
-      if (
-        checkout.scopeId !== this.lease!.scopeId ||
-        checkout.repository.worktree.path !== this.config.location
-      )
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'A prior checkout needs its original verified account/local repository before another review can be selected.',
-        );
-      const selected = this.sourcePlan(checkout.sourceId).candidate.pullRequest;
-      if (
-        selected.number !== candidate.pullRequest.number ||
-        selected.base.repository.id !== candidate.pullRequest.base.repository.id
-      )
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'Exit or recover the current checkout before selecting another PR.',
-        );
-    }
     if (this.control!.pending)
       throw new StoreError(
         'OPERATION_UNAVAILABLE',
@@ -1107,132 +1033,6 @@ class SharedStore {
         'OPERATION_UNAVAILABLE',
         'Reconcile the pending Git operation before inspecting or changing source state.',
       );
-    if (request.action === 'prepareCleanCheckout' || request.action === 'prepareCleanRestore') {
-      const repository = this.repository();
-      let ref: string;
-      let checkout: NonNullable<OperationRecord['checkout']>;
-      if (request.action === 'prepareCleanCheckout') {
-        const source = this.sourceRecord(request.sourceId);
-        ref = `refs/heads/code-review-workbench/${request.id}`;
-        checkout = {
-          before: repository.checkoutState(source.head),
-          target: { branch: ref, commit: source.head },
-          create: true,
-        };
-        const session = this.checkoutJournal().read()?.record;
-        if (
-          session &&
-          session.phase !== 'complete' &&
-          (session.entryId !== request.id ||
-            session.sourceId !== source.id ||
-            session.scopeId !== this.lease!.scopeId ||
-            JSON.stringify(session.priorWork?.clean ?? session.original) !==
-              JSON.stringify(checkout.before))
-        )
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'A saved checkout transition already owns this repository. Recover or Exit that review before another entry.',
-          );
-      } else {
-        if (!uuid(request.operationId))
-          throw new StoreError('INVALID_OPERATION', 'The original entry operation is required.');
-        const entry = readOperation(this.rendezvous, request.operationId);
-        if (
-          entry.kind !== 'checkout' ||
-          !entry.checkout?.create ||
-          entry.phase !== 'observed' ||
-          entry.outcome !== 'applied' ||
-          entry.scopeId !== this.lease!.scopeId ||
-          entry.storeId !== this.lease!.storeId ||
-          entry.incarnation !== this.lease!.incarnation ||
-          entry.facts.worktree !== this.config.location ||
-          this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
-            entry.id,
-          )?.record !== JSON.stringify(entry)
-        )
-          throw new StoreError(
-            'INVALID_OPERATION',
-            'This local copy has no verified entry receipt for that operation.',
-          );
-        const before = repository.checkoutState(entry.checkout.before.commit);
-        if (
-          before.branch !== entry.checkout.target.branch ||
-          before.commit !== entry.checkout.target.commit
-        )
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'The review branch or HEAD changed. Preserve user commits and return to the expected checkout before restoration; no reset was performed.',
-          );
-        ref = entry.checkout.before.branch ?? entry.ref;
-        checkout = { before, target: entry.checkout.before, create: false, entryId: entry.id };
-        const session = this.checkoutJournal().read()?.record;
-        if (
-          session &&
-          session.phase !== 'complete' &&
-          (session.exitId !== request.id ||
-            session.entryId !== entry.id ||
-            session.scopeId !== this.lease!.scopeId)
-        )
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'Restoration does not identify the current saved Exit transition.',
-          );
-      }
-      const facts = repository.facts();
-      const record: OperationRecord = {
-        protocol: 1,
-        id: request.id,
-        kind: 'checkout',
-        phase: 'prepared',
-        storeId: this.lease!.storeId,
-        incarnation: this.lease!.incarnation,
-        fence: this.lease!.fence,
-        ownerToken: this.lease!.token,
-        scopeId: this.lease!.scopeId,
-        ref,
-        newOid: checkout.target.commit,
-        beforeOid: repository.refOid(ref),
-        facts,
-        storage: repository.referenceStorage(ref, facts, true),
-        child: null,
-        checkout,
-      };
-      if (checkout.create) {
-        const pinRef = originalCheckoutRef(record.id);
-        repository.validateUpdate(pinRef, checkout.before.commit);
-        if (repository.refOid(pinRef) !== null)
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'The original-commit recovery reference already exists. No reference was reused.',
-          );
-        const { checkout: _checkout, ...pinBase } = record;
-        const pin: OperationRecord = {
-          ...pinBase,
-          id: randomUUID(),
-          kind: 'update-ref',
-          ref: pinRef,
-          newOid: checkout.before.commit,
-          beforeOid: null,
-          storage: repository.referenceStorage(pinRef, facts),
-        };
-        this.projectOperation(pin);
-        const pinned = await this.executeOperation({
-          protocol: 1,
-          id: randomUUID(),
-          action: 'executeOperation',
-          operationId: pin.id,
-          lease: this.lease!,
-          workspacePath: this.config.location,
-        });
-        if (pinned.operation?.outcome !== 'applied')
-          recovery('The original exact commit was not pinned. No checkout was authorized.');
-        // The verified pin can create .git/logs. Bind checkout's own intent to
-        // that settled metadata, while retaining the original work/file facts.
-        record.storage = repository.referenceStorage(ref, facts, true);
-      }
-      repository.validateCheckout(record);
-      return this.projectOperation(record, request);
-    }
     if (request.action === 'prepareSource') {
       const candidate = this.readCandidate(request).candidate;
       if (!candidate)
@@ -1461,571 +1261,6 @@ class SharedStore {
     return this.saveSourceReply(request, { sourceId: source.id, reviewed: [...reviewed] });
   }
 
-  private checkoutJournal() {
-    return new CheckoutJournal(this.database!, this.rendezvous, native, this.faults);
-  }
-  private checkoutForOwner(state: CheckoutJournalState | undefined): CheckoutReview {
-    const record = state?.record;
-    if (
-      !record ||
-      record.scopeId !== this.lease!.scopeId ||
-      record.storeId !== this.lease!.storeId ||
-      record.incarnation !== this.lease!.incarnation ||
-      record.repository.worktree.path !== this.config.location
-    )
-      throw new StoreError(
-        'CHECKOUT_UNAVAILABLE',
-        'No checkout recovery belongs to this verified account and local repository. Open the original PR overview in its affected repository.',
-      );
-    this.sourcePlan(record.sourceId);
-    return record;
-  }
-  private saveCheckout(
-    request: StoreRequest,
-    record: CheckoutReview,
-    previous: CheckoutJournalState | undefined,
-  ) {
-    this.validate(this.lease, true);
-    if (this.control!.pending)
-      throw new StoreError(
-        'OPERATION_UNAVAILABLE',
-        'Settle and reconcile the pending Git child before changing review lifecycle.',
-      );
-    const journal = this.checkoutJournal();
-    if (record.phase === 'entering' && record.priorWork?.clean)
-      this.faults.at('prior-work-preserved.before');
-    journal.publish(record, previous);
-    if (record.phase === 'entering' && record.priorWork?.clean)
-      this.faults.at('prior-work-preserved.record.after');
-    const reply = { ...this.owned(), checkout: record };
-    this.faults.at(`checkout-${record.phase}.commit.before`, this.database);
-    transaction(this.database!, () => {
-      this.validate(this.lease, true);
-      journal.project(record, previous);
-      // Content row revisions are independent of ownership revisions. Touching
-      // metadata also exercises the existing real transaction-failure fixture.
-      this.database!.exec('UPDATE metadata SET revision=revision WHERE id=1');
-      saveReply(this.database!, request, this.lease!, reply);
-    });
-    this.faults.at(`checkout-${record.phase}.commit.after`);
-    if (record.phase === 'entering' && record.priorWork?.clean)
-      this.faults.at('prior-work-preserved.commit.after');
-    return reply;
-  }
-  private async runCheckoutOperation(record: OperationRecord) {
-    this.projectOperation(record);
-    const result = await this.executeOperation({
-      protocol: 1,
-      id: randomUUID(),
-      action: 'executeOperation',
-      operationId: record.id,
-      lease: this.lease!,
-      workspacePath: this.config.location,
-    });
-    if (result.operation?.outcome !== 'applied')
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'The preservation operation was not verified. Keep all artifacts and use Recover PR Checkout.',
-      );
-  }
-  private retryUnperformedPreservation(record: CheckoutReview, restore: boolean) {
-    const prior = record.priorWork!;
-    const id = restore ? prior.applyId : prior.stashId;
-    if (!existsSync(operationFile(this.rendezvous, id))) return prior;
-    const saved = readOperation(this.rendezvous, id);
-    const projected = this.database!.prepare(
-      'SELECT record FROM operation_records WHERE operation_id=?',
-    ).get(id)?.record;
-    const unarmed =
-      saved.phase === 'prepared' &&
-      saved.child === null &&
-      (projected === undefined || projected === JSON.stringify(saved));
-    if (!unarmed && saved.outcome !== 'not-applied') return prior;
-    const repository = this.repository();
-    if (
-      saved.kind !== (restore ? 'stash-apply' : 'stash-push') ||
-      (!unarmed && saved.phase !== 'observed') ||
-      saved.scopeId !== record.scopeId ||
-      (!unarmed && projected !== JSON.stringify(saved)) ||
-      !repository.sameRepositoryIdentity(saved.facts) ||
-      repository.stashOutcome(saved) !== 'not-applied'
-    )
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'A fresh preservation attempt requires a never-armed intent or settled unperformed receipt and unchanged original work. Keep all artifacts and Retry recovery.',
-      );
-    if (restore) return { ...prior, applyId: randomUUID() };
-    if (repository.refOid(priorWorkRef(prior.stashId)) !== null)
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'An unperformed stash has an unexpected recovery reference. Retain it for inspection.',
-      );
-    const stashId = randomUUID();
-    return {
-      ...prior,
-      stashId,
-      marker: `code-review-workbench prior-work ${stashId}`,
-      previousStash: repository.refOid('refs/stash'),
-    };
-  }
-  private freshCheckoutEntry(record: CheckoutReview): CheckoutReview {
-    const earlierEntryIds = [...(record.earlierEntryIds ?? []), record.entryId];
-    if (earlierEntryIds.length > 32)
-      throw new StoreError(
-        'CHECKOUT_RECOVERY',
-        'This transition reached its bounded checkout retry limit. Choose Restore before starting another entry. All protection was retained.',
-      );
-    return { ...record, entryId: randomUUID(), earlierEntryIds };
-  }
-  private ownsReferenceReceipt(repository: RepositoryOperation, ref: string, expected: string) {
-    const rows = this.database!.prepare(
-      "SELECT record FROM operation_records WHERE json_extract(record,'$.ref')=? AND json_extract(record,'$.newOid')=?",
-    ).all(ref, expected);
-    return rows.some((row) => {
-      try {
-        const stored = JSON.parse(String(row.record)) as OperationRecord;
-        const operation = readOperation(this.rendezvous, stored.id);
-        return (
-          JSON.stringify(operation) === row.record &&
-          operation.storeId === this.lease!.storeId &&
-          operation.incarnation === this.lease!.incarnation &&
-          operation.scopeId === this.lease!.scopeId &&
-          operation.phase === 'observed' &&
-          operation.outcome === 'applied' &&
-          repository.sameRepositoryIdentity(operation.facts) &&
-          (ref.startsWith('refs/heads/')
-            ? operation.kind === 'checkout' && operation.checkout?.create === true
-            : operation.kind === 'update-ref')
-        );
-      } catch {
-        return false;
-      }
-    });
-  }
-  private async preserveCheckoutWork(
-    record: CheckoutReview,
-    restore: boolean,
-  ): Promise<CheckoutReview> {
-    const prior = record.priorWork;
-    if (!prior) return record;
-    const repository = this.repository();
-    const id = restore ? prior.applyId : prior.stashId;
-    const ref = restore ? priorWorkRef(prior.stashId) : 'refs/stash';
-    const kind = restore ? ('stash-apply' as const) : ('stash-push' as const);
-    const saved = existsSync(operationFile(this.rendezvous, id))
-      ? readOperation(this.rendezvous, id)
-      : undefined;
-    if (
-      saved &&
-      (saved.kind !== kind ||
-        saved.scopeId !== record.scopeId ||
-        saved.phase !== 'observed' ||
-        saved.outcome !== 'applied' ||
-        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(id)
-          ?.record !== JSON.stringify(saved))
-    )
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'The stash/apply receipt is incomplete or refused. Reconcile its actual files and journal; no operation was repeated.',
-      );
-    if (restore) {
-      if (!prior.object || repository.refOid(ref) !== prior.object)
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'The prior-work recovery reference is missing or moved. Keep the saved journal and recover the exact stash through ordinary Git.',
-        );
-      verifyStash(repository, prior, record.original.commit, prior.object);
-      if (matchesManifest(repository, prior.manifest)) {
-        const actual = repository.checkoutState(undefined, 'inventory');
-        if (actual.branch !== record.original.branch || actual.commit !== record.original.commit)
-          throw new StoreError(
-            'PRESERVATION_RECOVERY',
-            'Prior-work files are present on a different branch/commit. Restore the expected original destination before Retry.',
-          );
-        return record;
-      }
-      if (saved)
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'A prior apply was recorded, but the files no longer match. Keep protection and reconcile manually; apply was not repeated.',
-        );
-    } else if (prior.clean) {
-      if (!prior.object || repository.refOid(priorWorkRef(prior.stashId)) !== prior.object)
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'Prior-work protection is missing or moved. No checkout was authorized.',
-        );
-      verifyStash(repository, prior, record.original.commit, prior.object);
-      return record;
-    }
-    if (!saved) {
-      const operation: OperationRecord = {
-        protocol: 1,
-        id,
-        kind,
-        phase: 'prepared',
-        storeId: this.lease!.storeId,
-        incarnation: this.lease!.incarnation,
-        fence: this.lease!.fence,
-        ownerToken: this.lease!.token,
-        scopeId: this.lease!.scopeId,
-        ref,
-        newOid: restore ? prior.object! : record.original.commit,
-        beforeOid: repository.refOid(ref),
-        facts: repository.facts(),
-        storage: repository.referenceStorage(ref, repository.facts()),
-        child: null,
-        stash: { prior, original: record.original },
-      };
-      repository.validateStash(operation);
-      await this.runCheckoutOperation(operation);
-    }
-    if (restore) {
-      this.faults.at('prior-work-verified.before');
-      if (!matchesManifest(repository, prior.manifest))
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'Applied prior work differs from the saved disk/index manifest. Keep the stash and Retry recovery.',
-        );
-      this.faults.at('prior-work-verified.after');
-      return record;
-    }
-    const stash = findPriorStash(repository, prior, record.original.commit);
-    if (!stash)
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'No unique verified operation-tagged stash was found. No checkout was authorized.',
-      );
-    const clean = repository.checkoutState();
-    if (clean.branch !== record.original.branch || clean.commit !== record.original.commit)
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'HEAD changed during preservation. Keep all artifacts.',
-      );
-    const pin = priorWorkRef(prior.stashId),
-      observed = repository.refOid(pin);
-    if (observed !== null && observed !== stash)
-      throw new StoreError(
-        'PRESERVATION_RECOVERY',
-        'The owned prior-work reference moved. It was retained.',
-      );
-    if (observed === null) {
-      const facts = repository.facts();
-      repository.validateUpdate(pin, stash);
-      await this.runCheckoutOperation({
-        protocol: 1,
-        id: randomUUID(),
-        kind: 'update-ref',
-        phase: 'prepared',
-        storeId: this.lease!.storeId,
-        incarnation: this.lease!.incarnation,
-        fence: this.lease!.fence,
-        ownerToken: this.lease!.token,
-        scopeId: this.lease!.scopeId,
-        ref: pin,
-        newOid: stash,
-        beforeOid: null,
-        facts,
-        storage: repository.referenceStorage(pin, facts),
-        child: null,
-      });
-    }
-    this.faults.at('prior-work.pin.after');
-    return { ...record, priorWork: { ...prior, object: stash, clean } };
-  }
-  private async checkoutAction(request: StoreRequest): Promise<StoreReply> {
-    this.validate(request.lease, false);
-    const previousReplyValue = previousReply(this.database!, request);
-    if (previousReplyValue) return previousReplyValue;
-    this.validate(request.lease, true);
-    if (this.control!.pending)
-      throw new StoreError(
-        'OPERATION_UNAVAILABLE',
-        'A Git child may still run. Use Recover Private Store before Recover PR Checkout.',
-      );
-    const journal = this.checkoutJournal();
-    const state = journal.read(request.action === 'reconcileCheckout');
-    if (request.action === 'beginCheckout') {
-      if (state && state.record.phase !== 'complete')
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'A prior checkout still needs Exit or recovery in its original repository/account.',
-        );
-      const source = this.sourceRecord(request.sourceId);
-      if (
-        !validEditorSnapshot(request.editors) ||
-        request.editors.workspace !== this.config.location
-      )
-        throw new StoreError(
-          'INVALID_CHECKOUT',
-          'A stable restorable editor snapshot from this local workspace is required.',
-        );
-      const repository = this.repository();
-      let original;
-      let priorWork;
-      try {
-        original = repository.checkoutState(source.head);
-      } catch (error) {
-        if (!(error instanceof StoreError) || error.code !== 'DIRTY_CHECKOUT') throw error;
-        original = repository.checkoutState(source.head, 'inventory');
-        const stashId = randomUUID();
-        priorWork = {
-          manifest: workManifest(repository),
-          stashId,
-          applyId: randomUUID(),
-          marker: `code-review-workbench prior-work ${stashId}`,
-          previousStash: repository.refOid('refs/stash'),
-          object: null,
-          clean: null,
-        };
-      }
-      const record: CheckoutReview = {
-        protocol: 1,
-        id: request.id,
-        storeId: this.lease!.storeId,
-        incarnation: this.lease!.incarnation,
-        scopeId: this.lease!.scopeId,
-        revision: 1,
-        phase: 'entering',
-        sourceId: source.id,
-        repository: source.candidate.localRepository.facts,
-        original,
-        ...(priorWork ? { priorWork } : {}),
-        editors: request.editors,
-        entryId: randomUUID(),
-        exitId: null,
-      };
-      return this.saveCheckout(request, record, state);
-    }
-    if (request.action === 'readCheckout') {
-      if (
-        !state ||
-        (state.record.phase === 'complete' &&
-          (state.record.scopeId !== this.lease!.scopeId ||
-            state.record.repository.worktree.path !== this.config.location))
-      )
-        return this.owned();
-      return { ...this.owned(), checkout: this.checkoutForOwner(state) };
-    }
-    const record = this.checkoutForOwner(state);
-    if (
-      request.action !== 'reconcileCheckout' &&
-      (request.checkoutId !== record.id || request.checkoutRevision !== record.revision)
-    )
-      throw new StoreError(
-        'CHECKOUT_INTERFERENCE',
-        'The review transition changed. Read its current recovery state before continuing.',
-      );
-    const repository = this.repository();
-    if (request.action === 'preservePriorWork' || request.action === 'restorePriorWork') {
-      if (request.action === 'preservePriorWork' && record.phase !== 'entering')
-        throw new StoreError(
-          'INVALID_CHECKOUT',
-          'Only an entering review can preserve prior work.',
-        );
-      if (request.action === 'restorePriorWork' && record.phase !== 'exiting')
-        throw new StoreError('INVALID_CHECKOUT', 'Only an exiting review can restore prior work.');
-      const next = await this.preserveCheckoutWork(record, request.action === 'restorePriorWork');
-      return this.saveCheckout(request, { ...next, revision: record.revision + 1 }, state);
-    }
-    if (record.priorWork && record.phase !== 'complete')
-      assertPreservationPolicy(repository, record.priorWork.manifest, true);
-    const actual = repository.checkoutState(undefined, record.priorWork ? 'inventory' : 'clean');
-    const original =
-      JSON.stringify(actual) === JSON.stringify(record.original) &&
-      (!record.priorWork || matchesManifest(repository, record.priorWork.manifest));
-    if (record.priorWork?.clean && record.phase !== 'complete') {
-      const prior = record.priorWork;
-      if (!prior.object || repository.refOid(priorWorkRef(prior.stashId)) !== prior.object)
-        throw new StoreError(
-          'PRESERVATION_RECOVERY',
-          'The prior-work protection is missing or moved. Keep all recovery records and restore the exact artifact before Retry.',
-        );
-      verifyStash(repository, prior, record.original.commit, prior.object);
-    }
-    if (request.action === 'cleanupCheckout') {
-      if (record.phase !== 'complete' || !original)
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'Keep artifacts until completed restoration and current clean repository facts agree.',
-        );
-      const cleanup = { removed: [] as string[], retained: [] as string[] };
-      const source = this.sourceRecord(record.sourceId);
-      const artifacts: [string, string][] = [
-        record.entryId,
-        ...(record.earlierEntryIds ?? []),
-      ].flatMap((id) => [
-        [originalCheckoutRef(id), record.original.commit] as [string, string],
-        [`refs/heads/code-review-workbench/${id}`, source.head] as [string, string],
-      ]);
-      if (record.priorWork?.object)
-        artifacts.push([priorWorkRef(record.priorWork.stashId), record.priorWork.object]);
-      for (const [ref, expected] of artifacts) {
-        const current = repository.refOid(ref!);
-        if (current === null) continue;
-        if (
-          current !== expected ||
-          !this.ownsReferenceReceipt(repository, ref, expected) ||
-          (ref!.startsWith('refs/heads/') && !repository.mergedIntoHead(expected!))
-        ) {
-          cleanup.retained.push(ref!);
-          continue;
-        }
-        repository.validateDelete(ref!, expected!);
-        const facts = repository.facts();
-        const deletion: OperationRecord = {
-          protocol: 1,
-          id: randomUUID(),
-          kind: 'delete-ref',
-          phase: 'prepared',
-          storeId: this.lease!.storeId,
-          incarnation: this.lease!.incarnation,
-          scopeId: this.lease!.scopeId,
-          fence: this.lease!.fence,
-          ownerToken: this.lease!.token,
-          ref: ref!,
-          beforeOid: expected!,
-          newOid: expected!,
-          facts,
-          storage: repository.referenceStorage(ref!, facts),
-          child: null,
-        };
-        this.projectOperation(deletion);
-        const result = await this.executeOperation({
-          protocol: 1,
-          id: randomUUID(),
-          action: 'executeOperation',
-          operationId: deletion.id,
-          lease: this.lease!,
-          workspacePath: this.config.location,
-        });
-        (result.operation?.outcome === 'applied' ? cleanup.removed : cleanup.retained).push(ref!);
-      }
-      const priorStash = record.priorWork?.object
-        ? {
-            object: record.priorWork.object,
-            inStashList:
-              repository.refOid('refs/stash') !== null &&
-              repository
-                .git(['reflog', 'show', '--format=%H', 'refs/stash'])!
-                .toString()
-                .split(/\r?\n/)
-                .includes(record.priorWork.object),
-          }
-        : undefined;
-      return {
-        ...this.owned(),
-        checkout: record,
-        cleanup: { ...cleanup, ...(priorStash ? { priorStash } : {}) },
-      };
-    }
-    const entry = () => {
-      const operation = readOperation(this.rendezvous, record.entryId);
-      if (
-        operation.kind !== 'checkout' ||
-        !operation.checkout?.create ||
-        operation.scopeId !== record.scopeId ||
-        operation.phase !== 'observed' ||
-        operation.outcome !== 'applied' ||
-        operation.facts.worktree !== this.config.location ||
-        this.database!.prepare('SELECT record FROM operation_records WHERE operation_id=?').get(
-          operation.id,
-        )?.record !== JSON.stringify(operation) ||
-        repository.checkoutOutcome(operation) !== 'applied' ||
-        !repository.sameRepositoryIdentity(operation.facts)
-      )
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'Actual source, checkout and the durable entry receipt do not agree. Preserve user work and recover the transition.',
-        );
-      const source = this.sourceRecord(record.sourceId);
-      if (source.head !== actual.commit)
-        throw new StoreError(
-          'CHECKOUT_INTERFERENCE',
-          'The checked-out commit differs from the saved inspected PR source.',
-        );
-      return operation;
-    };
-    let next: CheckoutReview = { ...record, revision: record.revision + 1 };
-    switch (request.action) {
-      case 'activateCheckout':
-        if (record.phase !== 'entering')
-          throw new StoreError('INVALID_CHECKOUT', 'Only a verified entry can become Active.');
-        entry();
-        next.phase = 'active';
-        break;
-      case 'beginCheckoutExit':
-        if (!['active', 'exiting'].includes(record.phase))
-          throw new StoreError('INVALID_CHECKOUT', 'Recover this transition before Exit.');
-        entry();
-        next.phase = 'exiting';
-        next.exitId ??= randomUUID();
-        break;
-      case 'finishCheckoutGit':
-        if (record.phase !== 'exiting' || !original)
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'Git has not verified the exact original branch, commit and clean files.',
-          );
-        next.phase = 'restoring-editors';
-        break;
-      case 'completeCheckout':
-        if (record.phase !== 'restoring-editors' || !original)
-          throw new StoreError(
-            'CHECKOUT_INTERFERENCE',
-            'Exit cannot complete before verified Git and editor restoration.',
-          );
-        next.phase = 'complete';
-        break;
-      case 'reconcileCheckout':
-        if (record.phase === 'complete' && state!.agrees)
-          return { ...this.owned(), checkout: record };
-        if (
-          record.priorWork?.clean &&
-          record.phase === 'exiting' &&
-          JSON.stringify(actual) === JSON.stringify(record.priorWork.clean)
-        ) {
-          next.exitId = null;
-          next.priorWork = this.retryUnperformedPreservation(record, true);
-          break;
-        }
-        if (
-          record.priorWork &&
-          record.phase === 'entering' &&
-          actual.branch === record.original.branch &&
-          actual.commit === record.original.commit &&
-          !original
-        ) {
-          const preserved = await this.preserveCheckoutWork(record, false);
-          if (request.checkoutChoice === 'restore') {
-            // Persist Exit before applying, even when checkout never started.
-            next = { ...preserved, phase: 'exiting', revision: record.revision + 1 };
-          } else next = { ...this.freshCheckoutEntry(preserved), revision: record.revision + 1 };
-          break;
-        }
-        if (original) {
-          if (request.checkoutChoice === 'continue' && record.phase === 'active')
-            throw new StoreError(
-              'CHECKOUT_INTERFERENCE',
-              'The original checkout is present, but no Exit was recorded. Choose Restore to restore the saved editors and finish Exit, or keep the recovery record while inspecting manual changes.',
-            );
-          if (request.checkoutChoice === 'continue' && record.phase === 'entering') {
-            next = { ...this.freshCheckoutEntry(record), revision: record.revision + 1 };
-            if (record.priorWork) next.priorWork = this.retryUnperformedPreservation(record, false);
-            next.phase = 'entering';
-          } else next.phase = 'restoring-editors';
-        } else {
-          entry();
-          next.phase = record.phase === 'exiting' ? 'exiting' : 'active';
-          if (next.phase === 'exiting') next.exitId = randomUUID();
-        }
-        break;
-      default:
-        throw new StoreError('INVALID_CHECKOUT', 'Unsupported checkout lifecycle action.');
-    }
-    return this.saveCheckout(request, next, state);
-  }
-
   private projectOperation(record: OperationRecord, request?: StoreRequest): StoreReply {
     this.validate(this.lease, true);
     if (this.lease!.revision === Number.MAX_SAFE_INTEGER)
@@ -2033,7 +1268,7 @@ class SharedStore {
     assertOperationOwner(record, this.lease!);
     // Receipt/intent first; SQLite is its projection, never evidence that an
     // external effect completed. The independent receipt is retained.
-    const boundary = `${operationBoundary(record)}.${record.phase}`;
+    const boundary = `${record.kind}.${record.phase}`;
     this.faults.at(`${boundary}.before`);
     this.faults.publish(
       record.phase,
@@ -2176,9 +1411,6 @@ class SharedStore {
         'Independent intent and database projection disagree. Use recovery; do not dispatch.',
       );
     const repository = this.repository(record.facts.worktree);
-    if (record.kind === 'checkout') repository.validateCheckout(record);
-    if (record.stash) repository.validateStash(record);
-    if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
     if (
       !repository.sameFacts(record.facts) ||
       !repository.sameReferenceStorage(record) ||
@@ -2193,9 +1425,6 @@ class SharedStore {
       record = { ...record, phase: 'armed', child: identity };
       this.projectOperation(record);
       this.validate(this.lease, true);
-      if (record.kind === 'checkout') repository.validateCheckout(record);
-      if (record.stash) repository.validateStash(record);
-      if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record) ||
@@ -2207,55 +1436,14 @@ class SharedStore {
       }
       this.validate(this.lease, true);
       this.faults.at('dispatch.before');
-      this.faults.at(`${operationBoundary(record)}.dispatch.before`);
-      if (record.kind === 'checkout') this.faults.at('checkout.dispatch.before');
-      if (record.stash) this.faults.at(`${record.kind}.dispatch.before`);
+      this.faults.at(`${record.kind}.dispatch.before`);
       native.startChild(child);
       this.faults.at('dispatch.after');
-      this.faults.at(`${operationBoundary(record)}.dispatch.after`);
-      if (record.kind === 'checkout') this.faults.at('checkout.dispatch.after');
-      if (record.stash) this.faults.at(`${record.kind}.dispatch.after`);
+      this.faults.at(`${record.kind}.dispatch.after`);
       const status = await this.waitForChild(child, record.kind === 'fetch' ? 45000 : 5000);
       this.validate(this.lease, true);
       const actual = repository.refOid(record.ref);
-      const expectedAfter = record.kind === 'delete-ref' ? null : record.newOid;
-      if (record.stash) {
-        const outcome = repository.stashOutcome(record);
-        if (
-          !repository.sameRepositoryIdentity(record.facts) ||
-          !repository.sameReferenceStorage(record, true) ||
-          outcome === 'refused'
-        )
-          recovery(
-            'Preservation left unexpected repository facts. Keep the stash, files and journal, then use Recover PR Checkout.',
-          );
-        this.faults.at(`${record.kind}.effect.after`);
-        return this.projectOperation(
-          { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
-          request,
-        );
-      }
-      if (record.kind === 'checkout') {
-        const outcome = repository.checkoutOutcome(record);
-        if (
-          !repository.sameRepositoryIdentity(record.facts) ||
-          !repository.sameReferenceStorage(record, true) ||
-          outcome === 'refused'
-        )
-          recovery(
-            'Checkout produced unexpected repository facts. Preserve all branches and reconcile actual state; no restoration was attempted.',
-          );
-        if (status.exitCode !== 0 && outcome === 'applied')
-          recovery(
-            'Git exit and observed checkout disagree. Reconcile the actual checkout before continuing.',
-          );
-        this.faults.at('checkout.effect.after');
-        this.faults.at(`${operationBoundary(record)}.effect.after`);
-        return this.projectOperation(
-          { ...record, phase: 'observed', outcome, exitCode: status.exitCode },
-          request,
-        );
-      }
+      const expectedAfter = record.newOid;
       if (
         !repository.sameFacts(record.facts) ||
         !repository.sameReferenceStorage(record, true) ||
@@ -2266,7 +1454,7 @@ class SharedStore {
         );
       if (status.exitCode !== 0 && actual === expectedAfter)
         recovery('Git exit and observed reference disagree; explicit reconciliation is required.');
-      this.faults.at(`${operationBoundary(record)}.effect.after`);
+      this.faults.at(`${record.kind}.effect.after`);
       return this.projectOperation(
         {
           ...record,
@@ -2382,20 +1570,8 @@ class SharedStore {
     const repository = this.repository(record.facts.worktree);
     if (record.kind === 'fetch')
       repository.validateFetch(record.ref, record.newOid, record.fetch!.remoteRef);
-    else if (record.kind === 'delete-ref') repository.validateDelete(record.ref, record.newOid);
-    else if (record.kind !== 'checkout' && !record.stash)
-      repository.validateUpdate(record.ref, record.newOid);
-    const checkoutOutcome =
-      record.kind === 'checkout'
-        ? repository.checkoutOutcome(record)
-        : record.stash
-          ? repository.stashOutcome(record)
-          : undefined;
-    if (
-      record.kind === 'checkout' || record.stash
-        ? checkoutOutcome === 'refused' || !repository.sameRepositoryIdentity(record.facts)
-        : !repository.sameFacts(record.facts)
-    )
+    else repository.validateUpdate(record.ref, record.newOid);
+    if (!repository.sameFacts(record.facts))
       recovery(
         'HEAD, index or worktree files changed. Preserve that work and reconcile it before recovery; no Git command was repeated.',
       );
@@ -2404,26 +1580,18 @@ class SharedStore {
         'Reference storage changed. Preserve its recovery records; no Git command was repeated.',
       );
     const actual = repository.refOid(record.ref);
-    const expectedAfter = record.kind === 'delete-ref' ? null : record.newOid;
-    if (
-      record.kind !== 'fetch' &&
-      record.kind !== 'checkout' &&
-      !record.stash &&
-      actual !== record.beforeOid &&
-      actual !== expectedAfter
-    )
+    const expectedAfter = record.newOid;
+    if (record.kind !== 'fetch' && actual !== record.beforeOid && actual !== expectedAfter)
       recovery(
         'The reference has an unexpected value. Preserve it for manual Git recovery; no command was repeated.',
       );
     if (
       record.phase === 'observed' &&
-      (record.kind === 'checkout' || record.stash
-        ? record.outcome !== checkoutOutcome
-        : (record.outcome === 'applied' && actual !== expectedAfter) ||
-          (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
-          (record.kind === 'fetch' &&
-            record.observedOid !== undefined &&
-            actual !== record.observedOid))
+      ((record.outcome === 'applied' && actual !== expectedAfter) ||
+        (record.outcome === 'not-applied' && actual !== record.beforeOid) ||
+        (record.kind === 'fetch' &&
+          record.observedOid !== undefined &&
+          actual !== record.observedOid))
     )
       recovery('The independent receipt and actual reference disagree.');
     this.poisoned = false;
@@ -2437,12 +1605,11 @@ class SharedStore {
     const outcome =
       record.phase === 'observed'
         ? record.outcome!
-        : (checkoutOutcome ??
-          (actual === expectedAfter
-            ? 'applied'
-            : actual === record.beforeOid
-              ? 'not-applied'
-              : 'refused'));
+        : actual === expectedAfter
+          ? 'applied'
+          : actual === record.beforeOid
+            ? 'not-applied'
+            : 'refused';
     this.projectOperation({
       ...record,
       phase: 'observed',
@@ -2474,7 +1641,6 @@ class SharedStore {
         'readCandidate',
         'readRegistration',
         ...sourceActions,
-        ...checkoutActions,
         ...draftActions,
       ].includes(String(message.action))
     )
@@ -2514,7 +1680,6 @@ class SharedStore {
       if (request.action === 'readCandidate') return this.readCandidate(request);
       if (request.action === 'readRegistration') return this.readRegistration(request);
       if (isSourceAction(request.action)) return await this.sourceAction(request);
-      if (isCheckoutAction(request.action)) return await this.checkoutAction(request);
       if (isDraftAction(request.action)) return await this.draftAction(request);
       if (request.action === 'prepareRef') return this.prepareReference(request);
       if (request.action === 'executeOperation') return await this.executeOperation(request);

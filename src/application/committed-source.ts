@@ -2,8 +2,6 @@ import type { ReviewCandidate } from './pull-request';
 
 export type SourceSide = 'old' | 'new';
 export const sourceActions = [
-  'prepareCleanCheckout',
-  'prepareCleanRestore',
   'prepareSource',
   'prepareSourceFetch',
   'publishSource',

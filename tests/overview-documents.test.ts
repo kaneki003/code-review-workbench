@@ -138,7 +138,6 @@ const host = vi.hoisted(() => {
 vi.mock('vscode', () => host);
 
 import { createOverviewDocuments } from '../src/vscode/overview-documents';
-import { createCheckoutEditors } from '../src/vscode/checkout-editors';
 
 const directory = { path: process.cwd(), device: '1', inode: '1' };
 const remote = { owner: 'acme', repository: 'service', transport: 'https' as const };
@@ -194,21 +193,6 @@ test('reopening the same PR reuses its overview document and preview', async () 
   }
 });
 
-test('a long overview and its preview do not consume the prior-work snapshot budget', async () => {
-  const documents = createOverviewDocuments();
-  try {
-    await documents.show({
-      ...candidate,
-      pullRequest: { ...candidate.pullRequest, body: 'Description paragraph.\n'.repeat(1200) },
-    });
-    const snapshot = await createCheckoutEditors(documents).capture();
-    expect(snapshot.groups[0]!.tabs).toEqual([]);
-    expect(Buffer.byteLength(JSON.stringify(snapshot))).toBeLessThan(48000);
-  } finally {
-    documents.dispose();
-  }
-});
-
 test('closing review overviews leaves ordinary editor tabs open', async () => {
   const documents = createOverviewDocuments();
   try {
@@ -219,74 +203,6 @@ test('closing review overviews leaves ordinary editor tabs open', async () => {
     expect(host.window.tabGroups.activeTabGroup.tabs.map((tab) => tab.label)).toEqual([
       'prior-work.ts',
     ]);
-  } finally {
-    documents.dispose();
-  }
-});
-
-test('removing an active overview from capture preserves the ordinary tab and restores it on Exit', async () => {
-  const documents = createOverviewDocuments();
-  try {
-    const uri = host.Uri.from({ scheme: 'file', path: '/prior-work.ts' });
-    await host.window.showTextDocument(uri);
-    await documents.show(candidate);
-    const editors = createCheckoutEditors(documents);
-    const snapshot = await editors.capture();
-    expect(snapshot.groups[0]!.tabs.map((tab) => [tab.uri, tab.active])).toEqual([
-      [uri.toString(), true],
-    ]);
-    await editors.restore(snapshot);
-    expect(host.window.tabGroups.activeTabGroup.tabs.map((tab) => tab.label)).toEqual([
-      'prior-work.ts',
-    ]);
-  } finally {
-    documents.dispose();
-  }
-});
-
-test('Exit restoration does not reopen overview tabs the reviewer closed', async () => {
-  const documents = createOverviewDocuments();
-  try {
-    await documents.show(candidate);
-    const editors = createCheckoutEditors(documents);
-    const snapshot = await editors.capture();
-    await host.window.tabGroups.close([...host.window.tabGroups.activeTabGroup.tabs]);
-    await editors.restore(snapshot);
-    expect(host.window.tabGroups.activeTabGroup.tabs).toEqual([]);
-  } finally {
-    documents.dispose();
-  }
-});
-
-test('repeated owner recreation reuses overview identity and recognizes a preview without saving its description', async () => {
-  const originalDocuments = createOverviewDocuments();
-  await originalDocuments.show(candidate);
-  const snapshot = await createCheckoutEditors(originalDocuments).capture();
-  expect(snapshot.overviewUris).toHaveLength(1);
-  const sourceTab = host.window.tabGroups.activeTabGroup.tabs.find(
-    (tab) => tab.input instanceof host.TabInputText,
-  )!;
-  await host.window.tabGroups.close([sourceTab]);
-  originalDocuments.dispose();
-  const documents = createOverviewDocuments();
-  try {
-    const editors = createCheckoutEditors(documents);
-    editors.retain!(snapshot);
-    const reopened = await documents.show(candidate);
-    expect(reopened!.toString()).toBe(snapshot.overviewUris![0]);
-    await host.window.tabGroups.close(
-      host.window.tabGroups.activeTabGroup.tabs.filter(
-        (tab) => tab.input instanceof host.TabInputText,
-      ),
-    );
-    documents.dispose();
-    const recreated = createOverviewDocuments();
-    const recovered = createCheckoutEditors(recreated);
-    recovered.retain!(snapshot);
-    await recovered.capture();
-    await recovered.restore(snapshot);
-    recreated.dispose();
-    expect(host.window.tabGroups.activeTabGroup.tabs).toEqual([]);
   } finally {
     documents.dispose();
   }
