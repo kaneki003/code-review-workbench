@@ -1348,3 +1348,92 @@ test(
   },
   integrationTimeout,
 );
+
+test(
+  'an active checkout keeps its PR selected until Exit completes',
+  async () => {
+    const context = await fixture();
+    const manager = context.manager();
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    expect(await manager.enterPullRequestCheckout(source.source.id)).toMatchObject({
+      status: 'active',
+    });
+    expect(await manager.openPullRequestOverview(context.pullRequest.url)).toMatchObject({
+      status: 'ready',
+    });
+    context.pullRequest.number = 21;
+    context.pullRequest.url = 'https://github.com/acme/service/pull/21';
+    expect(await manager.openPullRequestOverview(context.pullRequest.url)).toMatchObject({
+      status: 'blocked',
+      detail: expect.stringMatching(/current checkout before selecting another PR/),
+    });
+    expect(await manager.readCheckoutReview()).toMatchObject({
+      sourceId: source.source.id,
+      step: 'active',
+    });
+    expect(await manager.exitPullRequestCheckout()).toMatchObject({ status: 'complete' });
+    expect(await manager.openPullRequestOverview(context.pullRequest.url)).toMatchObject({
+      status: 'ready',
+    });
+  },
+  integrationTimeout,
+);
+
+test(
+  'PR selection waits for a checkout whose document save is still pending',
+  async () => {
+    const context = await fixture();
+    let releaseSave!: () => void;
+    let saving!: () => void;
+    let registrationRead!: () => void;
+    let observeSelection = false;
+    const saveStarted = new Promise<void>((resolve) => {
+      saving = resolve;
+    });
+    const selectionStarted = new Promise<void>((resolve) => {
+      registrationRead = resolve;
+    });
+    const saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const manager = context.manager(
+      undefined,
+      (store) => ({
+        ...store,
+        async request(request) {
+          const reply = await store.request(request);
+          if (observeSelection && request.action === 'readRegistration') registrationRead();
+          return reply;
+        },
+      }),
+      undefined,
+      {
+        save: async () => {
+          saving();
+          await saveGate;
+          return true;
+        },
+      },
+    );
+    await manager.openPullRequestOverview(context.pullRequest.url);
+    const source = await manager.inspectPullRequestSource('3001', 20);
+    if (source.status !== 'ready') throw new Error(source.detail);
+    const entering = manager.enterPullRequestCheckout(source.source.id);
+    await saveStarted;
+    context.pullRequest.number = 21;
+    context.pullRequest.url = 'https://github.com/acme/service/pull/21';
+    observeSelection = true;
+    const selecting = manager.openPullRequestOverview(context.pullRequest.url);
+    try {
+      await selectionStarted;
+    } finally {
+      releaseSave();
+    }
+    expect(await entering).toMatchObject({ status: 'active' });
+    expect(await selecting).toMatchObject({ status: 'blocked' });
+    expect(await manager.readCheckoutReview()).toMatchObject({ sourceId: source.source.id });
+  },
+  integrationTimeout,
+);

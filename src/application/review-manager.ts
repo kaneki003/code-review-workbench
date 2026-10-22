@@ -141,7 +141,7 @@ export class ReviewManager {
   async readCheckoutReview(): Promise<CheckoutSession | undefined> {
     return await this.connections.checkout?.read();
   }
-  private checkoutWork(action: () => Promise<CheckoutResult>): Promise<CheckoutResult> {
+  private checkoutWork<T>(action: () => Promise<T>): Promise<T> {
     const result = this.checkoutQueue.then(action);
     this.checkoutQueue = result.catch(() => {});
     return result;
@@ -559,13 +559,32 @@ export class ReviewManager {
             'First registration requires confirmation of this local copy and the verified GitHub repository ID. A remote name cannot prove clone origin. No candidate was saved; Retry to select and confirm the copy.',
         };
     }
-    const saved = await this.storeRequest('saveCandidate', { candidate }, generation);
-    if (generation !== this.overviewGeneration) return staleOverview();
-    if (saved.view.status !== 'owned' || !saved.candidate) {
-      return { status: 'blocked', detail: saved.view.detail };
-    }
-    this.sourceAuthorized = true;
-    return { status: 'ready', ...saved.candidate };
+    return this.checkoutWork(async (): Promise<PullRequestOverview> => {
+      const checkout = await this.connections.checkout?.read();
+      if (checkout) {
+        const retainedSource = await this.readCommittedSource(checkout.sourceId);
+        if (generation !== this.overviewGeneration) return staleOverview();
+        if (
+          retainedSource.status !== 'ready' ||
+          retainedSource.source.candidate.account.userId !== candidate.account.userId ||
+          retainedSource.source.candidate.pullRequest.number !== candidate.pullRequest.number ||
+          retainedSource.source.candidate.pullRequest.base.repository.id !==
+            candidate.pullRequest.base.repository.id
+        )
+          return {
+            status: 'blocked',
+            detail:
+              'Exit or complete manual recovery of the current checkout before selecting another PR.',
+          };
+      }
+      const saved = await this.storeRequest('saveCandidate', { candidate }, generation);
+      if (generation !== this.overviewGeneration) return staleOverview();
+      if (saved.view.status !== 'owned' || !saved.candidate) {
+        return { status: 'blocked', detail: saved.view.detail };
+      }
+      this.sourceAuthorized = true;
+      return { status: 'ready', ...saved.candidate };
+    });
   }
 
   private storeAction(action: StoreRequest['action']): Promise<StoreView> {
